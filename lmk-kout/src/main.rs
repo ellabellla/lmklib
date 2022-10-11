@@ -12,9 +12,14 @@ fn main() {
 
     let newline = key::string_to_packets("\n");
     let stdin = io::stdin();
-    for line in stdin.lock().lines() {
-        let packets = key::string_to_packets(&line.unwrap());
+    let mut add_newline = false;
+    for line in stdin.lock().lines().map(|l| l.unwrap()) {
+        if !add_newline {
+            add_newline = true;
+        } else {
+            key::send_key_packets(&newline, &mut hid).unwrap();
+        }
+        let packets = key::string_to_packets(&line);
         key::send_key_packets(&packets, &mut hid).unwrap();
-        key::send_key_packets(&newline, &mut hid).unwrap();
     }
 }
