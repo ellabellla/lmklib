@@ -1,4 +1,5 @@
 [workspace]
 members = [
-    "k-server",
+    "lmk-hid",
+    "lmk-k-server",
 ]
