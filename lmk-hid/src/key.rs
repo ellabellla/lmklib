@@ -5,9 +5,35 @@ const KEY_PACKET_KEY_LEN: usize = 6;
 const KEY_PACKET_MOD_IDX: usize = 0;
 const KEY_PACKET_KEY_IDX: usize = 2;
 
+pub fn print_packets(packets: &Vec<KeyPacket>) {
+    for packet in packets {
+        for data in packet.data {
+            print!("{:02x}", data);
+        }
+        println!();
+    }
+}
+
 pub fn string_to_packets(str: &str) -> Vec<KeyPacket> {
+    let mut prev = None;
     str.chars()
         .filter_map(|c| KeyPacket::from_char(&c, &KeyOrigin::Keyboard))
+        .flat_map(|p| {
+            let next = Some(p.data[KEY_PACKET_KEY_IDX].clone());
+            let ret = match prev {
+                Some(byte) => {
+                    if p.data[KEY_PACKET_KEY_IDX] == byte {
+                        vec![KeyPacket::new(), p]
+                    } else {
+                        vec![p]
+                    }
+                },
+                None => vec![p],
+            };
+            prev = next;
+            ret
+        })
+        .chain([KeyPacket::new()])
         .collect()
 }
 
@@ -150,7 +176,7 @@ pub enum SpecialKey {
     F5,
     F4,
     NumLockAndClear,
-    ENTER,
+    Enter,
     Application,
     Power,
     RightGUI,
@@ -264,6 +290,9 @@ pub enum SpecialKey {
 pub fn char_to_byte(c:&char, key_origin: &KeyOrigin) -> Option<(Option<Modifier>, u8)> {
     match key_origin {
         KeyOrigin::Keyboard => match c {
+            '\n' =>  Some((None, special_to_byte(SpecialKey::Enter))),
+            '\t' =>  Some((None, special_to_byte(SpecialKey::Tab))),
+            ' ' => Some((None, special_to_byte(SpecialKey::Spacebar))),
             'a' => Some((None, 0x04)), // 4, Some((None, 0x04)), Keyboard, 'a', 'A'
             'A' => Some((Some(Modifier::LeftShift), 0x04)), // 4, Some((None, 0x04)), Keyboard, 'a', 'A'
             'b' => Some((None, 0x05)), // 5, Some((None, 0x05)), Keyboard, 'b', 'B'
@@ -501,7 +530,7 @@ pub fn special_to_byte(special: SpecialKey) -> u8 {
         SpecialKey::CurrencyUnit => 0xB4, // 180, 0xB4, Misc, CurrencyUnit
         SpecialKey::CurrencySubunit => 0xB5, // 181, 0xB5, Misc, CurrencySubunit
         SpecialKey::NumLockAndClear  => 0x53, // 83, 0x53, Keypad, NumLockAndClear 
-        SpecialKey::ENTER => 0x58, // 88, 0x58, Keypad, ENTER
+        SpecialKey::Enter => 0x58, // 88, 0x58, Keypad, ENTER
         SpecialKey::_1AndEnd  => 0x59, // 89, 0x59, Keypad, _1AndEnd 
         SpecialKey::_2AndDownArrow  => 0x5A, // 90, 0x5A, Keypad, _2AndDownArrow 
         SpecialKey::_3AndPageDn  => 0x5B, // 91, 0x5B, Keypad, _3AndPageDn 
