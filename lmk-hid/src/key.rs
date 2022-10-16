@@ -7,6 +7,7 @@ const KEY_PACKET_KEY_LEN: usize = 6;
 const KEY_PACKET_MOD_IDX: usize = 0;
 const KEY_PACKET_KEY_IDX: usize = 2;
 
+#[derive(Debug)]
 pub enum Key {
     Char(char, KeyOrigin),
     Special(SpecialKey),
@@ -50,9 +51,11 @@ impl Keyboard {
         self.packets.push(KeyPacket::new());
     }
 
-    pub fn press_shortcut(&mut self, modifier: &Modifier, key: &Key) -> Option<()> {
+    pub fn press_shortcut(&mut self, modifiers: &[Modifier], key: &Key) -> Option<()> {
         let mut packet = KeyPacket::new();
-        packet.push_modifier(modifier);
+        for modifier in modifiers {
+            packet.push_modifier(modifier);
+        }
         match key {
             Key::Char(c, key_origin) => packet.push_key(c, key_origin)?,
             Key::Special(special) => packet.push_special(special)?,
@@ -78,7 +81,7 @@ impl Keyboard {
         Some(())
     }
 
-    pub fn press_key(&mut self, key: &mut Key) -> Option<()> {
+    pub fn press_key(&mut self, key: &Key) -> Option<()> {
         match key {
             Key::Char(c, key_origin) => self.press_char(c, key_origin)?,
             Key::Special(special) => self.press_special(special),
@@ -242,6 +245,7 @@ impl KeyPacket {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
 pub enum Modifier {
     LeftControl,
     LeftShift,
@@ -277,12 +281,14 @@ impl Modifier {
 }
 
 //^(\d+) ([A-Z0-9]+) (Keyboard|Keypad|Misc) (.*?)$
+#[derive(Debug)]
 pub enum KeyOrigin {
     Keyboard,
     Keypad,
     Misc,
 }
 
+#[derive(Debug)]
 pub enum SpecialKey {
     ReturnEnter,
     Return,
