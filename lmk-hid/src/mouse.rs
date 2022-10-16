@@ -42,13 +42,13 @@ impl Mouse {
 
     pub fn move_mouse(&mut self, displacement: &i8, dir: &MouseDir) {
         match dir {
-            MouseDir::X => self.data[MOUSE_DATA_X_IDX] = unsafe {std::mem::transmute_copy(displacement)},
-            MouseDir::Y => self.data[MOUSE_DATA_Y_IDX] = unsafe {std::mem::transmute_copy(displacement)},
+            MouseDir::X => self.data[MOUSE_DATA_X_IDX] = displacement.to_be_bytes()[0],
+            MouseDir::Y => self.data[MOUSE_DATA_Y_IDX] = displacement.to_be_bytes()[0],
         }
     }
 
     pub fn scroll_wheel(&mut self, displacement: &i8) {
-        self.data[MOUSE_DATA_WHEL_IDX] = unsafe {std::mem::transmute_copy(displacement)};
+        self.data[MOUSE_DATA_WHEL_IDX] = displacement.to_be_bytes()[0];
     }
 
     pub fn send(&mut self, hid: &mut File) -> io::Result<usize>{
