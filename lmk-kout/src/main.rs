@@ -1,12 +1,16 @@
-use std::{time::Duration, thread, io::{self, BufRead}, str::FromStr};
-
+use std::{time::Duration, thread, io::{self, BufRead}, str::FromStr, fs};
+use clap::{Parser};
 use lmk_hid::{key::{Keyboard}, HID};
 
-fn main() {
-    thread::sleep(Duration::from_secs(1));
+#[derive(Parser)]
+#[command(author, version, about, long_about = None)]
+struct Cli {
+    /// Optional input files
+    inputs: Vec<String>,
+}
 
-    let mut hid = HID::new(1, 0);
 
+fn kout_stdin(hid: &mut HID) {
     let mut keyboard = Keyboard::new();
     let newline = Keyboard::from_str("\n").unwrap();
     let stdin = io::stdin();
@@ -15,9 +19,35 @@ fn main() {
         if !add_newline {
             add_newline = true;
         } else {
-            newline.send_keep(&mut hid).unwrap();
+            newline.send_keep(hid).unwrap();
         }
         keyboard.press_string(&line);
-        keyboard.send(&mut hid).unwrap();
+        keyboard.send(hid).unwrap();
+    }
+}
+
+fn main() {
+    let args = Cli::parse();
+
+    thread::sleep(Duration::from_secs(1));
+
+    let mut hid = HID::new(1, 0);
+
+    if args.inputs.len() == 0 {
+        kout_stdin(&mut hid);
+    } else {
+        let mut keyboard = Keyboard::new();
+        for input in args.inputs {
+            if input == "-" {
+                kout_stdin(&mut hid);
+            } else {
+                if let Ok(contents) = fs::read_to_string(&input) {
+                    keyboard.press_string(&contents);
+                    keyboard.send(&mut hid).unwrap();
+                } else {
+                    println!("Couldn't open file \"{}\"", input);
+                }
+            }
+        }
     }
 }

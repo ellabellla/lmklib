@@ -7,3 +7,4 @@ edition = "2021"
 
 [dependencies]
 lmk-hid = {path = "../lmk-hid" }
+clap = { version = "4.0.15", features = ["derive"] }
