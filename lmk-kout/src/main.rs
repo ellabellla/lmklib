@@ -1,4 +1,4 @@
-use std::{time::Duration, thread, io::{self, BufRead}, str::FromStr, fs};
+use std::{io::{self, BufRead}, str::FromStr, fs};
 use clap::{Parser};
 use lmk_hid::{key::{Keyboard}, HID};
 
@@ -28,8 +28,6 @@ fn kout_stdin(hid: &mut HID) {
 
 fn main() {
     let args = Cli::parse();
-
-    thread::sleep(Duration::from_secs(1));
 
     let mut hid = HID::new(1, 0);
 
