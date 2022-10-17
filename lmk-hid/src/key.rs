@@ -64,6 +64,16 @@ impl Keyboard {
         self.packets.push(self.create_release_packet());
     }
 
+    pub fn hold_mod(&mut self, modifier: &Modifier) {
+        self.holding.push_modifier(modifier);
+        self.packets.push(self.create_release_packet());
+    }
+
+    pub fn release_mod(&mut self, modifier: &Modifier) {
+        self.holding.remove_mod(modifier);
+        self.packets.push(self.create_release_packet());
+    }
+
     fn add_held_keys(&mut self, packet: &mut KeyPacket) {
         let mut i = 0;
         for byte in &mut self.holding.data {
@@ -178,6 +188,14 @@ impl KeyPacket {
         self.data[KEY_PACKET_KEY_IDX + usize::try_from(kbytes[1] >> 3).unwrap_or(0)] & (1 << (kbytes[1] & 0x7)) != 0 
     }
 
+    fn add_mod(&mut self, modifier: &Modifier) {
+        self.data[KEY_PACKET_MOD_IDX] |= modifier.to_mkbyte();
+    }
+
+    fn remove_mod(&mut self, modifier: &Modifier) {
+        self.data[KEY_PACKET_MOD_IDX] &= !modifier.to_mkbyte();
+    }
+
     pub fn from_list(modifiers: &[Modifier], keys: &[(char, KeyOrigin); 6]) -> KeyPacket {
         let mut packet = KeyPacket::new();
         packet.data[KEY_PACKET_MOD_IDX] = Modifier::all_to_byte(modifiers);
@@ -236,7 +254,7 @@ impl KeyPacket {
     }
 
     pub fn push_modifier(&mut self, modifier: &Modifier) {
-        self.data[KEY_PACKET_MOD_IDX] |= modifier.to_mkbyte();
+        self.add_mod(modifier)
     }
 
     pub fn push_key(&mut self, key: &Key) -> Option<u8>{
