@@ -1,12 +1,44 @@
 use lmk_hid::key::{SpecialKey, Modifier, Key, KeyOrigin};
 use nom::character::complete::{digit1, alpha1, space1, space0};
 use nom::combinator::{eof};
-use nom::bytes::complete::{take, take_while};
-use nom::multi::many1;
+use nom::bytes::complete::{take, take_while, take_till};
+use nom::error::Error;
+use nom::multi::{many1, many0};
 use nom::sequence::tuple;
 use nom::{IResult, bytes::complete::tag, Parser};
 use nom::branch::alt;
 
+
+#[derive(Debug)]
+pub enum Operator<'a>{
+    Add(Value<'a>),
+    Sub(Value<'a>),
+    Mult(Value<'a>),
+    Div(Value<'a>),
+    Mod(Value<'a>),
+    Exp(Value<'a>),
+
+    Equ(Value<'a>),
+    Not(Value<'a>),
+    Gre(Value<'a>),
+    Les(Value<'a>),
+    EqL(Value<'a>),
+    EqG(Value<'a>),
+
+    And(Value<'a>),
+    Or(Value<'a>),
+
+    BAnd(Value<'a>),
+    BOr(Value<'a>),
+    Left(Value<'a>),
+    Right(Value<'a>),
+}
+
+#[derive(Debug)]
+pub struct Expression<'a> {
+    pub value: Value<'a>,
+    pub ops: Vec<Operator<'a>>
+}
 
 #[derive(Debug)]
 pub enum Command<'a> {
@@ -16,25 +48,38 @@ pub enum Command<'a> {
     Special(SpecialKey),
     Modifier(Modifier),
     Shortcut(Vec<Modifier>, Key),
-    Delay(Value<'a>),
+    Delay(Expression<'a>),
     Hold(Key),
     Release(Key),
     HoldMod(Modifier),
     ReleaseMod(Modifier),
     InjectMod,
+    Var(&'a str, Expression<'a>),
+    If(Value<'a>),
+    ElseIf(Value<'a>),
+    Else,
+    EndIf,
+    While(Value<'a>),
+    EndWhile,
+    Function(&'a str),
+    EndFunction,
+    Call(&'a str),
 }
 
 #[derive(Debug)]
 pub enum Value<'a> {
-    Int(u64),
+    Int(i64),
     Variable(&'a str),
+    Bracket(Box<Expression<'a>>),
 }
 
 fn integer<'a>(i: &'a str) -> IResult<&'a str, Value<'a>> {
+    let (i, neg) = tag::<&str, &str, Error<&str>>("-")(i)
+        .map(|(i, _)| (i, true))
+        .unwrap_or((i, false));
     let (i, delay) = digit1(i)?;
-    let int: u64 = delay.parse().unwrap();
-
-    Ok((i, Value::Int(int)))
+    let int: i64 = delay.parse().unwrap();
+    Ok((i, Value::Int(if neg {-int} else {int})))
 }
 
 fn bool<'a>(i: &'a str) -> IResult<&'a str, Value<'a>> {
@@ -46,17 +91,28 @@ fn bool<'a>(i: &'a str) -> IResult<&'a str, Value<'a>> {
     Ok((i, Value::Int(int)))
 }
 
-fn variable<'a>(i: &'a str) -> IResult<&'a str, Value<'a>> {
+fn variable<'a>(i: &'a str) -> IResult<&'a str, &'a str> {
     let (i, _) = tag("$")(i)?;
-    let (_, name) = alpha1(i)?;
-    Ok((i, Value::Variable(name)))
+    let (i, name) = alpha1(i)?;
+    Ok((i, name))
+}
+
+pub fn bracket<'a>(i: &'a str) -> IResult<&'a str, Value> {
+    tuple((
+        tag("("),
+        space0,
+        expression,
+        space0,
+        tag(")")
+    ))(i).map(|(i, (_,_,expr, _,_))| (i, Value::Bracket(Box::new(expr))))
 }
 
 fn value<'a>(i: &'a str) -> IResult<&'a str, Value<'a>> {
     alt((
         integer,
-        variable,
-        bool
+        variable.map(|name| Value::Variable(name)),
+        bool,
+        bracket
     ))(i)
 }
 
@@ -64,7 +120,7 @@ fn delay<'a>(i: &'a str) -> IResult<&'a str, Command<'a>> {
      tuple((
         tag("DELAY"),
         space1,
-        value
+        expression
     ))(i)
         .map(|(i, (_,_,value))| (i, Command::Delay(value)))
 }
@@ -225,6 +281,188 @@ pub fn string<'a>(i: &'a str) -> IResult<&'a str, Command<'a>> {
     ))(i)
 }
 
+pub fn expression<'a>(i: &'a str) -> IResult<&'a str, Expression> {
+    tuple((
+        value,
+        many0(
+            tuple((
+                space0,
+                alt((
+                    tag("<<"),
+                    tag(">>"),
+
+                    tag("+"),
+                    tag("-"),
+                    tag("*"),
+                    tag("/"),
+                    tag("%"),
+                    tag("^"),
+
+                    tag("=="),
+                    tag("!="),
+                    tag("<="),
+                    tag(">="),
+                    tag(">"),
+                    tag("<"),
+
+                    tag("&&"),
+                    tag("||"),
+
+                    tag("&"),
+                    tag("|"),
+
+                )),
+                space0,
+                value,
+            )).map(|(_ , op, _, val)| match op {
+                "+" => Operator::Add(val),
+                "-" => Operator::Sub(val),
+                "*" => Operator::Mult(val),
+                "/" => Operator::Div(val),
+                "%" => Operator::Mod(val),
+                "^" => Operator::Exp(val),
+
+                "==" => Operator::Equ(val),
+                "!=" => Operator::Not(val),
+                ">" => Operator::Gre(val),
+                "<" => Operator::Les(val),
+                "<=" => Operator::EqL(val),
+                ">=" => Operator::EqG(val),
+
+                "&&" => Operator::And(val),
+                "||" => Operator::Or(val),
+
+                "&" => Operator::BAnd(val),
+                "|" => Operator::BOr(val),
+                "<<" => Operator::Left(val),
+                ">>" => Operator::Right(val),
+
+                _ => unreachable!(),
+            })
+        )
+    ))(i).map(|(i, (value, ops))| (i, Expression{value, ops}))
+}
+
+fn var<'a>(i: &'a str) -> IResult<&'a str, Command<'a>> {
+    tuple((
+        tag("VAR"),
+        space1,
+        variable,
+        space0,
+        tag("="),
+        space0,
+        expression,
+    ))(i).map(|(i, (_,_, var, _,_,_,expr))| (i, Command::Var(var, expr)))
+}
+
+fn if_begin<'a>(i: &'a str) -> IResult<&'a str, Command<'a>> {
+    tuple((
+        tag("IF"),
+        space0,
+        alt((
+            bool,
+            bracket,
+        )),
+        space0,
+        tag("THEN")
+    ))(i).map(|(i,(_,_,val,_,_))| (i, Command::If(val)))
+}
+
+fn if_else<'a>(i: &'a str) -> IResult<&'a str, Command<'a>> {
+    tuple((
+        tag("ELSE IF"),
+        space0,
+        alt((
+            bool,
+            bracket,
+        )),
+        space0,
+        tag("THEN")
+    ))(i).map(|(i,(_,_,val,_,_))| (i, Command::ElseIf(val)))
+}
+
+fn else_control<'a>(i: &'a str) -> IResult<&'a str, Command<'a>> {
+    tag("ELSE")(i).map(|(i,_)| (i, Command::Else))
+}
+
+fn if_end<'a>(i: &'a str) -> IResult<&'a str, Command<'a>> {
+    tag("END_IF")(i).map(|(i,_)| (i, Command::EndIf))
+}
+
+fn if_control<'a>(i: &'a str) -> IResult<&'a str, Command<'a>> {
+    alt((
+        if_begin,
+        if_else,
+        else_control,
+        if_end,
+    ))(i)
+}
+
+fn while_begin<'a>(i: &'a str) -> IResult<&'a str, Command<'a>> {
+    tuple((
+        tag("WHILE"),
+        space0,
+        alt((
+            bool,
+            bracket,
+        )),
+        space0,
+    ))(i).map(|(i,(_,_,val,_))| (i, Command::While(val)))
+}
+
+fn while_end<'a>(i: &'a str) -> IResult<&'a str, Command<'a>> {
+    tag("END_WHILE")(i).map(|(i,_)| (i, Command::EndWhile))
+}
+
+fn while_control<'a>(i: &'a str) -> IResult<&'a str, Command<'a>> {
+    alt((
+        while_begin,
+        while_end,
+    ))(i)
+}
+
+fn function_begin<'a>(i: &'a str) -> IResult<&'a str, Command<'a>> {
+    tuple((
+        tag("FUNCTION"),
+        space1,
+        take_till(|c| c == '('),
+        tag("()"),
+    ))(i).map(|(i,(_,_,name,_))| (i, Command::Function(name)))
+}
+
+fn function_end<'a>(i: &'a str) -> IResult<&'a str, Command<'a>> {
+    tag("END_FUNCTION")(i).map(|(i,_)| (i, Command::EndFunction))
+}
+
+fn call<'a>(i: &'a str) -> IResult<&'a str, Command<'a>> {
+    tuple((
+        take_till(|c| c == '('),
+        tag("()"),
+    ))(i).map(|(i,(name,_))| (i, Command::Call(name)))
+}
+
+fn function_control<'a>(i: &'a str) -> IResult<&'a str, Command<'a>> {
+    alt((
+        function_begin,
+        function_end,
+        call,
+    ))(i)
+}
+
+pub fn parse_function<'a>(i: &'a str) -> IResult<&'a str, &'a str> {
+    tuple((
+        space0,
+        tag("FUNCTION"),
+        space1,
+        take_till(|c| c == '('),
+        tag("()"),
+        space0,
+        take_while(|c| c == '\n'),
+        eof
+    ))(i)
+        .map(|(i, (_, _, _, name, _, _, _, _))| (i, name))
+}
+
 pub fn parse_line<'a>(i: &'a str) -> IResult<&'a str, Command<'a>> {
     tuple((
         space0,
@@ -242,6 +480,10 @@ pub fn parse_line<'a>(i: &'a str) -> IResult<&'a str, Command<'a>> {
             hold_release,
             modifier_command,
             lock,
+            var,
+            if_control,
+            while_control,
+            function_control,
         )),
         space0,
         take_while(|c| c == '\n'),
@@ -271,7 +513,7 @@ pub fn parse_define<'a>(i: &'a str) -> IResult<&'a str, (&'a str, &'a str)> {
 mod tests {
     use lmk_hid::key::{Key, KeyOrigin, Modifier, SpecialKey};
 
-    use crate::{parser::{parse_line, Command, Value, parse_define}};
+    use crate::{parser::{parse_line, Command, Value, parse_define, Operator}};
 
     #[test]
     pub fn test() {
@@ -284,9 +526,8 @@ mod tests {
 
         assert!(matches!(parse_line("INJECT_MOD\n").unwrap().1, Command::InjectMod));
 
-        assert!(matches!(parse_line("DELAY 100\n").unwrap().1, Command::Delay(Value::Int(100))));
+        assert!(matches!(parse_line("DELAY 100\n").unwrap().1, Command::Delay(_expr)));
 
-        let _mods = vec![Modifier::LeftControl, Modifier::LeftShift];
         assert!(matches!(parse_line("CTL SHIFT a\n").unwrap().1, Command::Shortcut(_mods, Key::Char('a', KeyOrigin::Keyboard))));
 
         assert!(matches!(parse_line("ENTER\n").unwrap().1, Command::Special(SpecialKey::Enter)));
@@ -300,5 +541,52 @@ mod tests {
         assert!(matches!(parse_line("GUI\n").unwrap().1, Command::Modifier(Modifier::LeftMeta)));
 
         assert!(matches!(parse_line("CAPSLOCK\n").unwrap().1, Command::Special(SpecialKey::CapsLock)));
+
+        let expr = parse_line("VAR $variable = 1 + (2 + 2)\n").unwrap().1;
+        match expr {
+            Command::Var(name, expr) => {
+                assert_eq!(name, "variable");
+                assert!(matches!(expr.value, Value::Int(1)));
+                assert!(matches!(&expr.ops[0], Operator::Add(Value::Bracket(_a))));
+                assert_eq!(expr.ops.len(), 1);
+                if let Operator::Add(Value::Bracket(expr)) = &expr.ops[0] {
+                    assert!(matches!(expr.value, Value::Int(2)));
+                    assert!(matches!(&expr.ops[0], Operator::Add(Value::Int(2))));
+                    assert_eq!(expr.ops.len(), 1);
+                }
+            },
+            _ => assert!(false)
+        }
+
+        let if_begin = parse_line("IF (1 < 2) THEN\n").unwrap().1;
+        assert!(matches!(&if_begin, Command::If(Value::Bracket(_a))));
+        if let Command::If(Value::Bracket(expr)) = if_begin {
+            assert!(matches!(expr.value, Value::Int(1)));
+            assert!(matches!(expr.ops[0], Operator::Les(Value::Int(2))));
+        }
+
+
+        let if_else = parse_line("ELSE IF (1 < 2) THEN\n").unwrap().1;
+        assert!(matches!(&if_else, Command::ElseIf(Value::Bracket(_a))));
+        if let Command::ElseIf(Value::Bracket(expr)) = if_else {
+            assert!(matches!(expr.value, Value::Int(1)));
+            assert!(matches!(expr.ops[0], Operator::Les(Value::Int(2))));
+        }
+
+        assert!(matches!(parse_line("ELSE\n").unwrap().1, Command::Else));
+        assert!(matches!(parse_line("END_IF\n").unwrap().1, Command::EndIf));
+
+        let while_begin = parse_line("WHILE (1 < 2)\n").unwrap().1;
+        assert!(matches!(&while_begin, Command::While(Value::Bracket(_a))));
+        if let Command::While(Value::Bracket(expr)) = while_begin {
+            assert!(matches!(expr.value, Value::Int(1)));
+            assert!(matches!(expr.ops[0], Operator::Les(Value::Int(2))));
+        }
+
+        assert!(matches!(parse_line("END_WHILE\n").unwrap().1, Command::EndWhile));
+
+        assert!(matches!(parse_line("FUNCTION hello()\n").unwrap().1, Command::Function("hello")));
+        assert!(matches!(parse_line("END_FUNCTION\n").unwrap().1, Command::EndFunction));
+        assert!(matches!(parse_line("hello()\n").unwrap().1, Command::Call("hello")));
     }
 }
