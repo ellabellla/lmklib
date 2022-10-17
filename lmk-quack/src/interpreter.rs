@@ -1,9 +1,40 @@
-use std::{collections::HashMap, time::Duration, thread};
+use std::{collections::HashMap, time::Duration, thread, fmt::{Display}};
 
 use lmk_hid::{key::{Keyboard, Key, SpecialKey}, HID};
 
 use crate::parser::{parse_define, parse_line, Value, Expression, Operator, Command, parse_function};
 
+pub enum Error{
+    StackUnderflow,
+    InvalidDelay(i64),
+    CannotParse(usize),
+    UnresolvedValue,
+    UnknownFunction,
+    NoEndIf,
+    NoEndWhile,
+    NoEndFunction,
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Error::StackUnderflow => f.write_str("Stack underflow: This may be due to an error with mismatching control structure statements."),
+            Error::InvalidDelay(delay) => f.write_str(&format!("Invalid Delay of {}: Delay length must be an integer greater than 20.", delay)),
+            Error::CannotParse(line) => f.write_str(&format!("Parse Error: Could not parse line {}.", line)),
+            Error::UnresolvedValue => f.write_str("Could not resolve value: This may be due to an invalid variable name."),
+            Error::UnknownFunction => f.write_str("Unknown Function: The called function has not been defined."),
+            Error::NoEndIf => f.write_str("No End If: Could not find matching END_IF for IF."),
+            Error::NoEndWhile => f.write_str("No End While: Could not find matching END_WHILE for WHILE."),
+            Error::NoEndFunction => f.write_str("No End Function: Could not find matching END_FUNCTION for FUNCTION."),
+        }
+    }
+}
+
+impl Error {
+    pub fn to_err_msg(&self, line: &usize) -> String {
+        format!("Error on line {}, {}", line, self)
+    }
+}
 
 pub struct QuackInterp {
     lines:Vec<String>,
@@ -39,15 +70,15 @@ impl QuackInterp {
         QuackInterp { lines, functions }
     }
 
-    fn find_if_end(&self, i: &usize) -> usize {
+    fn find_if_end(&self, i: &usize) -> Option<usize> {
         let mut depth = 1;
         let mut i = *i + 1;
         while i < self.lines.len() && depth != 0 {
             match parse_line(&self.lines[i]) {
                 Ok((_, command)) => match command {
                     Command::If(_) => depth += 1,
-                    Command::ElseIf(_) => if depth == 1 {return i},
-                    Command::Else => if depth == 1 {return i},
+                    Command::ElseIf(_) => if depth == 1 {return Some(i)},
+                    Command::Else => if depth == 1 {return Some(i)},
                     Command::EndIf => depth -= 1,
                     _ => (),
                 },
@@ -55,10 +86,14 @@ impl QuackInterp {
             };
             i += 1;
         }
-        i
+        if depth == 0 {
+            Some(i)
+        } else {
+            None
+        }
     }
 
-    fn find_while_end(&self, i: &usize) -> usize {
+    fn find_while_end(&self, i: &usize) -> Option<usize> {
         let mut depth = 1;
         let mut i = *i + 1;
         while i < self.lines.len() && depth != 0 {
@@ -72,22 +107,22 @@ impl QuackInterp {
             };
             i += 1;
         }
-        i
+        None
     }
     
-    fn find_function_end(&self, i: &usize) -> usize {
+    fn find_function_end(&self, i: &usize) -> Option<usize> {
         let mut i = *i + 1;
         while i < self.lines.len(){
             match parse_line(&self.lines[i]) {
                 Ok((_, command)) => match command {
-                    Command::EndFunction => return i + 1,
+                    Command::EndFunction => return Some(i + 1),
                     _ => (),
                 },
                 Err(_) => (),
             };
             i += 1;
         }
-        i
+        None
     }
 
     fn resolve_value(&self, value: Value, keyboard: &mut Keyboard, variables: &mut HashMap<String, i64>) -> Option<i64> {
@@ -128,35 +163,38 @@ impl QuackInterp {
         return Some(amount)
     }
 
-    fn interpret(&self, i: &usize, line: &str, keyboard: &mut Keyboard, variables: &mut HashMap<String, i64>, stack: &mut Vec<usize>) -> usize {
+    fn interpret(&self, i: &usize, line: &str, keyboard: &mut Keyboard, variables: &mut HashMap<String, i64>, stack: &mut Vec<usize>) -> Result<usize, Error> {
         let command = match parse_line(line) {
             Ok((_, command)) => command,
-            Err(_) => return i + 1,
+            Err(_) => return Err(Error::CannotParse(*i)),
         };
 
         match command {
-            crate::parser::Command::Rem(comment) => println!("{}", comment),
-            crate::parser::Command::String(str) => keyboard.press_string(str),
-            crate::parser::Command::StringLN(str) => {
+            Command::Rem(comment) => println!("{}", comment),
+            Command::String(str) => keyboard.press_string(str),
+            Command::StringLN(str) => {
                 keyboard.press_string(str); 
                 keyboard.press_key(&Key::Special(SpecialKey::Enter));
             },
-            crate::parser::Command::Special(special) => {keyboard.press_key(&Key::Special(special));},
-            crate::parser::Command::Modifier(modifier) => keyboard.press_modifier(&modifier),
-            crate::parser::Command::Shortcut(modifiers, key) => {keyboard.press_shortcut(&modifiers, &key);},
-            crate::parser::Command::Delay(expression) => {
-                let amount = self.resolve_expr(expression, keyboard, variables).unwrap_or(0);
+            Command::Special(special) => {keyboard.press_key(&Key::Special(special));},
+            Command::Modifier(modifier) => keyboard.press_modifier(&modifier),
+            Command::Shortcut(modifiers, key) => {keyboard.press_shortcut(&modifiers, &key);},
+            Command::Delay(expression) => {
+                let amount = self.resolve_expr(expression, keyboard, variables).ok_or(Error::UnresolvedValue)?;
                 if amount < 20 {
-                    return i + 1;
+                    return Err(Error::InvalidDelay(amount))
                 }
-                thread::sleep(Duration::from_millis(u64::try_from(amount).unwrap_or(20)));
+                
+                let amount = u64::try_from(amount).map_err(|_| Error::InvalidDelay(amount))?;
+                
+                thread::sleep(Duration::from_millis(amount));
             },
-            crate::parser::Command::Hold(key) => {keyboard.hold(&key);},
-            crate::parser::Command::Release(key) => keyboard.release(&key),
-            crate::parser::Command::HoldMod(modifier) => keyboard.hold_mod(&modifier),
-            crate::parser::Command::ReleaseMod(modifier) => keyboard.release_mod(&modifier),
-            crate::parser::Command::InjectMod => (),
-            crate::parser::Command::Var(name, expression) => {
+            Command::Hold(key) => {keyboard.hold(&key);},
+            Command::Release(key) => keyboard.release(&key),
+            Command::HoldMod(modifier) => keyboard.hold_mod(&modifier),
+            Command::ReleaseMod(modifier) => keyboard.release_mod(&modifier),
+            Command::InjectMod => (),
+            Command::Var(name, expression) => {
                 if !variables.contains_key(name) {
                     variables.insert(name.to_string(), 0);
                 }
@@ -165,51 +203,63 @@ impl QuackInterp {
 
                 variables.insert(name.to_string(), amount);
             },
-            crate::parser::Command::If(value) => {
-                let cond = self.resolve_value(value, keyboard, variables).unwrap_or(0);
+            Command::If(value) => {
+                let cond = self.resolve_value(value, keyboard, variables).ok_or(Error::UnresolvedValue)?;
                 if cond == 0 {
                     stack.push(0);
-                    return self.find_if_end(i)
+                    return self.find_if_end(i).ok_or(Error::NoEndIf)
                 }
                 stack.push(1);
             },
-            crate::parser::Command::ElseIf(value) => {
-                let cond = self.resolve_value(value, keyboard, variables).unwrap_or(0);
+            Command::ElseIf(value) => {
+                let cond = self.resolve_value(value, keyboard, variables).ok_or(Error::UnresolvedValue)?;
                 if cond == 0 || stack.pop().unwrap_or(0) == 1{
-                    return self.find_if_end(i)
+                    return self.find_if_end(i).ok_or(Error::NoEndIf)
                 }
                 stack.push(1);
             },
-            crate::parser::Command::Else => if stack.pop().unwrap_or(1) == 1 {
-                return self.find_if_end(i)
+            Command::Else => if stack.pop().unwrap_or(1) == 1 {
+                return self.find_if_end(i).ok_or(Error::NoEndIf)
             },
-            crate::parser::Command::EndIf => {stack.pop();},
-            crate::parser::Command::While(value) => {
-                let cond = self.resolve_value(value, keyboard, variables).unwrap_or(0);
+            Command::EndIf => {stack.pop();},
+            Command::While(value) => {
+                let cond = self.resolve_value(value, keyboard, variables).ok_or(Error::UnresolvedValue)?;
                 if cond == 0 {
-                    return self.find_while_end(i);
+                    return self.find_while_end(i).ok_or(Error::NoEndWhile)
                 }
                 stack.push(*i);
             },
-            crate::parser::Command::EndWhile => return stack.pop().unwrap_or(*i + 1),
-            crate::parser::Command::Function(_) => return self.find_function_end(i),
-            crate::parser::Command::EndFunction => return stack.pop().unwrap_or(*i + 1),
-            crate::parser::Command::Call(name) => {
+            Command::EndWhile => return stack.pop().ok_or(Error::StackUnderflow),
+            Command::Function(_) => return self.find_function_end(i).ok_or(Error::NoEndFunction),
+            Command::EndFunction => return stack.pop().ok_or(Error::StackUnderflow),
+            Command::Call(name) => {
                 stack.push(i+1);
-                return *self.functions.get(name).unwrap_or(&(i + 1))
+                return self.functions.get(name).map(|i| *i).ok_or(Error::UnknownFunction)
             },
+            Command::None => (),
         };
-        i + 1
+        Ok(i + 1)
     }
 
-    pub fn run(&self, hid: &mut HID) {
+    pub fn run(&self, hid: &mut HID, continue_on_error: &bool) -> Result<(), (usize, Error)> {
         let mut keyboard = Keyboard::new();
         let mut variables = HashMap::new();
         let mut stack = Vec::new();
         let mut i = 0;
         while i <  self.lines.len() {
-            i = self.interpret(&i, &self.lines[i], &mut keyboard, &mut variables, &mut stack);
+            match self.interpret(&i, &self.lines[i], &mut keyboard, &mut variables, &mut stack) {
+                Ok(next) => i = next,
+                Err(e) => {
+                    if *continue_on_error {
+                        println!("{}", e.to_err_msg(&i));
+                        i += 1
+                    } else {
+                        return Err((i, e));
+                    }
+                },
+            }
             keyboard.send(hid).unwrap();
         }
+        Ok(())
     }
 }

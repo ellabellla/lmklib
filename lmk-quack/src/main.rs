@@ -9,6 +9,10 @@ use lmk_hid::HID;
 struct Cli {
     /// Input script
     input: String,
+
+    #[arg(short, long, default_value_t=false)]
+    /// Halt on error
+    strict: bool
 }
 
 mod parser;
@@ -19,10 +23,11 @@ fn main() {
 
     let input = fs::read_to_string(args.input).unwrap();
 
-
     let mut hid = HID::new(1, 0);
     let interpreter = QuackInterp::new(&input);
-    interpreter.run(&mut hid);
+    if let Err((line, e)) = interpreter.run(&mut hid, &!args.strict) {
+        println!("{}", e.to_err_msg(&line))
+    }
 }
 
 #[cfg(test)]

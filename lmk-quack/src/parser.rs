@@ -8,7 +8,6 @@ use nom::sequence::tuple;
 use nom::{IResult, bytes::complete::tag, Parser};
 use nom::branch::alt;
 
-
 #[derive(Debug)]
 pub enum Operator<'a>{
     Add(Value<'a>),
@@ -64,6 +63,7 @@ pub enum Command<'a> {
     Function(&'a str),
     EndFunction,
     Call(&'a str),
+    None,
 }
 
 #[derive(Debug)]
@@ -464,32 +464,40 @@ pub fn parse_function<'a>(i: &'a str) -> IResult<&'a str, &'a str> {
 }
 
 pub fn parse_line<'a>(i: &'a str) -> IResult<&'a str, Command<'a>> {
-    tuple((
-        space0,
-        alt((
-            tuple((
-                tag("REM"),
-                space1,
-                take_till_no_end(|c| c == '\n'),
-            )).map(|(_, _, str)| Command::Rem(str)),
-            string,
-            tag("INJECT_MOD").map(|_| Command::InjectMod),
-            delay,
-            shortcut,
-            special_command,
-            hold_release,
-            modifier_command,
-            lock,
-            var,
-            if_control,
-            while_control,
-            function_control,
-        )),
-        space0,
-        take_while(|c| c == '\n'),
-        eof
+    alt((
+        tuple((
+            space0,
+            alt((
+                tuple((
+                    tag("REM"),
+                    space1,
+                    take_till_no_end(|c| c == '\n'),
+                )).map(|(_, _, str)| Command::Rem(str)),
+                string,
+                tag("INJECT_MOD").map(|_| Command::InjectMod),
+                delay,
+                shortcut,
+                special_command,
+                hold_release,
+                modifier_command,
+                lock,
+                var,
+                if_control,
+                while_control,
+                function_control,
+            )),
+            space0,
+            take_while(|c| c == '\n'),
+            eof
+        ))
+            .map(|(_, command, _, _, _)| command),
+        tuple((
+            space0,
+            take_while(|c| c == '\n'),
+            eof
+        ))
+            .map(|_| Command::None)
     ))(i)
-        .map(|(i, (_, command, _, _, _))| (i, command))
 }
 
 
@@ -588,5 +596,8 @@ mod tests {
         assert!(matches!(parse_line("FUNCTION hello()\n").unwrap().1, Command::Function("hello")));
         assert!(matches!(parse_line("END_FUNCTION\n").unwrap().1, Command::EndFunction));
         assert!(matches!(parse_line("hello()\n").unwrap().1, Command::Call("hello")));
+
+        assert!(matches!(parse_line("").unwrap().1, Command::None));
+        assert!(matches!(parse_line("    \t\n").unwrap().1, Command::None));
     }
 }
