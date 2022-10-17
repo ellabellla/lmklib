@@ -3,11 +3,12 @@ use std::{io::{self}, str::FromStr};
 
 use crate::HID;
 
-const KEY_PACKET_KEY_LEN: usize = 6;
+const KEY_PACKET_KEY_LEN: usize = 15;
+const KEY_PACKET_LEN: usize = 16;
 const KEY_PACKET_MOD_IDX: usize = 0;
-const KEY_PACKET_KEY_IDX: usize = 2;
+const KEY_PACKET_KEY_IDX: usize = 1;
 
-#[derive(Debug)]
+#[derive(Debug, Eq, Hash, PartialEq, Clone, Copy)]
 pub enum Key {
     Char(char, KeyOrigin),
     Special(SpecialKey),
@@ -15,6 +16,7 @@ pub enum Key {
 
 pub struct Keyboard {
     packets: Vec<KeyPacket>,
+    holding: KeyPacket,
 }
 
 impl FromStr for Keyboard {
@@ -29,53 +31,86 @@ impl FromStr for Keyboard {
 
 impl Keyboard {
     pub fn new() -> Keyboard {
-        Keyboard { packets: Vec::new() }
+        Keyboard { packets: Vec::new(), holding: KeyPacket::new() }
     }
 
     fn add_buffer(&mut self, packet: &KeyPacket) {
         if let Some(last) = self.packets.last() {
             if last.contains_any(packet) {
-                self.packets.push(KeyPacket::new())
+                self.packets.push(self.create_release_packet())
             }
         }
     }
 
-    pub fn press_packet(&mut self, packet: KeyPacket) {
+    pub fn hold(&mut self, key: &Key) -> Option<u8> {
+        let kbytes = match key {
+            Key::Char(c, key_origin) => c.to_kbytes(key_origin)?,
+            Key::Special(special) => [0, special.to_kbyte()],
+        };
+        self.holding.add_key(&kbytes);
+        self.packets.push(self.create_release_packet());
+        Some(kbytes[1])
+    }
+
+    pub fn release(&mut self, key: &Key) {
+        let kbytes = match key {
+            Key::Char(c, key_origin) => match c.to_kbytes(key_origin) {
+                Some(kbytes) => kbytes,
+                None => return,
+            },
+            Key::Special(special) => [0, special.to_kbyte()],
+        };
+        self.holding.remove_key(&kbytes);
+        self.packets.push(self.create_release_packet());
+    }
+
+    fn add_held_keys(&mut self, packet: &mut KeyPacket) {
+        let mut i = 0;
+        for byte in &mut self.holding.data {
+            *byte |= packet.data[i];
+            i+=1;
+        }
+    }
+
+    fn create_release_packet(&self) -> KeyPacket {
+        self.holding.clone()
+    }
+
+    pub fn press_packet(&mut self, mut packet: KeyPacket) {
+        self.add_held_keys(&mut packet);
         self.packets.push(packet)
     }
 
     pub fn press_modifier(&mut self, modifier: &Modifier) {
-        let mut packet = KeyPacket::new();
+        let mut packet = self.create_release_packet();
         packet.push_modifier(modifier);
         self.packets.push(packet);
-        self.packets.push(KeyPacket::new());
+        self.packets.push(self.create_release_packet());
     }
 
     pub fn press_shortcut(&mut self, modifiers: &[Modifier], key: &Key) -> Option<()> {
-        let mut packet = KeyPacket::new();
+        let mut packet = self.create_release_packet();
         for modifier in modifiers {
             packet.push_modifier(modifier);
         }
-        match key {
-            Key::Char(c, key_origin) => packet.push_key(c, key_origin)?,
-            Key::Special(special) => packet.push_special(special)?,
-        };
-        self.packets.push(KeyPacket::new());
+        packet.push_key(key);
+        self.packets.push(self.create_release_packet());
         self.packets.push(packet);
-        self.packets.push(KeyPacket::new());
+        self.packets.push(self.create_release_packet());
 
         Some(())
     }
 
     fn press_special(&mut self, special: &SpecialKey) {
-        let mut packet = KeyPacket::new();
+        let mut packet = self.create_release_packet();
         packet.push_special(special);
         self.add_buffer(&packet);
         self.packets.push(packet);
     }
 
     fn press_char(&mut self, c: &char, key_origin: &KeyOrigin) -> Option<()>{
-        let packet = KeyPacket::from_char(&c, key_origin)?;
+        let mut packet = KeyPacket::from_char(&c, key_origin)?;
+        self.add_held_keys(&mut packet);
         self.add_buffer(&packet);
         self.packets.push(packet);
         Some(())
@@ -90,30 +125,24 @@ impl Keyboard {
     }
 
     pub fn press_string(&mut self, str: &str) {
-        let mut prev = None;
-        self.packets.extend(str.chars()
-            .filter_map(|c| KeyPacket::from_char(&c, &KeyOrigin::Keyboard))
-            .flat_map(|p| {
-                let next = Some(p.data[KEY_PACKET_KEY_IDX].clone());
-                let ret = match prev {
-                    Some(byte) => {
-                        if p.data[KEY_PACKET_KEY_IDX] == byte {
-                            vec![KeyPacket::new(), p]
-                        } else {
-                            vec![p]
-                        }
-                    },
-                    None => vec![p],
-                };
-                prev = next;
-                ret
-            })
-            .chain([KeyPacket::new()])
-            .collect::<Vec<KeyPacket>>())
+        for c in str.chars() {
+            let mut packet = self.create_release_packet();
+            let kbytes = match c.to_kbytes(&KeyOrigin::Keyboard) {
+                Some(packet) => packet,
+                None => continue,
+            };
+            packet.add_key(&kbytes);
+            let needs_space = packet.get_key(&kbytes);
+            self.packets.push(packet);
+
+            if  needs_space {
+                self.packets.push(self.create_release_packet())
+            }
+        }
     }
 
     pub fn send(&mut self, hid: &mut HID) -> io::Result<usize> {
-        self.packets.push(KeyPacket::new());
+        self.packets.push(self.create_release_packet());
         let res = KeyPacket::send_all(&self.packets, hid);
         self.packets.clear();
         res
@@ -121,45 +150,57 @@ impl Keyboard {
 
     pub fn send_keep(&self, hid: &mut HID) -> io::Result<usize> {
         let res = KeyPacket::send_all(&self.packets, hid)?;
-        let res2 = hid.send_key_packet(&KeyPacket::new().data)?;
+        let res2 = hid.send_key_packet(&self.create_release_packet().data)?;
         Ok(res + res2)
     }
 }
 
 pub struct KeyPacket {
-    data: [u8; 8],
-    key_count: usize,
+    data: [u8; KEY_PACKET_LEN],
 }
 
 impl KeyPacket {
     pub fn new() -> KeyPacket {
-        KeyPacket { data: [0x00; 8], key_count: 0 }
+        KeyPacket { data: [0x00; KEY_PACKET_LEN] }
+    }
+
+    fn add_key(&mut self, kbytes: &[u8; 2]) {
+        self.data[KEY_PACKET_MOD_IDX] |= kbytes[0];
+        self.data[KEY_PACKET_KEY_IDX + usize::try_from(kbytes[1] >> 3).unwrap_or(0)] |= 1 << (kbytes[1] & 0x7);
+    }
+
+    fn remove_key(&mut self, kbytes: &[u8; 2]) {
+        self.data[KEY_PACKET_MOD_IDX] &= !kbytes[0];
+        self.data[KEY_PACKET_KEY_IDX + usize::try_from(kbytes[1] >> 3).unwrap_or(0)] &= !(1 << (kbytes[1] & 0x7));
+    }
+
+    fn get_key(&self, kbytes: &[u8; 2]) -> bool {
+        self.data[KEY_PACKET_KEY_IDX + usize::try_from(kbytes[1] >> 3).unwrap_or(0)] & (1 << (kbytes[1] & 0x7)) != 0 
     }
 
     pub fn from_list(modifiers: &[Modifier], keys: &[(char, KeyOrigin); 6]) -> KeyPacket {
-        let mut data:[u8; 8] = [0; 8];
-        data[KEY_PACKET_MOD_IDX] = Modifier::all_to_byte(modifiers);
-        for (i, (c, key_origin)) in keys.iter().enumerate() {
+        let mut packet = KeyPacket::new();
+        packet.data[KEY_PACKET_MOD_IDX] = Modifier::all_to_byte(modifiers);
+        for (c, key_origin) in keys.iter() {
             if let Some(kbytes) = c.to_kbytes(key_origin) {
-                data[KEY_PACKET_KEY_IDX + i] = kbytes[1];
-                data[KEY_PACKET_MOD_IDX] |= kbytes[0];
+                packet.add_key(&kbytes)
             }
         }
-        KeyPacket { data, key_count: KEY_PACKET_KEY_LEN }
+        packet
     }
 
     pub fn from_char(c: &char, key_origin: &KeyOrigin) -> Option<KeyPacket> {
+        let mut packet = KeyPacket::new();
         let kbytes = c.to_kbytes(key_origin)?;
-        let data = [kbytes[0], 0x0, kbytes[1], 0x0, 0x0, 0x0, 0x0, 0x0];
-
-        Some(KeyPacket{data, key_count: KEY_PACKET_KEY_LEN})
+        packet.add_key(&kbytes);
+        Some(packet)
     }
 
     pub fn from_special(special: &SpecialKey) -> KeyPacket {
+        let mut packet = KeyPacket::new();
         let kbytes = special.to_kbyte();
-        let data = [0x0, 0x0, kbytes, 0x0, 0x0, 0x0, 0x0, 0x0];
-
-        KeyPacket{data, key_count: 1}
+        packet.add_key(&[0x0, kbytes]);
+        packet
     }
 
     pub fn contains_char(&self, key: char, key_origin: &KeyOrigin) -> bool {
@@ -171,8 +212,8 @@ impl KeyPacket {
     }
 
     pub fn contains_any(&self, packet: &KeyPacket) -> bool {
-        for i in KEY_PACKET_KEY_IDX..(KEY_PACKET_KEY_LEN + KEY_PACKET_KEY_IDX) {
-            if self.contains_kbyte(&packet.data[i])  {
+        for i in KEY_PACKET_KEY_IDX..KEY_PACKET_LEN {
+            if packet.data[i] == self.data[i] {
                 return true
             }
         }
@@ -198,27 +239,23 @@ impl KeyPacket {
         self.data[KEY_PACKET_MOD_IDX] |= modifier.to_mkbyte();
     }
 
-    pub fn push_key(&mut self, key: &char, key_origin: &KeyOrigin) -> Option<u8> {
-        let kbytes = key.to_kbytes(key_origin)?;
-        if self.key_count < KEY_PACKET_KEY_LEN {
-            self.data[KEY_PACKET_KEY_IDX + self.key_count] = kbytes[1];
-            self.key_count +=1;
-            self.data[KEY_PACKET_MOD_IDX] |= kbytes[0];
-            Some(kbytes[1])
-        } else {
-            None
+    pub fn push_key(&mut self, key: &Key) -> Option<u8>{
+        match key {
+            Key::Char(c, key_origin) => self.push_char(c, key_origin),
+            Key::Special(special) => self.push_special(special),
         }
+    }
+
+    pub fn push_char(&mut self, key: &char, key_origin: &KeyOrigin) -> Option<u8> {
+        let kbytes = key.to_kbytes(key_origin)?;
+        self.add_key(&kbytes);
+        Some(kbytes[1])
     }
 
     pub fn push_special(&mut self, special: &SpecialKey) -> Option<u8>  {
         let kbytes = special.to_kbyte();
-        if self.key_count < KEY_PACKET_KEY_LEN {
-            self.data[KEY_PACKET_KEY_IDX + self.key_count] = kbytes;
-            self.key_count +=1;
-            Some(kbytes)
-        } else {
-            None
-        }
+        self.add_key(&[0x0, kbytes]);
+        Some(kbytes)
     }
 
     pub fn send(&self, hid: &mut HID) -> io::Result<usize>{
@@ -242,6 +279,10 @@ impl KeyPacket {
             }
             println!();
         }
+    }
+
+    fn clone(&self) -> KeyPacket {
+        KeyPacket { data: self.data.clone() }
     }
 }
 
@@ -281,14 +322,14 @@ impl Modifier {
 }
 
 //^(\d+) ([A-Z0-9]+) (Keyboard|Keypad|Misc) (.*?)$
-#[derive(Debug)]
+#[derive(Debug, Eq, Hash, PartialEq, Clone, Copy)]
 pub enum KeyOrigin {
     Keyboard,
     Keypad,
     Misc,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Eq, Hash, PartialEq, Clone, Copy)]
 pub enum SpecialKey {
     ReturnEnter,
     Return,
