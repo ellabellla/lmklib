@@ -1,7 +1,7 @@
 use lmk_hid::key::{SpecialKey, Modifier, Key, KeyOrigin};
 use nom::character::complete::{digit1, alpha1, space1, space0};
 use nom::combinator::{rest, eof};
-use nom::bytes::complete::take;
+use nom::bytes::complete::{take, take_while};
 use nom::multi::many1;
 use nom::sequence::tuple;
 use nom::{IResult, bytes::complete::tag, Parser};
@@ -10,19 +10,20 @@ use nom::branch::alt;
 
 #[derive(Debug)]
 pub enum Command<'a> {
-    Rem,
+    Rem(&'a str),
     String(&'a str),
     StringLN(&'a str),
     Special(SpecialKey),
     Modifier(Modifier),
     Shortcut(Vec<Modifier>, Key),
-    Delay(u64),
+    Delay(Value<'a>),
+    Hold(Key),
+    Release(Key),
 }
 
 #[derive(Debug)]
 pub enum Value<'a> {
     Int(u64),
-    Constant(&'a str),
     Variable(&'a str),
 }
 
@@ -57,38 +58,49 @@ fn value<'a>(i: &'a str) -> IResult<&'a str, Value<'a>> {
 }
 
 fn delay<'a>(i: &'a str) -> IResult<&'a str, Command<'a>> {
-    let (i, _) = tag("DELAY")(i)?;
-    let (i, delay) = digit1(i)?;
-    let delay: u64 = delay.parse().unwrap();
-
-    Ok((i, Command::Delay(delay)))
+     tuple((
+        tag("DELAY"),
+        space1,
+        value
+    ))(i)
+        .map(|(i, (_,_,value))| (i, Command::Delay(value)))
 }
 
-fn modifier<'a>(i: &'a str) -> IResult<&'a str, Vec<Modifier>> {
-    many1(alt((
+fn key<'a>(i: &'a str) -> IResult<&'a str, Key> {
+    alt((
+        special
+            .map(|s| Key::Special(s)),
+        take(1u32)
+            .map(|c:&str| Key::Char(c.chars().next().unwrap(), KeyOrigin::Keyboard))
+    ))(i)
+}  
+
+fn modifier<'a>(i: &'a str) -> IResult<&'a str, Modifier> {
+    alt((
         tag("ALT").map(|_| Modifier::LeftAlt),
         tag("CTL").map(|_| Modifier::LeftControl),
         tag("CONTROL").map(|_| Modifier::LeftControl),
         tag("COMMAND").map(|_| Modifier::LeftMeta),
         tag("GUI").map(|_| Modifier::LeftMeta),
         tag("SHIFT").map(|_| Modifier::LeftShift),
-    )))(i)
+    ))(i)
 }
 
-fn modifier_command<'a>(i: &'a str) -> IResult<&'a str, Vec<Command<'a>>> {
-    modifier(i).map(|(i, modifiers)| (i, modifiers.iter().map(|m| Command::Modifier(*m)).collect()))
+fn modifiers<'a>(i: &'a str) -> IResult<&'a str, Vec<Modifier>> {
+    many1(tuple((
+        modifier,
+        space1
+    )))(i).map(|(i, mods)| (i, mods.iter().map(|(modi, _)| *modi).collect::<Vec<Modifier>>()))
+}
+
+fn modifier_command<'a>(i: &'a str) -> IResult<&'a str, Command<'a>> {
+    modifier(i).map(|(i, modifier)| (i, Command::Modifier(modifier)))
 }
 
 fn shortcut<'a>(i: &'a str) -> IResult<&'a str, Command<'a>> {
-    let (i, (modifiers, _, key)) = tuple((
-        modifier,
-        space1,
-        alt((
-            special
-                .map(|s| Key::Special(s)),
-            take(1u32)
-                .map(|c:&str| Key::Char(c.chars().next().unwrap(), KeyOrigin::Keyboard))
-        ))
+    let (i, (modifiers, key)) = tuple((
+        modifiers,
+        key
     ))(i)?;
     Ok((i, Command::Shortcut(modifiers, key)))
 }
@@ -138,31 +150,81 @@ fn special_command<'a>(i: &'a str) -> IResult<&'a str, Command<'a>>  {
     special(i).map(|(i, s)| (i, Command::Special(s)))
 }
 
+pub fn take_till_no_end<F, Input, Error: nom::error::ParseError<Input>>(
+    cond: F,
+) -> impl Fn(Input) -> IResult<Input, Input, Error>
+where
+    Input: nom::InputTakeAtPosition + nom::InputLength + nom::Slice<std::ops::RangeFrom<usize>>,
+    F: Fn(<Input as nom::InputTakeAtPosition>::Item) -> bool,
+{
+    move |i: Input| {
+        match i.split_at_position::<_, Error>(|c| cond(c)) {
+            Ok(res) => Ok(res),
+            Err(e) => match e {
+                nom::Err::Incomplete(_) => Ok((i.slice(i.input_len()..), i)),
+                nom::Err::Error(_) => Err(e),
+                nom::Err::Failure(_) => Err(e),
+            },
+        }
+    }
+}
+
+
+pub fn hold_release<'a>(i: &'a str) -> IResult<&'a str, Command<'a>> {
+    alt((
+        tuple((
+            tag("HOLD"),
+            space1,
+            key
+        ))
+            .map(|(_, _, key)| Command::Hold(key)),
+        tuple((
+            tag("RELEASE"),
+            space1,
+            key
+        ))
+            .map(|(_, _, key)| Command::Release(key)),
+    ))(i)
+}
+
+
 pub fn parse_line<'a>(i: &'a str) -> IResult<&'a str, Command<'a>> {
     tuple((
+        space0,
         alt((
-            alt((
-                tag("REM").map(|_| Command::Rem), 
-                tag("STRING")
-                    .and_then(|i| space1(i))
-                    .and_then(|i| Ok((i, Command::String(rest(i)?.1)))),
-                tag("STRINGLN")
-                    .and_then(|i| space1(i))
-                    .and_then(|i| Ok((i, Command::StringLN(rest(i)?.1)))),
-            )),
+            tuple((
+                tag("REM"),
+                space1,
+                take_till_no_end(|c| c == '\n'),
+                take_while(|c| c == '\n')
+            )).map(|(_, _, str, _)| Command::Rem(str)),
+            tuple((
+                tag("STRING"),
+                space1,
+                take_till_no_end(|c| c == '\n'),
+                take_while(|c| c == '\n')
+            )).map(|(_, _, str, _)| Command::String(str)),
+            tuple((
+                tag("STRINGLN"),
+                space1,
+                rest,
+            )).map(|(_, _, str)| Command::StringLN(str)),
+            delay,
             shortcut,
             special_command,
-            delay
+            hold_release,
+            modifier_command,
         )),
         space0,
         eof
     ))(i)
-        .map(|(i, (command, _, _))| (i, command))
+        .map(|(i, (_, command, _, _))| (i, command))
 }
 
 
 pub fn parse_define<'a>(i: &'a str) -> IResult<&'a str, (&'a str, &'a str)> {
-    let (i, (_, _, name, _, text, _, _)) = tuple((
+    let (i, (_, _, _, name, _, text, _, _)) = tuple((
+        space0,
         tag("DEFINE"),
         space1,
         alpha1,
@@ -173,4 +235,16 @@ pub fn parse_define<'a>(i: &'a str) -> IResult<&'a str, (&'a str, &'a str)> {
     ))(i)?; 
 
     Ok((i, (name, text)))
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{parser::{parse_line}};
+
+    #[test]
+    pub fn test() {
+        let input = "HOLD c";
+
+        println!("{:?}", parse_line(input).unwrap().1);
+    }
 }
