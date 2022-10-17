@@ -1,6 +1,6 @@
 use lmk_hid::key::{SpecialKey, Modifier, Key, KeyOrigin};
 use nom::character::complete::{digit1, alpha1, space1, space0};
-use nom::combinator::{rest, eof};
+use nom::combinator::{eof};
 use nom::bytes::complete::{take, take_while};
 use nom::multi::many1;
 use nom::sequence::tuple;
