@@ -22,6 +22,7 @@ impl QuackInterp {
             }
         }
         for line in &mut lines {
+            line.push('\n');
             for (word, text) in &consts {
                 *line = line.replace(&format!(" {} ", word), text);
                 *line = line.replace(&format!(" {}\n", word), text);
@@ -54,6 +55,9 @@ impl QuackInterp {
             },
             crate::parser::Command::Hold(key) => {keyboard.hold(&key);},
             crate::parser::Command::Release(key) => keyboard.release(&key),
+            crate::parser::Command::HoldMod(modifier) => keyboard.hold_mod(&modifier),
+            crate::parser::Command::ReleaseMod(modifier) => keyboard.release_mod(&modifier),
+            crate::parser::Command::InjectMod => (),
         };
     }
 
