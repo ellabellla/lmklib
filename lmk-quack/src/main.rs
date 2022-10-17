@@ -12,7 +12,15 @@ struct Cli {
 
     #[arg(short, long, default_value_t=false)]
     /// Halt on error
-    strict: bool
+    strict: bool,
+
+    #[arg(short, long, default_value_t=false)]
+    /// Hide comments
+    comments: bool,
+
+    #[arg(short, long, default_value_t=false)]
+    /// Hide errors
+    errors: bool,    
 }
 
 mod parser;
@@ -25,8 +33,10 @@ fn main() {
 
     let mut hid = HID::new(1, 0);
     let interpreter = QuackInterp::new(&input);
-    if let Err((line, e)) = interpreter.run(&mut hid, &!args.strict) {
-        println!("{}", e.to_err_msg(&line))
+    if let Err((line, e)) = interpreter.run(&mut hid, &!args.comments, &!args.errors, &!args.strict) {
+        if !args.errors {
+            println!("{}", e.to_err_msg(&line))
+        }
     }
 }
 

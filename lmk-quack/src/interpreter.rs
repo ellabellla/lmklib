@@ -163,14 +163,14 @@ impl QuackInterp {
         return Some(amount)
     }
 
-    fn interpret(&self, i: &usize, line: &str, keyboard: &mut Keyboard, variables: &mut HashMap<String, i64>, stack: &mut Vec<usize>) -> Result<usize, Error> {
+    fn interpret(&self, i: &usize, line: &str, keyboard: &mut Keyboard, variables: &mut HashMap<String, i64>, stack: &mut Vec<usize>, comments: &bool) -> Result<usize, Error> {
         let command = match parse_line(line) {
             Ok((_, command)) => command,
             Err(_) => return Err(Error::CannotParse(*i)),
         };
 
         match command {
-            Command::Rem(comment) => println!("{}", comment),
+            Command::Rem(comment) => if *comments {println!("{}", comment)},
             Command::String(str) => keyboard.press_string(str),
             Command::StringLN(str) => {
                 keyboard.press_string(str); 
@@ -241,17 +241,19 @@ impl QuackInterp {
         Ok(i + 1)
     }
 
-    pub fn run(&self, hid: &mut HID, continue_on_error: &bool) -> Result<(), (usize, Error)> {
+    pub fn run(&self, hid: &mut HID, comments: &bool, errors: &bool, continue_on_error: &bool) -> Result<(), (usize, Error)> {
         let mut keyboard = Keyboard::new();
         let mut variables = HashMap::new();
         let mut stack = Vec::new();
         let mut i = 0;
         while i <  self.lines.len() {
-            match self.interpret(&i, &self.lines[i], &mut keyboard, &mut variables, &mut stack) {
+            match self.interpret(&i, &self.lines[i], &mut keyboard, &mut variables, &mut stack, comments) {
                 Ok(next) => i = next,
                 Err(e) => {
                     if *continue_on_error {
-                        println!("{}", e.to_err_msg(&i));
+                        if *errors {
+                            println!("{}", e.to_err_msg(&i));
+                        }
                         i += 1
                     } else {
                         return Err((i, e));
