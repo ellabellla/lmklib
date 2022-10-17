@@ -19,6 +19,9 @@ pub enum Command<'a> {
     Delay(Value<'a>),
     Hold(Key),
     Release(Key),
+    HoldMod(Modifier),
+    ReleaseMod(Modifier),
+    InjectMod,
 }
 
 #[derive(Debug)]
@@ -145,6 +148,14 @@ fn special<'a>(i: &'a str) -> IResult<&'a str, SpecialKey> {
     ))(i)
 }
 
+fn lock<'a>(i: &'a str) -> IResult<&'a str, Command<'a>>  {
+    alt((
+        tag("CAPSLOCK").map(|_| Command::Special(SpecialKey::CapsLock)),
+        tag("NUMLOCK").map(|_| Command::Special(SpecialKey::NumLockAndClear)),
+        tag("SCROLLOCK").map(|_| Command::Special(SpecialKey::ScrollLock)),
+    ))(i)
+}
+
 
 fn special_command<'a>(i: &'a str) -> IResult<&'a str, Command<'a>>  {
     special(i).map(|(i, s)| (i, Command::Special(s)))
@@ -184,6 +195,18 @@ pub fn hold_release<'a>(i: &'a str) -> IResult<&'a str, Command<'a>> {
             key
         ))
             .map(|(_, _, key)| Command::Release(key)),
+        tuple((
+            tag("HOLD"),
+            space1,
+            modifier
+        ))
+            .map(|(_, _, key)| Command::HoldMod(key)),
+        tuple((
+            tag("RELEASE"),
+            space1,
+            modifier
+        ))
+            .map(|(_, _, key)| Command::ReleaseMod(key)),
     ))(i)
 }
 
@@ -202,23 +225,25 @@ pub fn parse_line<'a>(i: &'a str) -> IResult<&'a str, Command<'a>> {
                 tag("STRING"),
                 space1,
                 take_till_no_end(|c| c == '\n'),
-                take_while(|c| c == '\n')
-            )).map(|(_, _, str, _)| Command::String(str)),
+            )).map(|(_, _, str)| Command::String(str)),
             tuple((
                 tag("STRINGLN"),
                 space1,
                 rest,
             )).map(|(_, _, str)| Command::StringLN(str)),
+            tag("INJECT_MOD").map(|_| Command::InjectMod),
             delay,
             shortcut,
             special_command,
             hold_release,
             modifier_command,
+            lock,
         )),
         space0,
+        take_while(|c| c == '\n'),
         eof
     ))(i)
-        .map(|(i, (_, command, _, _))| (i, command))
+        .map(|(i, (_, command, _, _, _))| (i, command))
 }
 
 
@@ -243,7 +268,7 @@ mod tests {
 
     #[test]
     pub fn test() {
-        let input = "HOLD c";
+        let input = "DELAY 100\n";
 
         println!("{:?}", parse_line(input).unwrap().1);
     }
