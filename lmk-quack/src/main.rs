@@ -39,7 +39,16 @@ fn main() {
         },
     };
 
-    let mut hid = HID::new(1, 0);
+    let mut hid = match HID::new(1, 0) {
+        Ok(hid) => hid,
+        Err(_) => {
+            if !args.errors {
+                println!("Error, Couldn't connect to HID.")
+            }
+            return
+        },
+    };
+    
     let interpreter = QuackInterp::new(&input);
     if let Err((line, e)) = interpreter.run(&mut hid, &!args.comments, &!args.errors, &!args.strict) {
         if !args.errors {

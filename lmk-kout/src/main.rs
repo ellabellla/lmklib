@@ -29,7 +29,13 @@ fn kout_stdin(hid: &mut HID) {
 fn main() {
     let args = Cli::parse();
 
-    let mut hid = HID::new(1, 0);
+    let mut hid = match HID::new(1, 0) {
+        Ok(hid) => hid,
+        Err(_) => {
+            println!("Couldn't connect to HID.");
+            return
+        },
+    };
 
     if args.inputs.len() == 0 {
         kout_stdin(&mut hid);

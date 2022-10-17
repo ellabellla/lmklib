@@ -6,16 +6,16 @@ pub struct HID {
 }
 
 impl HID {
-    pub fn new(mouse_id: u8, keyboard_id: u8) -> HID {
-        HID {
+    pub fn new(mouse_id: u8, keyboard_id: u8) -> io::Result<HID>{
+        Ok(HID {
             mouse_hid: OpenOptions::new()
                 .read(true)
                 .write(true)
-                .open(format!("/dev/hidg{}", mouse_id)).unwrap(), 
+                .open(format!("/dev/hidg{}", mouse_id))?, 
             keyboard_hid: OpenOptions::new()
                 .read(true)
                 .write(true)
-                .open(format!("/dev/hidg{}", keyboard_id)).unwrap() }
+                .open(format!("/dev/hidg{}", keyboard_id))? })
     }
 
     pub fn send_key_packet(&mut self, data: &[u8]) -> io::Result<usize> {
