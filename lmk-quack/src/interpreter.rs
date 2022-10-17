@@ -1,6 +1,6 @@
 use std::{collections::HashMap, time::Duration, thread};
 
-use lmk_hid::{key::{Keyboard, Key}, HID};
+use lmk_hid::{key::{Keyboard, Key, SpecialKey}, HID};
 
 use crate::parser::{parse_define, parse_line};
 
@@ -40,7 +40,10 @@ impl QuackInterp {
         match command {
             crate::parser::Command::Rem(comment) => println!("{}", comment),
             crate::parser::Command::String(str) => keyboard.press_string(str),
-            crate::parser::Command::StringLN(str) => keyboard.press_string(str),
+            crate::parser::Command::StringLN(str) => {
+                keyboard.press_string(str); 
+                keyboard.press_key(&Key::Special(SpecialKey::Enter));
+            },
             crate::parser::Command::Special(special) => {keyboard.press_key(&Key::Special(special));},
             crate::parser::Command::Modifier(modifier) => keyboard.press_modifier(&modifier),
             crate::parser::Command::Shortcut(modifiers, key) => {keyboard.press_shortcut(&modifiers, &key);},
