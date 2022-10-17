@@ -9,10 +9,12 @@ pub enum Error{
     InvalidDelay(i64),
     CannotParse(usize),
     UnresolvedValue,
+    UnresolvedExpr,
     UnknownFunction,
     NoEndIf,
     NoEndWhile,
     NoEndFunction,
+    UnableToSend,
 }
 
 impl Display for Error {
@@ -22,10 +24,12 @@ impl Display for Error {
             Error::InvalidDelay(delay) => f.write_str(&format!("Invalid Delay of {}: Delay length must be an integer greater than 20.", delay)),
             Error::CannotParse(line) => f.write_str(&format!("Parse Error: Could not parse line {}.", line)),
             Error::UnresolvedValue => f.write_str("Could not resolve value: This may be due to an invalid variable name."),
+            Error::UnresolvedExpr => f.write_str("Could not resolve expression: This may be due to an invalid variable name."),
             Error::UnknownFunction => f.write_str("Unknown Function: The called function has not been defined."),
             Error::NoEndIf => f.write_str("No End If: Could not find matching END_IF for IF."),
             Error::NoEndWhile => f.write_str("No End While: Could not find matching END_WHILE for WHILE."),
             Error::NoEndFunction => f.write_str("No End Function: Could not find matching END_FUNCTION for FUNCTION."),
+            Error::UnableToSend => f.write_str("Unable to send key strokes: Make sure your keyboard is connected to a host."),
         }
     }
 }
@@ -199,7 +203,7 @@ impl QuackInterp {
                     variables.insert(name.to_string(), 0);
                 }
 
-                let amount = self.resolve_expr(expression, keyboard, variables).unwrap_or(0);
+                let amount = self.resolve_expr(expression, keyboard, variables).ok_or(Error::UnresolvedExpr)?;
 
                 variables.insert(name.to_string(), amount);
             },
@@ -213,12 +217,12 @@ impl QuackInterp {
             },
             Command::ElseIf(value) => {
                 let cond = self.resolve_value(value, keyboard, variables).ok_or(Error::UnresolvedValue)?;
-                if cond == 0 || stack.pop().unwrap_or(0) == 1{
+                if cond == 0 || stack.pop().ok_or(Error::StackUnderflow)? == 1{
                     return self.find_if_end(i).ok_or(Error::NoEndIf)
                 }
                 stack.push(1);
             },
-            Command::Else => if stack.pop().unwrap_or(1) == 1 {
+            Command::Else => if stack.pop().ok_or(Error::StackUnderflow)? == 1 {
                 return self.find_if_end(i).ok_or(Error::NoEndIf)
             },
             Command::EndIf => {stack.pop();},
@@ -260,7 +264,17 @@ impl QuackInterp {
                     }
                 },
             }
-            keyboard.send(hid).unwrap();
+            match keyboard.send(hid).map_err(|_|Error::UnableToSend) {
+                Ok(_) => (),
+                Err(e) => if *continue_on_error {
+                    if *errors {
+                        println!("{}", e.to_err_msg(&i));
+                    }
+                    i += 1
+                } else {
+                    return Err((i, e));
+                },
+            };
         }
         Ok(())
     }

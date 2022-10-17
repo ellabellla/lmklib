@@ -29,7 +29,15 @@ mod interpreter;
 fn main() {
     let args = Cli::parse();
 
-    let input = fs::read_to_string(args.input).unwrap();
+    let input = match fs::read_to_string(&args.input) {
+        Ok(input) => input,
+        Err(_) => {
+            if !args.errors {
+                println!("Error, Couldn't open file {}.", &args.input)
+            }
+            return
+        },
+    };
 
     let mut hid = HID::new(1, 0);
     let interpreter = QuackInterp::new(&input);
