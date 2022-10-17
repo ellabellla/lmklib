@@ -186,18 +186,6 @@ pub fn hold_release<'a>(i: &'a str) -> IResult<&'a str, Command<'a>> {
         tuple((
             tag("HOLD"),
             space1,
-            key
-        ))
-            .map(|(_, _, key)| Command::Hold(key)),
-        tuple((
-            tag("RELEASE"),
-            space1,
-            key
-        ))
-            .map(|(_, _, key)| Command::Release(key)),
-        tuple((
-            tag("HOLD"),
-            space1,
             modifier
         ))
             .map(|(_, _, key)| Command::HoldMod(key)),
@@ -207,9 +195,35 @@ pub fn hold_release<'a>(i: &'a str) -> IResult<&'a str, Command<'a>> {
             modifier
         ))
             .map(|(_, _, key)| Command::ReleaseMod(key)),
+        tuple((
+            tag("HOLD"),
+            space1,
+            key
+        ))
+            .map(|(_, _, key)| Command::Hold(key)),
+        tuple((
+            tag("RELEASE"),
+            space1,
+            key
+        ))
+            .map(|(_, _, key)| Command::Release(key)),
     ))(i)
 }
 
+pub fn string<'a>(i: &'a str) -> IResult<&'a str, Command<'a>> {
+    alt((
+        tuple((
+            tag("STRING"),
+            space1,
+            take_till_no_end(|c| c == '\n'),
+        )).map(|(_, _, str)| Command::String(str)),
+        tuple((
+            tag("STRINGLN"),
+            space1,
+            take_till_no_end(|c| c == '\n'),
+        )).map(|(_, _, str)| Command::StringLN(str)),
+    ))(i)
+}
 
 pub fn parse_line<'a>(i: &'a str) -> IResult<&'a str, Command<'a>> {
     tuple((
@@ -219,18 +233,8 @@ pub fn parse_line<'a>(i: &'a str) -> IResult<&'a str, Command<'a>> {
                 tag("REM"),
                 space1,
                 take_till_no_end(|c| c == '\n'),
-                take_while(|c| c == '\n')
-            )).map(|(_, _, str, _)| Command::Rem(str)),
-            tuple((
-                tag("STRING"),
-                space1,
-                take_till_no_end(|c| c == '\n'),
-            )).map(|(_, _, str)| Command::String(str)),
-            tuple((
-                tag("STRINGLN"),
-                space1,
-                rest,
-            )).map(|(_, _, str)| Command::StringLN(str)),
+            )).map(|(_, _, str)| Command::Rem(str)),
+            string,
             tag("INJECT_MOD").map(|_| Command::InjectMod),
             delay,
             shortcut,
@@ -248,15 +252,16 @@ pub fn parse_line<'a>(i: &'a str) -> IResult<&'a str, Command<'a>> {
 
 
 pub fn parse_define<'a>(i: &'a str) -> IResult<&'a str, (&'a str, &'a str)> {
-    let (i, (_, _, _, name, _, text, _, _)) = tuple((
+    let (i, (_, _, _, name, _, text, _, _, _)) = tuple((
         space0,
         tag("DEFINE"),
         space1,
         alpha1,
         space1,
-        rest,
+        take_till_no_end(|c| c == '\n'),
         space0,
-        eof,
+        take_while(|c| c == '\n'),
+        eof
     ))(i)?; 
 
     Ok((i, (name, text)))
@@ -264,12 +269,36 @@ pub fn parse_define<'a>(i: &'a str) -> IResult<&'a str, (&'a str, &'a str)> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{parser::{parse_line}};
+    use lmk_hid::key::{Key, KeyOrigin, Modifier, SpecialKey};
+
+    use crate::{parser::{parse_line, Command, Value, parse_define}};
 
     #[test]
     pub fn test() {
-        let input = "DELAY 100\n";
+        assert!(matches!(parse_define("DEFINE NAME stuff and things\n").unwrap().1, ("NAME", "stuff and things")));
 
-        println!("{:?}", parse_line(input).unwrap().1);
+        assert!(matches!(parse_line("REM a comment\n").unwrap().1, Command::Rem("a comment")));
+
+        assert!(matches!(parse_line("STRING a string\n").unwrap().1, Command::String("a string")));
+        assert!(matches!(parse_line("STRINGLN a string\n").unwrap().1, Command::StringLN("a string")));
+
+        assert!(matches!(parse_line("INJECT_MOD\n").unwrap().1, Command::InjectMod));
+
+        assert!(matches!(parse_line("DELAY 100\n").unwrap().1, Command::Delay(Value::Int(100))));
+
+        let _mods = vec![Modifier::LeftControl, Modifier::LeftShift];
+        assert!(matches!(parse_line("CTL SHIFT a\n").unwrap().1, Command::Shortcut(_mods, Key::Char('a', KeyOrigin::Keyboard))));
+
+        assert!(matches!(parse_line("ENTER\n").unwrap().1, Command::Special(SpecialKey::Enter)));
+
+        assert!(matches!(parse_line("HOLD a\n").unwrap().1, Command::Hold(Key::Char('a', KeyOrigin::Keyboard))));
+        assert!(matches!(parse_line("RELEASE a\n").unwrap().1, Command::Release(Key::Char('a', KeyOrigin::Keyboard))));
+
+        assert!(matches!(parse_line("HOLD GUI\n").unwrap().1, Command::HoldMod(Modifier::LeftMeta)));
+        assert!(matches!(parse_line("RELEASE GUI\n").unwrap().1, Command::ReleaseMod(Modifier::LeftMeta)));
+
+        assert!(matches!(parse_line("GUI\n").unwrap().1, Command::Modifier(Modifier::LeftMeta)));
+
+        assert!(matches!(parse_line("CAPSLOCK\n").unwrap().1, Command::Special(SpecialKey::CapsLock)));
     }
 }
