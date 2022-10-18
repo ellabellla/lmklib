@@ -99,6 +99,15 @@ fn variable<'a>(i: &'a str) -> IResult<&'a str, &'a str> {
     Ok((i, name))
 }
 
+pub fn string_variable<'a>(i: &'a str) -> Option<&'a str> {
+    tuple((
+        variable,
+        space0,
+        take_while(|c| c == '\n'),
+        eof
+    ))(i).map(|(_, (name, _, _, _))| name).ok()
+}
+
 pub fn bracket<'a>(i: &'a str) -> IResult<&'a str, Value> {
     tuple((
         tag("("),

@@ -2,7 +2,7 @@ use std::{collections::HashMap, time::Duration, thread, fmt::{Display}};
 
 use lmk_hid::{key::{Keyboard, Key, SpecialKey}, HID};
 
-use crate::parser::{parse_define, parse_line, Value, Expression, Operator, Command, parse_function};
+use crate::parser::{parse_define, parse_line, Value, Expression, Operator, Command, parse_function, string_variable};
 
 pub enum Error{
     StackUnderflow,
@@ -205,6 +205,16 @@ impl QuackInterp {
         return Ok(amount)
     }
 
+    fn press_string<'a>(&self, rt: &mut Runtime, str: &'a str) -> Result<(), Error> {
+        if let Some(name) = string_variable(str) {
+            let value = rt.variables.get(name).ok_or(Error::UnresolvedValue)?;
+            rt.keyboard.press_string(&value.to_string());
+        } else {
+            rt.keyboard.press_string(str)
+        }
+        Ok(())
+    }
+
     fn interpret(&self, line: &str, rt: &mut Runtime) -> Result<(usize, Option<i64>), Error> {
         let command = match parse_line(line) {
             Ok((_, command)) => command,
@@ -213,9 +223,9 @@ impl QuackInterp {
 
         match command {
             Command::Rem(comment) => if rt.comments {println!("{}", comment)},
-            Command::String(str) => rt.keyboard.press_string(str),
+            Command::String(str) => self.press_string(rt, str)?,
             Command::StringLN(str) => {
-                rt.keyboard.press_string(str); 
+                self.press_string(rt, str)?;
                 rt.keyboard.press_key(&Key::Special(SpecialKey::Enter));
             },
             Command::Special(special) => {rt.keyboard.press_key(&Key::Special(special));},
