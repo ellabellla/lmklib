@@ -63,12 +63,14 @@ pub enum Command<'a> {
     Function(&'a str),
     EndFunction,
     Call(&'a str),
+    Return(Value<'a>),
     None,
 }
 
 #[derive(Debug)]
 pub enum Value<'a> {
     Int(i64),
+    Call(&'a str),
     Variable(&'a str),
     Bracket(Box<Expression<'a>>),
 }
@@ -112,7 +114,8 @@ fn value<'a>(i: &'a str) -> IResult<&'a str, Value<'a>> {
         integer,
         variable.map(|name| Value::Variable(name)),
         bool,
-        bracket
+        bracket,
+        call.map(|name| Value::Call(name))
     ))(i)
 }
 
@@ -434,18 +437,27 @@ fn function_end<'a>(i: &'a str) -> IResult<&'a str, Command<'a>> {
     tag("END_FUNCTION")(i).map(|(i,_)| (i, Command::EndFunction))
 }
 
-fn call<'a>(i: &'a str) -> IResult<&'a str, Command<'a>> {
+fn call<'a>(i: &'a str) -> IResult<&'a str, &'a str> {
     tuple((
         take_till(|c| c == '('),
         tag("()"),
-    ))(i).map(|(i,(name,_))| (i, Command::Call(name)))
+    ))(i).map(|(i,(name,_))| (i, name))
+}
+
+fn call_command<'a>(i: &'a str) -> IResult<&'a str, Command<'a>> {
+    call(i).map(|(i, name)| (i, Command::Call(name)))
 }
 
 fn function_control<'a>(i: &'a str) -> IResult<&'a str, Command<'a>> {
     alt((
         function_begin,
         function_end,
-        call,
+        call_command,
+        tuple((
+            tag("RETURN"),
+            space1,
+            value
+        )).map(|(_,_,val)| Command::Return(val))
     ))(i)
 }
 
