@@ -1,8 +1,9 @@
 use std::{collections::HashMap, time::Duration, thread, fmt::{Display}};
 
-use lmk_hid::{key::{Keyboard, Key, SpecialKey}, HID};
+use lmk_hid::{key::{Keyboard, Key, SpecialKey, KeyOrigin}, HID};
+use rand::{Rng};
 
-use crate::parser::{parse_define, parse_line, Value, Expression, Operator, Command, parse_function, string_variable};
+use crate::parser::{parse_define, parse_line, Value, Expression, Operator, Command, parse_function, string_variable, Random};
 
 pub enum Error{
     StackUnderflow,
@@ -298,6 +299,27 @@ impl QuackInterp {
                 let value = self.resolve_value(value, rt)?;
                 return rt.stack.pop().ok_or(Error::StackUnderflow).map(|i| (i, Some(value)))
             },
+            Command::Random(random) => {
+                const UPPER: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+                const LOWER: &[u8] = b"abcdefghijklmnopqrstuvwxyz";
+                const LETTER: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+                const NUMBER: &[u8] = b"0123456789";
+                const SPECIAL: &[u8] = b"`~!@#$%^&*()_+{}|[]\\:\";'<>?,./";
+                const ANY: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789`~!@#$%^&*()_+{}|[]\\:\";'<>?,./";
+                
+                let mut rng = rand::thread_rng();
+
+                let c = match random {
+                    Random::UPPER => UPPER[rng.gen_range(0..UPPER.len())],
+                    Random::LOWER => LOWER[rng.gen_range(0..LOWER.len())],
+                    Random::LETTER => LETTER[rng.gen_range(0..LETTER.len())],
+                    Random::NUMBER => NUMBER[rng.gen_range(0..NUMBER.len())],
+                    Random::SPECIAL => SPECIAL[rng.gen_range(0..SPECIAL.len())],
+                    Random::ANY => ANY[rng.gen_range(0..ANY.len())],
+                } as char;
+
+                rt.keyboard.press_key(&Key::Char(c, KeyOrigin::Keyboard));
+            }
         };
         Ok((&rt.i + 1, None))
     }

@@ -40,6 +40,16 @@ pub struct Expression<'a> {
 }
 
 #[derive(Debug)]
+pub enum Random {
+    UPPER,
+    LOWER,
+    LETTER,
+    NUMBER,
+    SPECIAL,
+    ANY,
+}
+
+#[derive(Debug)]
 pub enum Command<'a> {
     Rem(&'a str),
     String(&'a str),
@@ -64,6 +74,7 @@ pub enum Command<'a> {
     EndFunction,
     Call(&'a str),
     Return(Value<'a>),
+    Random(Random),
     None,
 }
 
@@ -116,6 +127,17 @@ pub fn bracket<'a>(i: &'a str) -> IResult<&'a str, Value> {
         space0,
         tag(")")
     ))(i).map(|(i, (_,_,expr, _,_))| (i, Value::Bracket(Box::new(expr))))
+}
+
+fn random<'a>(i: &'a str) -> IResult<&'a str, Command<'a>> {
+    alt((
+        tag("RANDOM_LOWERCASE_LETTER").map(|_| Command::Random(Random::LOWER)),
+        tag("RANDOM_UPPERCASE_LETTER").map(|_| Command::Random(Random::UPPER)),
+        tag("RANDOM_LETTER").map(|_| Command::Random(Random::LETTER)),
+        tag("RANDOM_NUMBER").map(|_| Command::Random(Random::NUMBER)),
+        tag("RANDOM_SPECIAL").map(|_| Command::Random(Random::SPECIAL)),
+        tag("RANDOM_CHAR").map(|_| Command::Random(Random::ANY)),
+    ))(i)
 }
 
 fn value<'a>(i: &'a str) -> IResult<&'a str, Value<'a>> {
@@ -506,6 +528,7 @@ pub fn parse_line<'a>(i: &'a str) -> IResult<&'a str, Command<'a>> {
                 if_control,
                 while_control,
                 function_control,
+                random,
             )),
             space0,
             take_while(|c| c == '\n'),
@@ -542,7 +565,7 @@ pub fn parse_define<'a>(i: &'a str) -> IResult<&'a str, (&'a str, &'a str)> {
 mod tests {
     use lmk_hid::key::{Key, KeyOrigin, Modifier, SpecialKey};
 
-    use crate::{parser::{parse_line, Command, Value, parse_define, Operator, bool}};
+    use crate::{parser::{parse_line, Command, Value, parse_define, Operator, bool, Random}};
 
     #[test]
     pub fn test() {
@@ -624,8 +647,10 @@ mod tests {
         assert!(matches!(parse_line("TEST_CAPS_AND_NUM()\n").unwrap().1, Command::Call("TEST_CAPS_AND_NUM")));
         assert!(matches!(parse_line("RETURN 10\n").unwrap().1, Command::Return(Value::Int(10))));
         assert!(matches!(parse_line("RETURN TRUE\n").unwrap().1, Command::Return(Value::Int(1))));
-
+        
         assert!(matches!(parse_line("").unwrap().1, Command::None));
         assert!(matches!(parse_line("    \t\n").unwrap().1, Command::None));
+
+        assert!(matches!(parse_line("RANDOM_LOWERCASE_LETTER").unwrap().1, Command::Random(Random::LOWER)));
     }
 }
