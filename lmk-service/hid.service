@@ -1,0 +1,10 @@
+[Unit]
+Description=Setup HID
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/setup-hid.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
