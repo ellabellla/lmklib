@@ -3,7 +3,7 @@ pub use hid::HID;
 
 #[cfg(not(feature = "debug"))]
 mod hid {
-    use std::{fs::{OpenOptions, File}, io::{Write, self}};
+    use std::{fs::{OpenOptions, File}, io::{Write, self, Read}};
 
     pub struct HID {
         mouse_hid: File,
@@ -22,7 +22,14 @@ mod hid {
                     .write(true)
                     .open(format!("/dev/hidg{}", keyboard_id))? })
         }
-    
+        
+        pub fn receive_states_packet(&mut self) -> io::Result<u8>{
+            let mut buf = [0;1];
+
+            self.keyboard_hid.read_exact(&mut buf)?;
+            Ok(buf[0])
+        }
+
         pub fn send_key_packet(&mut self, data: &[u8]) -> io::Result<usize> {
             self.keyboard_hid.write(data)
         }

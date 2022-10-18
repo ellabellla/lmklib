@@ -8,6 +8,40 @@ const KEY_PACKET_LEN: usize = 16;
 const KEY_PACKET_MOD_IDX: usize = 0;
 const KEY_PACKET_KEY_IDX: usize = 1;
 
+
+pub enum LEDState {
+    Kana,
+    Compose,
+    ScrollLock,
+    CapsLock,
+    NumLock,
+}
+
+pub struct LEDStatePacket {
+    data: u8,
+}
+
+impl LEDStatePacket {
+    pub fn new(hid: &mut HID) -> io::Result<LEDStatePacket> {
+        Ok(LEDStatePacket { data: hid.receive_states_packet()? })
+    }
+
+    pub fn get_state(&self, state: &LEDState) -> bool{
+        match state {
+            LEDState::Kana => self.data & self.data & (0x01 << 4) != 0,
+            LEDState::Compose => self.data & (0x01 << 3) != 0,
+            LEDState::ScrollLock => self.data & (0x01 << 2) != 0,
+            LEDState::CapsLock => self.data & (0x01 << 1) != 0,
+            LEDState::NumLock => self.data & (0x01) != 0,
+        }
+    }
+
+    pub fn update(&mut self, hid: &mut HID) -> io::Result<()> {
+        self.data = hid.receive_states_packet()?;
+        Ok(())
+    }
+}
+
 #[derive(Debug, Eq, Hash, PartialEq, Clone, Copy)]
 pub enum Key {
     Char(char, KeyOrigin),
