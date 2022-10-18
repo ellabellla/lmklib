@@ -152,6 +152,10 @@ impl Keyboard {
     }
 
     pub fn send(&mut self, hid: &mut HID) -> io::Result<usize> {
+        if self.packets.len() == 0 {
+            return Ok(0)
+        }
+        
         self.packets.push(self.create_release_packet());
         let res = KeyPacket::send_all(&self.packets, hid);
         self.packets.clear();
@@ -159,6 +163,10 @@ impl Keyboard {
     }
 
     pub fn send_keep(&self, hid: &mut HID) -> io::Result<usize> {
+        if self.packets.len() == 0 {
+            return Ok(0)
+        }
+        
         let res = KeyPacket::send_all(&self.packets, hid)?;
         let res2 = hid.send_key_packet(&self.create_release_packet().data)?;
         Ok(res + res2)
@@ -288,6 +296,20 @@ impl KeyPacket {
         }
     
         Ok(size)
+    }
+
+    pub fn print_data(data: &[u8]) {
+        for data in data {
+            print!("{:02x}", data);
+        }
+        println!();
+    }
+
+    pub fn print_packet(packet: &KeyPacket) {
+        for data in packet.data {
+            print!("{:02x}", data);
+        }
+        println!();
     }
 
     pub fn print_packets(packets: &Vec<KeyPacket>) {
