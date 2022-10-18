@@ -1,5 +1,5 @@
 use lmk_hid::key::{SpecialKey, Modifier, Key, KeyOrigin};
-use nom::character::complete::{digit1, alpha1, space1, space0};
+use nom::character::complete::{digit1, alpha1, space1, space0, alphanumeric1};
 use nom::combinator::{eof};
 use nom::bytes::complete::{take, take_while, take_till};
 use nom::error::Error;
@@ -85,7 +85,7 @@ fn integer<'a>(i: &'a str) -> IResult<&'a str, Value<'a>> {
 }
 
 fn bool<'a>(i: &'a str) -> IResult<&'a str, Value<'a>> {
-    let (_, int) = alt((
+    let (i, int) = alt((
         tag("TRUE").map(|_| 1),
         tag("FALSE").map(|_| 0),
     ))(i)?;
@@ -95,7 +95,7 @@ fn bool<'a>(i: &'a str) -> IResult<&'a str, Value<'a>> {
 
 fn variable<'a>(i: &'a str) -> IResult<&'a str, &'a str> {
     let (i, _) = tag("$")(i)?;
-    let (i, name) = alpha1(i)?;
+    let (i, name) = alphanumeric1(i)?;
     Ok((i, name))
 }
 
@@ -437,7 +437,7 @@ fn function_begin<'a>(i: &'a str) -> IResult<&'a str, Command<'a>> {
     tuple((
         tag("FUNCTION"),
         space1,
-        take_till(|c| c == '('),
+        take_while(|c: char| c == '_' || c == '-' || c.is_alphabetic()),
         tag("()"),
     ))(i).map(|(i,(_,_,name,_))| (i, Command::Function(name)))
 }
@@ -448,7 +448,7 @@ fn function_end<'a>(i: &'a str) -> IResult<&'a str, Command<'a>> {
 
 fn call<'a>(i: &'a str) -> IResult<&'a str, &'a str> {
     tuple((
-        take_till(|c| c == '('),
+        take_while(|c:char| c.is_alphabetic() || c == '_' || c == '-'),
         tag("()"),
     ))(i).map(|(i,(name,_))| (i, name))
 }
@@ -542,7 +542,7 @@ pub fn parse_define<'a>(i: &'a str) -> IResult<&'a str, (&'a str, &'a str)> {
 mod tests {
     use lmk_hid::key::{Key, KeyOrigin, Modifier, SpecialKey};
 
-    use crate::{parser::{parse_line, Command, Value, parse_define, Operator}};
+    use crate::{parser::{parse_line, Command, Value, parse_define, Operator, bool}};
 
     #[test]
     pub fn test() {
@@ -587,6 +587,9 @@ mod tests {
             _ => assert!(false)
         }
 
+        assert!(matches!(bool("TRUE").unwrap().1, Value::Int(1)));
+        assert!(matches!(bool("FALSE").unwrap().1, Value::Int(0)));
+
         let if_begin = parse_line("IF (1 < 2) THEN\n").unwrap().1;
         assert!(matches!(&if_begin, Command::If(Value::Bracket(_a))));
         if let Command::If(Value::Bracket(expr)) = if_begin {
@@ -614,9 +617,13 @@ mod tests {
 
         assert!(matches!(parse_line("END_WHILE\n").unwrap().1, Command::EndWhile));
 
+        assert!(matches!(parse_line("FUNCTION HELLO_WORLD()\n").unwrap().1, Command::Function("HELLO_WORLD")));
         assert!(matches!(parse_line("FUNCTION hello()\n").unwrap().1, Command::Function("hello")));
         assert!(matches!(parse_line("END_FUNCTION\n").unwrap().1, Command::EndFunction));
         assert!(matches!(parse_line("hello()\n").unwrap().1, Command::Call("hello")));
+        assert!(matches!(parse_line("TEST_CAPS_AND_NUM()\n").unwrap().1, Command::Call("TEST_CAPS_AND_NUM")));
+        assert!(matches!(parse_line("RETURN 10\n").unwrap().1, Command::Return(Value::Int(10))));
+        assert!(matches!(parse_line("RETURN TRUE\n").unwrap().1, Command::Return(Value::Int(1))));
 
         assert!(matches!(parse_line("").unwrap().1, Command::None));
         assert!(matches!(parse_line("    \t\n").unwrap().1, Command::None));
