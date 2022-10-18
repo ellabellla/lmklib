@@ -3,5 +3,6 @@ members = [
     "lmk-hid",
     "lmk-kserver",
     "lmk-kout",
-    "lmk-quack"
+    "lmk-quack",
+    "lmk-bork"
 ]
