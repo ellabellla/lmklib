@@ -120,7 +120,7 @@ impl Keyboard {
 
     fn press_char(&mut self, c: &char, key_origin: &KeyOrigin) -> Option<()>{
         let mut packet = KeyPacket::from_char(&c, key_origin)?;
-        self.add_held_keys(&mut packet);
+        packet.push_char(c, key_origin);
         self.add_buffer(&packet);
         self.packets.push(packet);
         Some(())
@@ -155,7 +155,7 @@ impl Keyboard {
         if self.packets.len() == 0 {
             return Ok(0)
         }
-        
+
         self.packets.push(self.create_release_packet());
         let res = KeyPacket::send_all(&self.packets, hid);
         self.packets.clear();
