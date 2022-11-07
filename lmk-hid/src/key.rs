@@ -9,6 +9,7 @@ const KEY_PACKET_MOD_IDX: usize = 0;
 const KEY_PACKET_KEY_IDX: usize = 1;
 
 
+#[derive(Debug)]
 pub enum LEDState {
     Kana,
     Compose,
@@ -360,7 +361,7 @@ impl KeyPacket {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Modifier {
     LeftControl,
     LeftShift,
