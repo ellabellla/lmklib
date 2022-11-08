@@ -2,6 +2,7 @@ use std::fs::{self};
 
 use clap::{Parser};
 use interpreter::BorkInterp;
+use lmk_hid::HID;
 
 mod parser;
 mod interpreter;
@@ -14,14 +15,26 @@ struct Cli {
 
 fn main() {
     let args = Cli::parse();
-    let source = match fs::read_to_string(&args.input){
-        Ok(source) => source,
+
+    let source = match fs::read_to_string(&args.input) {
+        Ok(input) => input,
         Err(_) => {
-            println!("Could not open file '{}'.", args.input);
-            return;
+            println!("Error, Couldn't open file {}.", &args.input);
+            return
         },
     };
-    let borker = BorkInterp::new(&source);
 
-    borker.run().unwrap();    
+    let mut hid = match HID::new(1, 0) {
+        Ok(hid) => hid,
+        Err(_) => {
+            println!("Error, Couldn't connect to HID.");
+            return
+        },
+    };
+
+    let interpreter = BorkInterp::new(&source);
+
+    if let Err(e) = interpreter.run(&mut hid) {
+        println!("{:?}", e);
+    }
 }

@@ -32,21 +32,20 @@ impl<'a> BorkInterp<'a> {
         BorkInterp { source }
     }
 
-    pub fn run(&self) -> Result<(), Error> {
+    pub fn run(&self, hid: &mut HID) -> Result<(), Error> {
         let mut keyboard =  Keyboard::new();
         let mut mouse = Mouse::new();
         let mut parser = BorkParser::new();
         let mut variables = HashMap::new();
         let mut if_stack = Vec::new();
         let mut while_stack = Vec::new();
-        let mut hid = HID::new(1,0).map_err(|e| Error::IOError(e))?;
 
         let mut i = self.source;
         let mut cont;
         loop {
             (cont, i) = BorkInterp::interp_command(&mut variables, &mut keyboard, &mut mouse, &mut parser, &mut if_stack, &mut while_stack, i)?;
-            keyboard.send(&mut hid).map_err(|e| Error::IOError(e))?;
-            mouse.send(&mut hid).map_err(|e| Error::IOError(e))?;
+            keyboard.send(hid).map_err(|e| Error::IOError(e))?;
+            mouse.send(hid).map_err(|e| Error::IOError(e))?;
             if !cont {
                 break;
             }
