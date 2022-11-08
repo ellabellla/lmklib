@@ -1,6 +1,13 @@
 # Bork
 A terse keyboard scripting language used for key and mouse automation and recording.
 
+## Todo
+- better errors
+- interpreter test
+- intergration test
+- LED State support
+- defaults for parameters
+
 ## Examples
 
 ### Hello World
