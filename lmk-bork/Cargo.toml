@@ -6,5 +6,6 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-lmk-hid = { path = "../lmk-hid" }
+lmk-hid = { path = "../lmk-hid", features = ["debug"] }
 nom = "7"
+clap = { version = "4.0.15", features = ["derive"] }
