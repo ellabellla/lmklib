@@ -9,7 +9,7 @@ const KEY_PACKET_MOD_IDX: usize = 0;
 const KEY_PACKET_KEY_IDX: usize = 1;
 
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum LEDState {
     Kana,
     Compose,
@@ -99,6 +99,38 @@ impl Keyboard {
         self.packets.push(self.create_release_packet());
     }
 
+    pub fn hold_string(&mut self, str: &str) {
+        for c in str.chars() {
+            let kbytes = match c.to_kbytes(&KeyOrigin::Keyboard) {
+                Some(packet) => packet,
+                None => continue,
+            };
+            self.holding.add_key(&kbytes);
+        }
+        self.packets.push(self.create_release_packet());
+    }
+
+    pub fn release_string(&mut self, str: &str) {
+        for c in str.chars() {
+            let kbytes = match c.to_kbytes(&KeyOrigin::Keyboard) {
+                Some(packet) => packet,
+                None => continue,
+            };
+            self.holding.remove_key(&kbytes);
+        }
+        self.packets.push(self.create_release_packet());
+    }
+
+    pub fn hold_keycode(&mut self, key: u8) {
+        self.holding.add_key(&[0, key]);
+        self.packets.push(self.create_release_packet());
+    }
+
+    pub fn release_keycode(&mut self, key: u8) {
+        self.holding.remove_key(&[0, key]);
+        self.packets.push(self.create_release_packet());
+    }
+
     pub fn hold_mod(&mut self, modifier: &Modifier) {
         self.holding.push_modifier(modifier);
         self.packets.push(self.create_release_packet());
@@ -167,6 +199,13 @@ impl Keyboard {
             Key::Special(special) => self.press_special(special),
         }
         Some(())
+    }
+
+    pub fn press_keycode(&mut self, key: u8) {
+        let mut packet = KeyPacket::new();
+        packet.add_key(&[0, key]);
+        self.add_buffer(&packet);
+        self.packets.push(packet);
     }
 
     pub fn press_string(&mut self, str: &str) {
