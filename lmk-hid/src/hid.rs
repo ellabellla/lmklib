@@ -53,7 +53,11 @@ mod hid {
         pub fn new(_mouse_id: u8, _keyboard_id: u8) -> io::Result<HID>{
             Ok(HID {})
         }
-    
+        
+        pub fn receive_states_packet(&mut self) -> io::Result<u8>{
+            Ok(0)
+        }
+
         pub fn send_key_packet(&mut self, data: &[u8]) -> io::Result<usize> {
             print!("SEND KEY: ");
             KeyPacket::print_data(data);
