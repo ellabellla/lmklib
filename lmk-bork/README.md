@@ -58,12 +58,13 @@ Expressions are values combined with operators.
 #### Operators
 | Operator | Description | Precedence |
 |----------|-------------|------------|
+|~|Bitwise not|0|
+|!|Logical not|0|
 |*|Multiple|1|
 |/|Divide|1|
 |%|Modulus|1|
 |+|Plus|2|
 |-|Minus|2|
-|~|Bitwise not|3|
 |&|Bitwise and|3|
 |\||Bitwise or|3|
 |<<|Bitwise shift left|3|
@@ -74,11 +75,10 @@ Expressions are values combined with operators.
 |>|Greater than|4|
 |<=|Less than or equal|4|
 |>=|Greater than or equal|4|
-|!|Logical not|5|
 |&&|Logical and|5|
 |\|\||Logical or|5|
-|? : |Ternary if operator. Used ```condition ? expression if true : expression if false```|6|
-|*? _|While operator, where ```_``` is either ```_```, unit, or another binary operator excluding set. Used ```condition ?* expression +```. Will loop when the condition is true and apply the result of the expression to the next with the given operator unless ```_``` is given then it will return unit.|6|
+|? : |Ternary if operator. Used ```condition ? expression if true : expression if false```.|6|
+|*? : _|While operator, where ```_``` is either ```_```, unit, or another binary operator excluding set. Used ```starting value ?* condition : expression +```. Will loop when the condition is true and apply the result of the expression to the next with the given operator unless ```_``` is given then it will return unit.|6|
 |$| Set operator. Used ```expression $ variable```. Sets the variable to the expression. Returns unit.|6|
 
 ### Escapes
