@@ -78,6 +78,10 @@ impl Keyboard {
     }
 
     pub fn hold(&mut self, key: &Key) -> Option<u8> {
+        #[cfg(feature = "debug")]
+        {
+            println!("hold {:?}", key);
+        }
         let kbytes = match key {
             Key::Char(c, key_origin) => c.to_kbytes(key_origin)?,
             Key::Special(special) => [0, special.to_kbyte()],
@@ -88,6 +92,10 @@ impl Keyboard {
     }
 
     pub fn release(&mut self, key: &Key) {
+        #[cfg(feature = "debug")]
+        {
+            println!("release {:?}", key);
+        }
         let kbytes = match key {
             Key::Char(c, key_origin) => match c.to_kbytes(key_origin) {
                 Some(kbytes) => kbytes,
@@ -100,6 +108,10 @@ impl Keyboard {
     }
 
     pub fn hold_string(&mut self, str: &str) {
+        #[cfg(feature = "debug")]
+        {
+            println!("hold {:?}", str);
+        }
         for c in str.chars() {
             let kbytes = match c.to_kbytes(&KeyOrigin::Keyboard) {
                 Some(packet) => packet,
@@ -111,6 +123,10 @@ impl Keyboard {
     }
 
     pub fn release_string(&mut self, str: &str) {
+        #[cfg(feature = "debug")]
+        {
+            println!("release {:?}", str);
+        }
         for c in str.chars() {
             let kbytes = match c.to_kbytes(&KeyOrigin::Keyboard) {
                 Some(packet) => packet,
@@ -122,21 +138,37 @@ impl Keyboard {
     }
 
     pub fn hold_keycode(&mut self, key: u8) {
+        #[cfg(feature = "debug")]
+        {
+            println!("hold {:08b}", key);
+        }
         self.holding.add_key(&[0, key]);
         self.packets.push(self.create_release_packet());
     }
 
     pub fn release_keycode(&mut self, key: u8) {
+        #[cfg(feature = "debug")]
+        {
+            println!("release {:08b}", key);
+        }
         self.holding.remove_key(&[0, key]);
         self.packets.push(self.create_release_packet());
     }
 
     pub fn hold_mod(&mut self, modifier: &Modifier) {
+        #[cfg(feature = "debug")]
+        {
+            println!("hold {:?}", modifier);
+        }
         self.holding.push_modifier(modifier);
         self.packets.push(self.create_release_packet());
     }
 
     pub fn release_mod(&mut self, modifier: &Modifier) {
+        #[cfg(feature = "debug")]
+        {
+            println!("release {:?}", modifier);
+        }
         self.holding.remove_mod(modifier);
         self.packets.push(self.create_release_packet());
     }
@@ -159,6 +191,10 @@ impl Keyboard {
     }
 
     pub fn press_modifier(&mut self, modifier: &Modifier) {
+        #[cfg(feature = "debug")]
+        {
+            println!("press {:?}", modifier);
+        }
         let mut packet = self.create_release_packet();
         packet.push_modifier(modifier);
         self.packets.push(packet);
@@ -166,6 +202,10 @@ impl Keyboard {
     }
 
     pub fn press_shortcut(&mut self, modifiers: &[Modifier], key: &Key) -> Option<()> {
+        #[cfg(feature = "debug")]
+        {
+            println!("press {:?} {:?}", modifiers, key);
+        }
         let mut packet = self.create_release_packet();
         for modifier in modifiers {
             packet.push_modifier(modifier);
@@ -179,6 +219,10 @@ impl Keyboard {
     }
 
     fn press_special(&mut self, special: &SpecialKey) {
+        #[cfg(feature = "debug")]
+        {
+            println!("press {:?}", special);
+        }
         let mut packet = self.create_release_packet();
         packet.push_special(special);
         self.add_buffer(&packet);
@@ -186,6 +230,10 @@ impl Keyboard {
     }
 
     fn press_char(&mut self, c: &char, key_origin: &KeyOrigin) -> Option<()>{
+        #[cfg(feature = "debug")]
+        {
+            println!("press {:?} {:?}", c, key_origin);
+        }
         let mut packet = KeyPacket::from_char(&c, key_origin)?;
         packet.push_char(c, key_origin);
         self.add_buffer(&packet);
@@ -202,6 +250,10 @@ impl Keyboard {
     }
 
     pub fn press_keycode(&mut self, key: u8) {
+        #[cfg(feature = "debug")]
+        {
+            println!("press {:08b}", key);
+        }
         let mut packet = KeyPacket::new();
         packet.add_key(&[0, key]);
         self.add_buffer(&packet);
@@ -209,6 +261,10 @@ impl Keyboard {
     }
 
     pub fn press_string(&mut self, str: &str) {
+        #[cfg(feature = "debug")]
+        {
+            println!("press {:?}", str);
+        }
         for c in str.chars() {
             let mut packet = self.create_release_packet();
             let kbytes = match c.to_kbytes(&KeyOrigin::Keyboard) {
