@@ -197,6 +197,12 @@ impl<'a> BorkInterp<'a> {
             },
             Value::Bracket(exp) => BorkInterp::resolve_expression(variables, keyboard, mouse, parser, exp)?,
             Value::LED(_) => todo!(),
+            Value::BNot(exp) => !BorkInterp::resolve_expression(variables, keyboard, mouse, parser, exp)?,
+            Value::Not(exp) => if BorkInterp::resolve_to_bool(BorkInterp::resolve_expression(variables, keyboard, mouse, parser, exp)?) == 1 {
+                0
+            } else {
+                1
+            },
         })
     }
 

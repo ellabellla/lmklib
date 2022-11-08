@@ -56,6 +56,8 @@ pub enum Value<'a> {
     Call(&'a str, Vec<Parameter<'a>>),
     Bracket(Box<Expression<'a>>),
     LED(LEDState),
+    BNot(Box<Expression<'a>>),
+    Not(Box<Expression<'a>>),
 }
 
 #[derive(Debug, Clone)]
@@ -212,11 +214,19 @@ fn ascii<'a>(i_: &'a str) -> IResult<&'a str, Value> {
     Err(nom::Err::Error(nom::error::Error::new(i_, ErrorKind::Char)))
 }
 
+fn not_value<'a>(variables: &HashMap<&'a str, DataType>, functions: & HashMap<&'a str, (DataType, Vec<ParameterName<'a>>, FuncBody<'a>)>, i: &'a str) -> IResult<&'a str, Value<'a>> {
+    tuple((
+        alt((tag("~"), tag("!"))),
+        |i| expression(variables, functions, i)
+    )).map(|(t, exp)| if t == "!" {Value::BNot(Box::new(exp))} else {Value::Not(Box::new(exp))}).parse(i)
+}
+
 fn value<'a>(variables: &HashMap<&'a str, DataType>, functions: & HashMap<&'a str, (DataType, Vec<ParameterName<'a>>, FuncBody<'a>)>, i: &'a str) -> IResult<&'a str, Value<'a>> {
     alt((
         integer_value,
         bool,
         ascii,
+        |i| not_value(variables, functions, i),
         led.map(|l| Value::LED(l)),
         |i| bracket(variables, functions, i),
         |i| variable(variables, i),
