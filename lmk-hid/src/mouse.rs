@@ -1,4 +1,6 @@
-use std::{fs::File, io::{Write, self}};
+use std::{io::{self}};
+
+use crate::HID;
 
 pub enum MouseButton {
     Left,
@@ -29,15 +31,24 @@ const MOUSE_DATA_WHEL_IDX: usize = 3;
 
 pub struct Mouse {
     data: [u8; 5],
+    hold: u8,
 }
 
 impl Mouse {
+    pub fn new() -> Mouse {
+        Mouse{data:[0;5], hold: 0x00}
+    }
+
     pub fn press_button(&mut self, button: &MouseButton) {
         self.data[MOUSE_DATA_BUT_IDX] |= button.to_byte();
     }
 
+    pub fn hold_button(&mut self, button: &MouseButton) {
+        self.hold |= button.to_byte();
+    }
+
     pub fn release_button(&mut self, button: &MouseButton) {
-        self.data[MOUSE_DATA_BUT_IDX] &= !button.to_byte();
+        self.hold &= !button.to_byte();
     }
 
     pub fn move_mouse(&mut self, displacement: &i8, dir: &MouseDir) {
@@ -51,8 +62,18 @@ impl Mouse {
         self.data[MOUSE_DATA_WHEL_IDX] = displacement.to_be_bytes()[0];
     }
 
-    pub fn send(&mut self, hid: &mut File) -> io::Result<usize>{
-        hid.write(&self.data)
+    pub fn send(&mut self, hid: &mut HID) -> io::Result<usize>{
+        if self.hold == 0x00 {
+            hid.send_mouse_packet(&self.data)
+        } else {
+            self.data[MOUSE_DATA_BUT_IDX] |= self.hold;
+            hid.send_mouse_packet(&self.data)?;
+            self.data = [0;5];
+            self.data[MOUSE_DATA_BUT_IDX] = self.hold;
+            let res = hid.send_mouse_packet(&self.data);
+            self.data[MOUSE_DATA_BUT_IDX] = 0;
+            res
+        }
     }
 }
 
@@ -62,7 +83,7 @@ mod tests {
 
     #[test]
     fn test() {
-        let mut mouse = Mouse{data:[0;5]};
+        let mut mouse = Mouse::new();
         mouse.press_button(&MouseButton::Middle );
         mouse.move_mouse(&127, &MouseDir::X);
         mouse.move_mouse(&127, &MouseDir::Y);
