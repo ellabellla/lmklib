@@ -38,14 +38,14 @@ How are you doing today?
 ## Syntax
 Bork is made up of four basic building blocks, characters that are outputted directly as key strokes, escapes, expression, and tags.
 
-Escapes allow reserved characters to be evaluated as keystrokes and provide shortcuts for commonly used tags and functions. Expressions do mathematical computation within tags and functions. Tags provide control flow and access to full keyboard and mouse functionality.
+Escapes allow reserved characters to be evaluated as keystrokes and provide shortcuts for commonly used tags and functions. Expressions do mathematical computation. Tags provide control flow and access to full keyboard and mouse functionality.
 
 All characters out side of an escape, expression or tag are treated as keystrokes excluding non-space whitespace.
 ### Data Types
 | Type | Example| Description |
 |------|--------|-------------|
 |Literals|```"abcd"```|All characters inside the ```"``` will be treated as keystrokes to be sent. Aka literal keystrokes. Can include newlines.|
-|Expression|```' '```|```'10+3'```| An expression. Operators and variables can be used. |
+|Expression|```'10+3'```| An expression. Operators and variables can be used. |
 |Ascii Expression|```@' @a + 10'```| An ascii character defined by an expression.|
 |Integers|```10``` ```-10```| A signed 64 bit integer. Typically used for mouse configurations |
 |Booleans|```0``` ```F``` ```T```| Integers are also be treated as booleans. If an integer is ```0``` than it is false, otherwise it is true. You can also use a ```T``` or ```F``` as a substitute for ```0``` and ```1```|
@@ -122,4 +122,4 @@ Expressions are values combined with operators.
 |Literal|```" "```| ```"hello"```| A literal can be used as a tag.|
 |LED State|```<& >```|```<&1>```|Gets an led state. ```0``` if off. ```1``` if on. This can also be used anywhere integers can be used. Kana = 5, Compose = 4, ScrollLock = 3, CapsLock = 2, NumLock = 1|
 |Expression|```' '```|```'10+3'```| An expression. Operators and variables can be used. |
-|Ascii Expression|```@' @a + 10'```| An ascii character defined by an expression.|
+|Ascii Expression|```@' '``` | ```@' @a + 10'```| An ascii character defined by an expression.|
