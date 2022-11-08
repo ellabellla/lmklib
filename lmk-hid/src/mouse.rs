@@ -63,6 +63,10 @@ impl Mouse {
     }
 
     pub fn send(&mut self, hid: &mut HID) -> io::Result<usize>{
+        if self.data == [0;5] && self.hold == 0x00 {
+            return Ok(5)
+        }
+        
         if self.hold == 0x00 {
             hid.send_mouse_packet(&self.data)
         } else {
