@@ -1,4 +1,4 @@
-use std::{collections::HashMap};
+use std::{collections::HashMap, process};
 
 use lmk_hid::{key::{Keyboard, KeyOrigin}, mouse::{Mouse, MouseButton}, HID};
 
@@ -13,8 +13,11 @@ pub enum Error {
     IOError(std::io::Error),
     UndefinedFunction,
     InvalidValue,
+    PipeError(std::io::Error),
+    PipeParseError(std::string::FromUtf8Error),
 }
 
+#[derive(Debug, Clone)]
 enum Data<'a> {
     Integer(i64),
     Literal(Vec<Key<'a>>),
@@ -65,7 +68,9 @@ impl<'a> BorkInterp<'a> {
             Key::Literal(c) => {keyboard.press_key(&lmk_hid::key::Key::Char(*c, KeyOrigin::Keyboard));},
             Key::ASCII(exp) => {
                 let c = BorkInterp::resolve_ascii(variables, keyboard, mouse, parser, &exp)?;
-                keyboard.press_key(&lmk_hid::key::Key::Char(c, KeyOrigin::Keyboard));
+                if let Some(c) = c {
+                    keyboard.press_key(&lmk_hid::key::Key::Char(c, KeyOrigin::Keyboard));
+                }
             },
             Key::Variable(name) => match BorkInterp::resolve_variable(variables, name)? {
                 Data::Integer(i) => keyboard.press_string(&format!("{}", i)),
@@ -93,7 +98,9 @@ impl<'a> BorkInterp<'a> {
             Key::Literal(c) => {keyboard.hold(&lmk_hid::key::Key::Char(*c, KeyOrigin::Keyboard));},
             Key::ASCII(exp) => {
                 let c = BorkInterp::resolve_ascii(variables, keyboard, mouse, parser, &exp)?;
-                keyboard.hold(&lmk_hid::key::Key::Char(c, KeyOrigin::Keyboard));
+                if let Some(c) = c {
+                    keyboard.hold(&lmk_hid::key::Key::Char(c, KeyOrigin::Keyboard));
+                }
             },
             Key::Variable(name) => match BorkInterp::resolve_variable(variables, name)? {
                 Data::Integer(i) => keyboard.hold_string(&format!("{}", i)),
@@ -121,7 +128,9 @@ impl<'a> BorkInterp<'a> {
             Key::Literal(c) => {keyboard.release(&lmk_hid::key::Key::Char(*c, KeyOrigin::Keyboard));},
             Key::ASCII(exp) => {
                 let c = BorkInterp::resolve_ascii(variables, keyboard, mouse, parser, &exp)?;
-                keyboard.release(&lmk_hid::key::Key::Char(c, KeyOrigin::Keyboard));
+                if let Some(c) = c {
+                   keyboard.release(&lmk_hid::key::Key::Char(c, KeyOrigin::Keyboard));
+                }
             },
             Key::Variable(name) => match BorkInterp::resolve_variable(variables, name)? {
                 Data::Integer(i) => keyboard.release_string(&format!("{}", i)),
@@ -142,19 +151,19 @@ impl<'a> BorkInterp<'a> {
         mouse: &mut Mouse, 
         parser: &mut BorkParser<'a>,
         exp: &Expression<'a>
-    ) -> Result<char, Error> {
-        let num = BorkInterp::resolve_expression(variables, keyboard, mouse, parser, exp)?;
-        
-        let num = if num < u8::MIN as i64 {
-            u8::MIN
-        } else if num >= u8::MAX as i64 {
-            u8::MAX
-        } else {
-            num as u8
-        };
-
-
-        Ok(num as char)
+    ) -> Result<Option<char>, Error> {
+        BorkInterp::resolve_expression(variables, keyboard, mouse, parser, exp).map(|num| { 
+            num.map(|num| {
+                let num = if num < u8::MIN as i64 {
+                    u8::MIN
+                } else if num >= u8::MAX as i64 {
+                    u8::MAX
+                } else {
+                    num as u8
+                };
+                num as char
+            })
+        })
     }
 
     fn resolve_variable_int(variables: &HashMap<String, Data<'a>>,  name: &'a str) -> Result<i64, Error> {
@@ -179,10 +188,10 @@ impl<'a> BorkInterp<'a> {
         mouse: &mut Mouse, 
         parser: &mut BorkParser<'a>,  
         val: &Value<'a>
-    ) -> Result<i64, Error> {
+    ) -> Result<Option<i64>, Error> {
         Ok(match val {
-            Value::Int(i) => *i,
-            Value::Variable(name) => BorkInterp::resolve_variable_int(variables, name)?,
+            Value::Int(i) => Some(*i),
+            Value::Variable(name) => Some(BorkInterp::resolve_variable_int(variables, name)?),
             Value::Call(name, params) => {
                 // copy params
                 let mut p = Vec::with_capacity(params.len());
@@ -190,18 +199,18 @@ impl<'a> BorkInterp<'a> {
                 let params = p.into_iter().map(|p| p.clone()).collect();
 
                 if let Some(value) = BorkInterp::resolve_call(variables, keyboard, mouse, parser, &mut Vec::new(), &mut Vec::new(), DataType::Integer, name, params)? {
-                    value
+                    Some(value)
                 } else {
                     return Err(Error::InvalidValue)
                 }
             },
             Value::Bracket(exp) => BorkInterp::resolve_expression(variables, keyboard, mouse, parser, exp)?,
             Value::LED(_) => todo!(),
-            Value::BNot(exp) => !BorkInterp::resolve_expression(variables, keyboard, mouse, parser, exp)?,
+            Value::BNot(exp) => BorkInterp::resolve_expression(variables, keyboard, mouse, parser, exp)?.map(|v| !v),
             Value::Not(exp) => if BorkInterp::resolve_to_bool(BorkInterp::resolve_expression(variables, keyboard, mouse, parser, exp)?) == 1 {
-                0
+                Some(0)
             } else {
-                1
+                Some(1)
             },
         })
     }
@@ -214,9 +223,13 @@ impl<'a> BorkInterp<'a> {
         }
     }
 
-    fn resolve_to_bool(value: i64) -> i64 {
-        if value > 0 {
-            1
+    fn resolve_to_bool(value: Option<i64>) -> i64 {
+        if let Some(value) = value {
+            if value > 0 {
+                1
+            } else {
+                0
+            }
         } else {
             0
         }
@@ -227,50 +240,56 @@ impl<'a> BorkInterp<'a> {
         keyboard: &mut Keyboard, 
         mouse: &mut Mouse, 
         parser: &mut BorkParser<'a>,
-        mut value: i64,
+        value: Option<i64>,
         operator: &Operator<'a>
-    ) -> Result<i64, Error> {
-        match operator {
-            Operator::Add(val) => value += BorkInterp::resolve_value(variables, keyboard, mouse, parser, val)?,
-            Operator::Sub(val) => value -= BorkInterp::resolve_value(variables, keyboard, mouse, parser, val)?,
-            Operator::Mult(val) => value *= BorkInterp::resolve_value(variables, keyboard, mouse, parser, val)?,
-            Operator::Div(val) => value /= BorkInterp::resolve_value(variables, keyboard, mouse, parser, val)?,
-            Operator::Mod(val) => value %= BorkInterp::resolve_value(variables, keyboard, mouse, parser, val)?,
-            Operator::Exp(val) => value = value.pow(BorkInterp::resolve_value(variables, keyboard, mouse, parser, val)? as u32),
-            Operator::Equ(val) => value = BorkInterp::resolve_bool(value == BorkInterp::resolve_value(variables, keyboard, mouse, parser, val)?),
-            Operator::NEq(val) => value = BorkInterp::resolve_bool(value != BorkInterp::resolve_value(variables, keyboard, mouse, parser, val)?),
-            Operator::Gre(val) => value = BorkInterp::resolve_bool(value > BorkInterp::resolve_value(variables, keyboard, mouse, parser, val)?),
-            Operator::Les(val) => value = BorkInterp::resolve_bool(value < BorkInterp::resolve_value(variables, keyboard, mouse, parser, val)?),
-            Operator::EqL(val) => value = BorkInterp::resolve_bool(value <= BorkInterp::resolve_value(variables, keyboard, mouse, parser, val)?),
-            Operator::EqG(val) => value = BorkInterp::resolve_bool(value >= BorkInterp::resolve_value(variables, keyboard, mouse, parser, val)?),
-            Operator::And(val) => value = BorkInterp::resolve_bool(
-                BorkInterp::resolve_to_bool(value) == BorkInterp::resolve_to_bool(BorkInterp::resolve_value(variables, keyboard, mouse, parser, val)?)
-            ),
-            Operator::Or(val) => value = if BorkInterp::resolve_to_bool(value) == 1 {
-                1
-            }  else {
-                BorkInterp::resolve_to_bool(BorkInterp::resolve_value(variables, keyboard, mouse, parser, val)?)
-            },
-            Operator::BAnd(val) => value &= BorkInterp::resolve_value(variables, keyboard, mouse, parser, val)?,
-            Operator::BOr(val) => value |= BorkInterp::resolve_value(variables, keyboard, mouse, parser, val)?,
-            Operator::Left(val) => value <<= BorkInterp::resolve_value(variables, keyboard, mouse, parser, val)?,
-            Operator::Right(val) => value >>= BorkInterp::resolve_value(variables, keyboard, mouse, parser, val)?,
-            Operator::Set(name) => {variables.insert(name.to_string(), Data::Integer(value));},
-            Operator::While(cond,op) => {
-                while BorkInterp::resolve_to_bool(BorkInterp::resolve_expression(variables, keyboard, mouse, parser, cond)?) == 1 {
-                    value = BorkInterp::resolve_operator(variables, keyboard, mouse, parser, value, op)?;
-                }
-            },
-            Operator::If(t,f) => {
-                if BorkInterp::resolve_to_bool(value) == 1 {
-                    value = BorkInterp::resolve_expression(variables, keyboard, mouse, parser, t)?;
-                } else {
-                    value = BorkInterp::resolve_expression(variables, keyboard, mouse, parser, f)?;
-                }
-            },
-        }
+    ) -> Result<Option<i64>, Error> {
+        if let Some(value) = value {
+            let value = match operator {
+                Operator::Add(val) => BorkInterp::resolve_value(variables, keyboard, mouse, parser, val)?.map(|val| value + val),
+                Operator::Sub(val) => BorkInterp::resolve_value(variables, keyboard, mouse, parser, val)?.map(|val| value - val),
+                Operator::Mult(val) => BorkInterp::resolve_value(variables, keyboard, mouse, parser, val)?.map(|val| value * val),
+                Operator::Div(val) => BorkInterp::resolve_value(variables, keyboard, mouse, parser, val)?.map(|val| value / val),
+                Operator::Mod(val) => BorkInterp::resolve_value(variables, keyboard, mouse, parser, val)?.map(|val| value % val),
+                Operator::Exp(val) => BorkInterp::resolve_value(variables, keyboard, mouse, parser, val)?.map(|val| value.saturating_pow(val as u32)),
+                Operator::Equ(val) => BorkInterp::resolve_value(variables, keyboard, mouse, parser, val)?.map(|val|  BorkInterp::resolve_bool(value == val)),
+                Operator::NEq(val) => BorkInterp::resolve_value(variables, keyboard, mouse, parser, val)?.map(|val|  BorkInterp::resolve_bool(value != val)),
+                Operator::Gre(val) => BorkInterp::resolve_value(variables, keyboard, mouse, parser, val)?.map(|val|  BorkInterp::resolve_bool(value > val)),
+                Operator::Les(val) => BorkInterp::resolve_value(variables, keyboard, mouse, parser, val)?.map(|val|  BorkInterp::resolve_bool(value < val)),
+                Operator::EqL(val) => BorkInterp::resolve_value(variables, keyboard, mouse, parser, val)?.map(|val|  BorkInterp::resolve_bool(value <= val)),
+                Operator::EqG(val) => BorkInterp::resolve_value(variables, keyboard, mouse, parser, val)?.map(|val|  BorkInterp::resolve_bool(value >= val)),
+                Operator::And(val) => Some(BorkInterp::resolve_bool(
+                    BorkInterp::resolve_to_bool(Some(value)) == 1 && BorkInterp::resolve_to_bool(BorkInterp::resolve_value(variables, keyboard, mouse, parser, val)?) == 1
+                )),
+                Operator::Or(val) => Some(BorkInterp::resolve_bool(
+                    BorkInterp::resolve_to_bool(Some(value)) == 1 || BorkInterp::resolve_to_bool(BorkInterp::resolve_value(variables, keyboard, mouse, parser, val)?) == 1
+                )),
+                Operator::BAnd(val) => BorkInterp::resolve_value(variables, keyboard, mouse, parser, val)?.map(|val| value & val),
+                Operator::BOr(val) => BorkInterp::resolve_value(variables, keyboard, mouse, parser, val)?.map(|val| value | val),
+                Operator::Left(val) => BorkInterp::resolve_value(variables, keyboard, mouse, parser, val)?.map(|val| value << val),
+                Operator::Right(val) => BorkInterp::resolve_value(variables, keyboard, mouse, parser, val)?.map(|val| value >> val),
+                Operator::Set(name) => {variables.insert(name.to_string(), Data::Integer(value)); None},
+                Operator::While(cond,op) => {
+                    let mut value = Some(value);
+                    while BorkInterp::resolve_to_bool(BorkInterp::resolve_expression(variables, keyboard, mouse, parser, cond)?) == 1 {
+                        value = BorkInterp::resolve_operator(variables, keyboard, mouse, parser, value, op)?;
+                    }
 
-        Ok(value)
+                    return Ok(value)
+                },
+                Operator::If(t,f) => {
+                    let mut value = Some(value);
+                    if BorkInterp::resolve_to_bool(value) == 1 {
+                        value = BorkInterp::resolve_expression(variables, keyboard, mouse, parser, t)?;
+                    } else {
+                        value = BorkInterp::resolve_expression(variables, keyboard, mouse, parser, f)?;
+                    }
+                    return Ok(value);
+                },
+            };
+            Ok(value)
+        } else {
+            Ok(None)
+        }
     }
 
     fn resolve_expression(
@@ -279,13 +298,13 @@ impl<'a> BorkInterp<'a> {
         mouse: &mut Mouse, 
         parser: &mut BorkParser<'a>,
         exp: &Expression<'a>
-    ) -> Result<i64, Error> {
+    ) -> Result<Option<i64>, Error> {
         let mut value = BorkInterp::resolve_value(variables, keyboard, mouse, parser, &exp.value)?;
 
         for op in exp.ops.iter() {
             value = BorkInterp::resolve_operator(variables, keyboard, mouse, parser, value, op)?;
         }
-        Ok(0)
+        Ok(value)
     }
 
     fn resolve_call(
@@ -299,6 +318,9 @@ impl<'a> BorkInterp<'a> {
         name: &'a str,
         params: Vec<Parameter<'a>>
     ) -> Result<Option<i64>, Error>{
+        let mut func_variables = HashMap::new();
+        func_variables.extend(variables.iter().map(|(n, d)| (n.to_string(), d.clone())));
+        let variables = &mut func_variables;
         if let Some((fn_type, param_names, body)) = parser.remove_func(name) {
             match expected {
                 DataType::Integer => match fn_type {
@@ -314,53 +336,43 @@ impl<'a> BorkInterp<'a> {
                 DataType::Any => (),
             }
 
-            let mut names = Vec::with_capacity(param_names.len());
-
-            let names = {
-                for (param, name) in params.into_iter().zip(param_names.iter()) {
-                    let name = match name {
-                        ParameterName::Expression(name) => name,
-                        ParameterName::Literal(name) => name,
-                    };
-                    let data = match param {
-                        Parameter::Expression(exp) => Data::Integer(match BorkInterp::resolve_expression(variables, keyboard, mouse, parser, &exp) {
-                            Ok(res) => res,
-                            Err(e) => {
-                                parser.add_func(name, fn_type, param_names, body);
-                                return Err(e)
-                            },
-                        }),
-                        Parameter::Literal(keys) => Data::Literal(keys),
-                    };
-                    names.push(name);
-                    variables.insert(name.to_string(), data);
-                }
-
-                names
-            };
-
-            
-            let res = match &body {
-                FuncBody::Expression(exp) => Some(match BorkInterp::resolve_expression(variables, keyboard, mouse, parser, &exp){
-                    Ok(res) => res,
-                    Err(e) => {
-                        parser.add_func(name, fn_type, param_names, body);
-                        return Err(e)
-                    },
-                }),
-                FuncBody::Literal(coms) => {
-                    let mut res = match BorkInterp::interp_command(variables, keyboard, mouse, parser, if_stack, while_stack, &coms){
-                        Ok(res) => res,
+            for (param, name) in params.into_iter().zip(param_names.iter()) {
+                let name = match name {
+                    ParameterName::Expression(name) => name,
+                    ParameterName::Literal(name) => name,
+                };
+                let data = match param {
+                    Parameter::Expression(exp) => Data::Integer(match BorkInterp::resolve_expression(variables, keyboard, mouse, parser, &exp) {
+                        Ok(res) => res.unwrap_or(0),
                         Err(e) => {
                             parser.add_func(name, fn_type, param_names, body);
                             return Err(e)
                         },
+                    }),
+                    Parameter::Literal(keys) => Data::Literal(keys),
+                };
+                variables.insert(name.to_string(), data);
+            }
+
+            parser.add_func(name, fn_type, param_names, body.clone());
+
+            
+            let res = match &body {
+                FuncBody::Expression(exp) => Some(BorkInterp::resolve_expression(variables, keyboard, mouse, parser, &exp)?.unwrap_or(0)),
+                FuncBody::Literal(coms) => {
+                    parser.begin_function();
+                    let mut res = match BorkInterp::interp_command(variables, keyboard, mouse, parser, if_stack, while_stack, &coms){
+                        Ok(res) => res,
+                        Err(e) => {
+                            parser.end_function();
+                            return Err(e)
+                        },
                     };
                     while let (true, new_coms) =  res {
-                        res = match BorkInterp::interp_command(variables, keyboard, mouse, parser, if_stack, while_stack, &new_coms) {
+                        res = match BorkInterp::interp_command(variables, keyboard, mouse, parser, if_stack, while_stack, &new_coms){
                             Ok(res) => res,
                             Err(e) => {
-                                parser.add_func(name, fn_type, param_names, body);
+                                parser.end_function();
                                 return Err(e)
                             },
                         };
@@ -369,12 +381,6 @@ impl<'a> BorkInterp<'a> {
                 },
             };
 
-
-            for name in names {
-                variables.remove(*name);
-            }
-
-            parser.add_func(name, fn_type, param_names, body);
             Ok(res)
         } else {
             Err(Error::UndefinedFunction)
@@ -393,14 +399,13 @@ impl<'a> BorkInterp<'a> {
         let inside_while = matches!(parser.get_level_type(), Some(NestType::While));
         let (new_i, com) = parser.parse_command(i).map_err(|_| Error::ParseError)?;
         match com {
-            Command::String(chars) => keyboard.press_string(&chars.iter().collect::<String>()),
             Command::Literal(keys) => for key in keys { BorkInterp::press_key(variables, keyboard, mouse, parser, &key)? },
             Command::Key(keys) => for key in keys { BorkInterp::press_key(variables, keyboard, mouse, parser, &key)? },
             Command::Hold(keys) => for key in keys { BorkInterp::hold_key(variables, keyboard, mouse, parser, &key)? },
             Command::Release(keys) => for key in keys { BorkInterp::release_key(variables, keyboard, mouse, parser, &key)? },
             Command::If(exp) => {
                 let cond = BorkInterp::resolve_expression(variables, keyboard, mouse, parser, &exp)?;
-                if cond == 0 {
+                if BorkInterp::resolve_to_bool(cond) == 0 {
                     let (new_i, _) = parser.jmp_next(new_i).map_err(|_| Error::ParseError)?;
                     return Ok((true, new_i))
                 } else {
@@ -417,7 +422,7 @@ impl<'a> BorkInterp<'a> {
                 }
 
                 let cond = BorkInterp::resolve_expression(variables, keyboard, mouse, parser, &exp)?;
-                if cond == 0 {
+                if BorkInterp::resolve_to_bool(cond) == 0 {
                     let (new_i, _) = parser.jmp_next(new_i).map_err(|_| Error::ParseError)?;
                     return Ok((true, new_i))
                 } else {
@@ -435,7 +440,7 @@ impl<'a> BorkInterp<'a> {
             },
             Command::While(exp) => {
                 let cond = BorkInterp::resolve_expression(variables, keyboard, mouse, parser, &exp)?;
-                if cond == 0 {
+                if BorkInterp::resolve_to_bool(cond) == 0 {
                     let (new_i, _) = parser.jmp_end(new_i).map_err(|_| Error::ParseError)?;
                     return Ok((true, new_i))
                 } else {
@@ -453,41 +458,52 @@ impl<'a> BorkInterp<'a> {
                     }
                 }
             },
-            Command::Set(name, exp) => {
+            /*Command::Set(name, exp) => {
                 let value = BorkInterp::resolve_expression(variables, keyboard, mouse, parser, &exp)?;
-                variables.insert(name.to_string(), Data::Integer(value));
-            },
+                variables.insert(name.to_string(), Data::Integer(value.unwrap_or(0)));
+            },*/
             Command::Print(name) => BorkInterp::press_key(variables, keyboard, mouse, parser, &Key::Variable(name))?,
             Command::Expression(exp) => {
                 let value = BorkInterp::resolve_expression(variables, keyboard, mouse, parser, &exp)?;
-                keyboard.press_string(&format!("{}", value));
+                if let Some(value) = value {
+                    keyboard.press_string(&format!("{}", value));
+                }
             },
             Command::Left => mouse.press_button(&MouseButton::Left),
             Command::Right => mouse.press_button(&MouseButton::Right),
             Command::Middle => mouse.press_button(&MouseButton::Middle),
             Command::Move(x, y) => {
-                let x = BorkInterp::resolve_expression(variables, keyboard, mouse, parser, &x)?;
-                let x = if x < i8::MIN as i64{
-                    i8::MIN
-                } else if x > i8::MAX as i64{
-                    i8::MAX
-                } else {
-                    x as i8
-                };
+                let x = BorkInterp::resolve_expression(variables, keyboard, mouse, parser, &x)?.map(|x|{
+                    if x < i8::MIN as i64{
+                        i8::MIN
+                    } else if x > i8::MAX as i64{
+                        i8::MAX
+                    } else {
+                        x as i8
+                    }
+                }).unwrap_or(0);
 
-                let y = BorkInterp::resolve_expression(variables, keyboard, mouse, parser, &y)?;
-                let y = if y < i8::MIN as i64{
-                    i8::MIN
-                } else if y > i8::MAX as i64{
-                    i8::MAX
-                } else {
-                    y as i8
-                };
+                let y = BorkInterp::resolve_expression(variables, keyboard, mouse, parser, &y)?.map(|y|{
+                    if y < i8::MIN as i64{
+                        i8::MIN
+                    } else if y > i8::MAX as i64{
+                        i8::MAX
+                    } else {
+                        y as i8
+                    }
+                }).unwrap_or(0);
 
                 mouse.move_mouse(&x, &lmk_hid::mouse::MouseDir::X);
                 mouse.move_mouse(&y, &lmk_hid::mouse::MouseDir::Y);
             },
-            Command::Pipe => todo!(),
+            Command::Pipe(coms) => {                
+                let output = process::Command::new("bash")
+                    .args(["-c", coms])
+                    .output()
+                    .map_err(|e| Error::PipeError(e))?;
+                
+                keyboard.press_string(&String::from_utf8(output.stdout).map_err(|e| Error::PipeParseError(e))?)
+            },
             Command::Call(name, params) => {
                 if let Some(value) = BorkInterp::resolve_call(variables, keyboard, mouse, parser, &mut Vec::new(), &mut Vec::new(), DataType::Any, name, params)? {
                     keyboard.press_string(&format!("{}", value));
@@ -497,7 +513,9 @@ impl<'a> BorkInterp<'a> {
             Command::LED(_) => todo!(),
             Command::ASCII(exp) => {
                 let c = BorkInterp::resolve_ascii(variables, keyboard, mouse, parser, &exp)?; 
-                keyboard.press_key(&lmk_hid::key::Key::Char(c, KeyOrigin::Keyboard));
+                if let Some(c) = c {
+                    keyboard.press_key(&lmk_hid::key::Key::Char(c, KeyOrigin::Keyboard));
+                }
             },
             Command::Exit => return Ok((false, new_i)),
         }
