@@ -144,7 +144,6 @@ pub enum Command <'a> {
     Call(&'a str, Vec<Parameter<'a>>),
     None,
     LED(LEDState),
-    ASCII(Expression<'a>),
     Exit,
 }
 
@@ -208,8 +207,8 @@ fn variable_escape<'a>(variables: &HashMap<&'a str, DataType>, i_: &'a str) -> I
 }
 
 fn led<'a>(i: &'a str) -> IResult<&'a str, LEDState> {
-    delimited(
-        tag("<&"), 
+    preceded(
+        tag("\\&"), 
         alt((
             tag("1").map(|_| LEDState::NumLock), 
             tag("2").map(|_| LEDState::CapsLock), 
@@ -217,12 +216,7 @@ fn led<'a>(i: &'a str) -> IResult<&'a str, LEDState> {
             tag("4").map(|_| LEDState::Compose), 
             tag("5").map(|_| LEDState::Kana),
         )),
-        tag(">")
     )(i)
-}
-
-fn led_command<'a>(i: &'a str) -> IResult<&'a str, Command> {
-    led.map(|l| Command::LED(l)).parse(i)
 }
 
 
@@ -659,15 +653,6 @@ fn ascii_escape<'a>(variables: &mut HashMap<&'a str, DataType>, functions: & Has
     .parse(i)
 }
 
-fn ascii_command<'a>(variables: &mut HashMap<&'a str, DataType>, functions: & HashMap<&'a str, (DataType, Vec<ParameterName<'a>>, FuncBody<'a>)>, i:&'a str) -> IResult<&'a str, Command<'a>> { 
-    delimited(
-        tag("@'"),
-        |i| expression(variables, functions, i),
-        tag("'")
-    ).map(|e| Command::ASCII(e))
-    .parse(i)
-}
-
 fn click<'a>(i:&'a str) -> IResult<&'a str, Command> { 
     delimited(
         tag("<^"), 
@@ -798,6 +783,7 @@ fn escape_inner<'a>(i:&'a str) -> IResult<&'a str, Key<'a>> {
         tag("\\r").map(|_| Key::Right),
         tag("\\m").map(|_| Key::Middle),
         tag("\\\"").map(|_| Key::Literal('\"')),
+        tag("\\\'").map(|_| Key::Literal('\'')),
         tag("\\\\").map(|_| Key::Literal('\\')),
         tag("\\<").map(|_| Key::Literal('<')),
     ))(i)
@@ -838,6 +824,7 @@ fn command<'a>(variables: &mut HashMap<&'a str, DataType>, functions: &mut  Hash
         |i| alt_mut!(
             literal(functions, variables, i).map(|(i, l)| (i, Command::Literal(l))),
             escape(functions, variables, i).map(|(i, k)| (i, Command::Key(k))),
+            led.map(|l| Command::LED(l)).parse(i),
             if_else(variables, functions, nest_stack, i),
             else_(nest_stack, i),
             key(functions, variables, i),
@@ -852,8 +839,6 @@ fn command<'a>(variables: &mut HashMap<&'a str, DataType>, functions: &mut  Hash
             while_(variables, functions, nest_stack, i),
             pipe(nest_stack, i),
             end(nest_stack, i),
-            led_command(i),
-            ascii_command(variables, functions, i),
             exit(i),
             function(variables, functions, nest_stack, i)
         ),
@@ -1267,21 +1252,16 @@ mod tests {
             assert!(false);
         }
 
-        if let Command::Expression(exp) = borker.parse_command("'<&1>'").unwrap().1 {
+        if let Command::Expression(exp) = borker.parse_command("'\\&1'").unwrap().1 {
             assert!(matches!(exp.value, Value::LED(LEDState::NumLock)));
             assert_eq!(exp.ops.len(), 0);
         } else {
             assert!(false);
         }
 
-        if let Command::Expression(exp) = borker.parse_command("'@a'").unwrap().1 {
-            assert!(matches!(exp.value, Value::Int(97)));
-            assert_eq!(exp.ops.len(), 0);
-        } else {
-            assert!(false);
-        }
+        assert!(matches!(borker.parse_command("\\&1").unwrap().1, Command::LED(LEDState::NumLock)));
 
-        if let Command::ASCII(exp) = borker.parse_command("@'@a'").unwrap().1 {
+        if let Command::Expression(exp) = borker.parse_command("'@a'").unwrap().1 {
             assert!(matches!(exp.value, Value::Int(97)));
             assert_eq!(exp.ops.len(), 0);
         } else {
