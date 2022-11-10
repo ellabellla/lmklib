@@ -1,3 +1,4 @@
+#![warn(missing_docs)]
 
 use std::{io::{self}, str::FromStr};
 
@@ -10,23 +11,34 @@ const KEY_PACKET_KEY_IDX: usize = 1;
 
 
 #[derive(Debug, Clone)]
+/// LED State Types
 pub enum LEDState {
+    /// Kana
     Kana,
+    /// Compose
     Compose,
+    /// ScrollLock
     ScrollLock,
+    /// CapsLock
     CapsLock,
+    /// NumLock
     NumLock,
 }
 
+/// Abstraction for LED State Packets
 pub struct LEDStatePacket {
     data: u8,
 }
 
 impl LEDStatePacket {
+    /// Create a new LED State Packet from an incoming raw packet.
     pub fn new(hid: &mut HID) -> io::Result<LEDStatePacket> {
         Ok(LEDStatePacket { data: hid.receive_states_packet()? })
     }
 
+    /// Get the state of a LED State Type.
+    /// True means on
+    /// False means off
     pub fn get_state(&self, state: &LEDState) -> bool{
         match state {
             LEDState::Kana => self.data & self.data & (0x01 << 4) != 0,
@@ -37,6 +49,7 @@ impl LEDStatePacket {
         }
     }
 
+    /// Update LED States with an incoming raw packet.
     pub fn update(&mut self, hid: &mut HID) -> io::Result<()> {
         self.data = hid.receive_states_packet()?;
         Ok(())
@@ -44,11 +57,15 @@ impl LEDStatePacket {
 }
 
 #[derive(Debug, Eq, Hash, PartialEq, Clone, Copy)]
+/// Key
 pub enum Key {
+    /// Key from Char
     Char(char, KeyOrigin),
+    /// Special Key
     Special(SpecialKey),
 }
 
+/// Virtual Keyboard
 pub struct Keyboard {
     packets: Vec<KeyPacket>,
     holding: KeyPacket,
@@ -65,6 +82,7 @@ impl FromStr for Keyboard {
 }
 
 impl Keyboard {
+    /// New
     pub fn new() -> Keyboard {
         Keyboard { packets: Vec::new(), holding: KeyPacket::new() }
     }
@@ -77,6 +95,7 @@ impl Keyboard {
         }
     }
 
+    /// Hold key down
     pub fn hold(&mut self, key: &Key) -> Option<u8> {
         #[cfg(feature = "debug")]
         {
@@ -91,6 +110,7 @@ impl Keyboard {
         Some(kbytes[1])
     }
 
+    /// Release Key
     pub fn release(&mut self, key: &Key) {
         #[cfg(feature = "debug")]
         {
@@ -107,6 +127,7 @@ impl Keyboard {
         self.packets.push(self.create_release_packet());
     }
 
+    /// Hold all keys in string
     pub fn hold_string(&mut self, str: &str) {
         #[cfg(feature = "debug")]
         {
@@ -122,6 +143,7 @@ impl Keyboard {
         self.packets.push(self.create_release_packet());
     }
 
+    /// Release all keys in string
     pub fn release_string(&mut self, str: &str) {
         #[cfg(feature = "debug")]
         {
@@ -137,6 +159,7 @@ impl Keyboard {
         self.packets.push(self.create_release_packet());
     }
 
+    /// Hold key with keycode
     pub fn hold_keycode(&mut self, key: u8) {
         #[cfg(feature = "debug")]
         {
@@ -146,6 +169,7 @@ impl Keyboard {
         self.packets.push(self.create_release_packet());
     }
 
+    /// Release key with keycode
     pub fn release_keycode(&mut self, key: u8) {
         #[cfg(feature = "debug")]
         {
@@ -155,6 +179,7 @@ impl Keyboard {
         self.packets.push(self.create_release_packet());
     }
 
+    /// Hold modifier key
     pub fn hold_mod(&mut self, modifier: &Modifier) {
         #[cfg(feature = "debug")]
         {
@@ -164,6 +189,7 @@ impl Keyboard {
         self.packets.push(self.create_release_packet());
     }
 
+    /// Release modifier key
     pub fn release_mod(&mut self, modifier: &Modifier) {
         #[cfg(feature = "debug")]
         {
@@ -185,11 +211,13 @@ impl Keyboard {
         self.holding.clone()
     }
 
+    /// Send keystroke in packet
     pub fn press_packet(&mut self, mut packet: KeyPacket) {
         self.add_held_keys(&mut packet);
         self.packets.push(packet)
     }
 
+    /// Send modifier keystroke
     pub fn press_modifier(&mut self, modifier: &Modifier) {
         #[cfg(feature = "debug")]
         {
@@ -201,6 +229,7 @@ impl Keyboard {
         self.packets.push(self.create_release_packet());
     }
 
+    /// Send shortcut keystroke
     pub fn press_shortcut(&mut self, modifiers: &[Modifier], key: &Key) -> Option<()> {
         #[cfg(feature = "debug")]
         {
@@ -241,6 +270,8 @@ impl Keyboard {
         Some(())
     }
 
+
+    /// Send keystroke
     pub fn press_key(&mut self, key: &Key) -> Option<()> {
         match key {
             Key::Char(c, key_origin) => self.press_char(c, key_origin)?,
@@ -249,6 +280,7 @@ impl Keyboard {
         Some(())
     }
 
+    /// Send keystroke of keycode
     pub fn press_keycode(&mut self, key: u8) {
         #[cfg(feature = "debug")]
         {
@@ -260,6 +292,7 @@ impl Keyboard {
         self.packets.push(packet);
     }
 
+    /// Send keystrokes of keys in string
     pub fn press_string(&mut self, str: &str) {
         #[cfg(feature = "debug")]
         {
@@ -281,6 +314,7 @@ impl Keyboard {
         }
     }
 
+    /// Flush Buffered keystrokes to HID interface
     pub fn send(&mut self, hid: &mut HID) -> io::Result<usize> {
         if self.packets.len() == 0 {
             return Ok(0)
@@ -292,6 +326,7 @@ impl Keyboard {
         res
     }
 
+    /// Send Buffered keystrokes to HID interface and keep buffered keystrokes
     pub fn send_keep(&self, hid: &mut HID) -> io::Result<usize> {
         if self.packets.len() == 0 {
             return Ok(0)
@@ -303,11 +338,14 @@ impl Keyboard {
     }
 }
 
+
+/// Key Packet abstraction
 pub struct KeyPacket {
     data: [u8; KEY_PACKET_LEN],
 }
 
 impl KeyPacket {
+    /// New
     pub fn new() -> KeyPacket {
         KeyPacket { data: [0x00; KEY_PACKET_LEN] }
     }
@@ -334,6 +372,7 @@ impl KeyPacket {
         self.data[KEY_PACKET_MOD_IDX] &= !modifier.to_mkbyte();
     }
 
+    /// Create from key lists
     pub fn from_list(modifiers: &[Modifier], keys: &[(char, KeyOrigin); 6]) -> KeyPacket {
         let mut packet = KeyPacket::new();
         packet.data[KEY_PACKET_MOD_IDX] = Modifier::all_to_byte(modifiers);
@@ -345,6 +384,7 @@ impl KeyPacket {
         packet
     }
 
+    /// Create from char
     pub fn from_char(c: &char, key_origin: &KeyOrigin) -> Option<KeyPacket> {
         let mut packet = KeyPacket::new();
         let kbytes = c.to_kbytes(key_origin)?;
@@ -352,6 +392,7 @@ impl KeyPacket {
         Some(packet)
     }
 
+    /// Create from special key
     pub fn from_special(special: &SpecialKey) -> KeyPacket {
         let mut packet = KeyPacket::new();
         let kbytes = special.to_kbyte();
@@ -359,6 +400,7 @@ impl KeyPacket {
         packet
     }
 
+    /// Check if packet contains the keystroke for a char
     pub fn contains_char(&self, key: char, key_origin: &KeyOrigin) -> bool {
         let kbyte = match key.to_kbytes(key_origin) {
             Some(kbytes) => kbytes[1],
@@ -367,6 +409,7 @@ impl KeyPacket {
         self.contains_kbyte(&kbyte)
     }
 
+    /// Check if packet contains the keystroke in a given packet
     pub fn contains_any(&self, packet: &KeyPacket) -> bool {
         for i in KEY_PACKET_KEY_IDX..KEY_PACKET_LEN {
             if packet.data[i] == self.data[i] {
@@ -377,6 +420,7 @@ impl KeyPacket {
         return false
     }
 
+    /// Check if packet contains special key
     pub fn contains_special(&self, special: &SpecialKey) -> bool {
         self.contains_kbyte(&special.to_kbyte())
     }
@@ -391,10 +435,12 @@ impl KeyPacket {
         return false
     }
 
+    /// Add modifier to packet
     pub fn push_modifier(&mut self, modifier: &Modifier) {
         self.add_mod(modifier)
     }
 
+    /// Add key to packet
     pub fn push_key(&mut self, key: &Key) -> Option<u8>{
         match key {
             Key::Char(c, key_origin) => self.push_char(c, key_origin),
@@ -402,23 +448,26 @@ impl KeyPacket {
         }
     }
 
+    /// Add char to packet
     pub fn push_char(&mut self, key: &char, key_origin: &KeyOrigin) -> Option<u8> {
         let kbytes = key.to_kbytes(key_origin)?;
         self.add_key(&kbytes);
         Some(kbytes[1])
     }
 
+    /// Add special key to packet
     pub fn push_special(&mut self, special: &SpecialKey) -> Option<u8>  {
         let kbytes = special.to_kbyte();
         self.add_key(&[0x0, kbytes]);
         Some(kbytes)
     }
 
+    /// Send packet to hid interface
     pub fn send(&self, hid: &mut HID) -> io::Result<usize>{
         hid.send_key_packet(&self.data)
     }
 
-
+    /// Send a list of packets to hid interface
     pub fn send_all(packets: &Vec<KeyPacket>, hid: &mut HID) -> io::Result<usize> {
         let mut size = 0;
         for packet in packets {
@@ -428,6 +477,7 @@ impl KeyPacket {
         Ok(size)
     }
 
+    /// Print packet data
     pub fn print_data(data: &[u8]) {
         for data in data {
             print!("{:02x}", data);
@@ -435,6 +485,7 @@ impl KeyPacket {
         println!();
     }
 
+    /// Print packet
     pub fn print_packet(packet: &KeyPacket) {
         for data in packet.data {
             print!("{:02x}", data);
@@ -442,6 +493,7 @@ impl KeyPacket {
         println!();
     }
 
+    /// Print packets
     pub fn print_packets(packets: &Vec<KeyPacket>) {
         for packet in packets {
             for data in packet.data {
@@ -457,18 +509,28 @@ impl KeyPacket {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+/// Modifier Keys
 pub enum Modifier {
+    /// Left Control
     LeftControl,
+    /// Left Shift
     LeftShift,
+    /// Left Alt
     LeftAlt,
+    /// Left Meta
     LeftMeta,
+    /// Right Control
     RightControl,
+    /// Right Shift
     RightShift,
+    /// Right Alt
     RightAlt,
+    /// Right Meta
     RightMeta,
 }
 
 impl Modifier {
+    /// A list of modifiers to keycode bytes
     pub fn all_to_byte(modifiers: &[Modifier]) -> u8 {
         modifiers.iter()
             .map(|modi| modi.to_mkbyte())
@@ -476,6 +538,7 @@ impl Modifier {
             .unwrap_or(0)
     }
 
+    ///Modifier to bytes
     pub fn to_mkbyte(&self) -> u8 {
         let base = 0x00000001;
         match self {
@@ -493,161 +556,309 @@ impl Modifier {
 
 //^(\d+) ([A-Z0-9]+) (Keyboard|Keypad|Misc) (.*?)$
 #[derive(Debug, Eq, Hash, PartialEq, Clone, Copy)]
+/// Key press origin
 pub enum KeyOrigin {
+    /// Keyboard
     Keyboard,
+    /// Keypad
     Keypad,
+    /// Misc
     Misc,
 }
 
 #[derive(Debug, Eq, Hash, PartialEq, Clone, Copy)]
+/// Special Key
 pub enum SpecialKey {
+ ///   ReturnEnter
     ReturnEnter,
+ ///   Return
     Return,
+ ///   Escape
     Escape,
+ ///   Backspace
     Backspace,
+ ///   Tab
     Tab,
+ ///   Spacebar
     Spacebar,
+ ///   NONUSHashAndTilda
     NONUSHashAndTilda,
+ ///   CapsLock
     CapsLock,
+ ///   F1
     F1,
+ ///   F2
     F2,
+ ///   F3
     F3,
+ ///   UpArrow
     UpArrow,
+ ///   DownArrow
     DownArrow,
+ ///   LeftArrow
     LeftArrow,
+ ///   RightArrow
     RightArrow,
+ ///   PageDown
     PageDown,
+ ///   End
     End,
+ ///   DeleteForward
     DeleteForward,
+ ///   PageUp
     PageUp,
+ ///   Home
     Home,
+ ///   Insert
     Insert,
+ ///   Pause
     Pause,
+ ///   ScrollLock
     ScrollLock,
+ ///   PrintScreen
     PrintScreen,
+ ///   F12
     F12,
+ ///   F11
     F11,
+ ///   F10
     F10,
+ ///   F9
     F9,
+ ///   F8
     F8,
+ ///   F7
     F7,
+ ///   F6
     F6,
+ ///   F5
     F5,
+ ///   F4
     F4,
+ ///   NumLockAndClear
     NumLockAndClear,
+ ///   Enter
     Enter,
+ ///   Application
     Application,
+ ///   Power
     Power,
+ ///   RightGUI
     RightGUI,
+ ///   RightAlt
     RightAlt,
+ ///   RightShift
     RightShift,
+ ///   RightControl
     RightControl,
+ ///   LeftGUI
     LeftGUI,
+ ///   LeftAlt
     LeftAlt,
+ ///   LeftShift
     LeftShift,
+ ///   LeftControl
     LeftControl,
+ ///   Hexadecimal
     Hexadecimal,
+ ///   Decimal
     Decimal,
+ ///   Octal
     Octal,
+ ///   Binary
     Binary,
+ ///   ClearEntry
     ClearEntry,
+ ///   Clear
     Clear,
+ ///   PlusMinux
     PlusMinux,
+ ///   MemoryDivide
     MemoryDivide,
+ ///   MemoryMultiply
     MemoryMultiply,
+ ///   MemorySubtract
     MemorySubtract,
+ ///   MemoryAdd
     MemoryAdd,
+ ///   MemoryClear
     MemoryClear,
+ ///   MemoryRecall
     MemoryRecall,
+ ///   MemoryStore
     MemoryStore,
+ ///   Space
     Space,
+ ///   Or
     Or,
+ ///   And
     And,
+ ///   XOR
     XOR,
+ ///   CurrencySubunit
     CurrencySubunit,
+ ///   CurrencyUnit
     CurrencyUnit,
+ ///   DecimalSeparator
     DecimalSeparator,
+ ///   ThousandsSeparator
     ThousandsSeparator,
+ ///   _000
     _000,
+ ///   _00
     _00,
+ ///   ExSel
     ExSel,
+ ///   CrSelProps
     CrSelProps,
+ ///   ClearAgain
     ClearAgain,
+ ///   Oper
     Oper,
+ ///   Out
     Out,
+ ///   Separator
     Separator,
+ ///   Prior
     Prior,
+ ///   Cancel
     Cancel,
+ ///   SysReqAttention1
     SysReqAttention1,
+ ///   AlternateErase
     AlternateErase,
+ ///   LANG9
     LANG9,
+ ///   LANG8
     LANG8,
+ ///   LANG7
     LANG7,
+ ///   LANG6
     LANG6,
+ ///   LANG5
     LANG5,
+ ///   LANG4
     LANG4,
+ ///   LANG3
     LANG3,
+ ///   LANG2
     LANG2,
+ ///   LANG1
     LANG1,
+ ///   International9
     International9,
+ ///   International8
     International8,
+ ///   International7
     International7,
+ ///   International6
     International6,
+ ///   International5
     International5,
+ ///   International4
     International4,
+ ///   International3
     International3,
+ ///   International2
     International2,
+ ///   International1
     International1,
+ ///   LockingScrollLock
     LockingScrollLock,
+ ///   LockingNumLock
     LockingNumLock,
+ ///   LockingCapsLock
     LockingCapsLock,
+ ///   VolumeDown
     VolumeDown,
+ ///   VolumeUp
     VolumeUp,
+ ///   Mute
     Mute,
+ ///   Find
     Find,
+ ///   Paste
     Paste,
+ ///   Copy
     Copy,
+ ///   Cut
     Cut,
+ ///   Undo
     Undo,
+ ///   Again
     Again,
+ ///   Stop
     Stop,
+ ///   Select
     Select,
+ ///   Menu
     Menu,
+ ///   Help
     Help,
+ ///   Execute
     Execute,
+ ///   F24
     F24,
+ ///   F23
     F23,
+ ///   F22
     F22,
+ ///   F21
     F21,
+ ///   F20
     F20,
+ ///   F19
     F19,
+ ///   F18
     F18,
+ ///   F17
     F17,
+ ///   F16
     F16,
+ ///   F15
     F15,
+ ///   F14
     F14,
+ ///   F13
     F13,
+ ///   NonUSSlashAndPipe
     NonUSSlashAndPipe,
+ ///   _DotAndDelete
     _DotAndDelete,
+ ///   _0AndInsert
     _0AndInsert,
+ ///   _9AndPageUp
     _9AndPageUp,
+ ///   _8AndUpArrow
     _8AndUpArrow,
+ ///   _7AndHome
     _7AndHome,
+ ///   _6AndRightArrow
     _6AndRightArrow,
+ ///   _5
     _5,
+ ///   _4AndLeftArrow
     _4AndLeftArrow,
+ ///   _3AndPageDn
     _3AndPageDn,
+ ///   _2AndDownArrow
     _2AndDownArrow,
+ ///   _1AndEnd
     _1AndEnd,
+ ///   PadClear
     PadClear,
+ ///   PadBackspace
     PadBackspace,
+ ///   PadTab
     PadTab,
+ ///   EqualsSign
     EqualsSign,
+ ///   Comma
     Comma,
-
 }
 
 impl SpecialKey {
+    /// Special Key to Byte
     pub fn to_kbyte(&self) -> u8 {
         match self {
             SpecialKey::ReturnEnter => 0x28, // 40, 0x28, Keyboard, ReturnEnter
@@ -797,7 +1008,9 @@ impl SpecialKey {
     }
 }
 
+/// Key to keycode bytes trait
 pub trait ToKBytes {
+/// Key to keycode bytes
     fn to_kbytes(&self, key_origin: &KeyOrigin) -> Option<[u8; 2]>;
 }
 

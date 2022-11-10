@@ -1,14 +1,20 @@
+#![warn(missing_docs)]
 use std::{io::{self}};
 
 use crate::HID;
 
+/// Mouse Button
 pub enum MouseButton {
+ ///   Left
     Left,
+ ///   Right
     Right,
+ ///   Middle
     Middle,
 }
 
 impl MouseButton {
+    /// Mouse bution to byte
     pub fn to_byte(&self) -> u8 {
         match self {
             MouseButton::Left => 0x01,
@@ -18,8 +24,11 @@ impl MouseButton {
     }
 }
 
+/// Mouse movement direction
 pub enum MouseDir {
+    /// X
     X,
+    /// Y
     Y
 }
 
@@ -29,28 +38,34 @@ const MOUSE_DATA_X_IDX: usize = 1;
 const MOUSE_DATA_Y_IDX: usize = 2;
 const MOUSE_DATA_WHEL_IDX: usize = 3;
 
+/// Virtual Mouse
 pub struct Mouse {
     data: [u8; 5],
     hold: u8,
 }
 
 impl Mouse {
+    /// New
     pub fn new() -> Mouse {
         Mouse{data:[0;5], hold: 0x00}
     }
 
+    /// Click mouse button
     pub fn press_button(&mut self, button: &MouseButton) {
         self.data[MOUSE_DATA_BUT_IDX] |= button.to_byte();
     }
 
+    /// Hold mouse button
     pub fn hold_button(&mut self, button: &MouseButton) {
         self.hold |= button.to_byte();
     }
 
+    /// Release mouse button
     pub fn release_button(&mut self, button: &MouseButton) {
         self.hold &= !button.to_byte();
     }
 
+    /// Move mouse a relative amount in a direction
     pub fn move_mouse(&mut self, displacement: &i8, dir: &MouseDir) {
         match dir {
             MouseDir::X => self.data[MOUSE_DATA_X_IDX] = displacement.to_be_bytes()[0],
@@ -58,15 +73,17 @@ impl Mouse {
         }
     }
 
+    /// Scroll the scroll wheel
     pub fn scroll_wheel(&mut self, displacement: &i8) {
         self.data[MOUSE_DATA_WHEL_IDX] = displacement.to_be_bytes()[0];
     }
 
+    /// Full buffered mouse events
     pub fn send(&mut self, hid: &mut HID) -> io::Result<usize>{
         if self.data == [0;5] && self.hold == 0x00 {
             return Ok(5)
         }
-        
+
         if self.hold == 0x00 {
             hid.send_mouse_packet(&self.data)
         } else {
