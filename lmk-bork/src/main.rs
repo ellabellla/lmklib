@@ -11,7 +11,11 @@ mod interpreter;
 struct Cli {
     /// Input script
     input: String,
-}
+
+    #[cfg(feature = "debug")]
+    /// Debug state data
+    state: String,
+}   
 
 fn main() {
     let args = Cli::parse();
@@ -31,6 +35,19 @@ fn main() {
             return
         },
     };
+
+    #[cfg(feature = "debug")]
+    {
+        println!("Key packet out: '{:?}'", hid.get_keyboard_path());
+        println!("Mouse packet out: '{:?}'", hid.get_mouse_path());
+        match hid.set_state_data(&args.state) {
+            Err(e) => {
+                println!("Couldn't open debug state data: {}", e);
+                return;
+            }
+            _ => ()
+        };
+    }
 
     let interpreter = BorkInterp::new(&source);
 
