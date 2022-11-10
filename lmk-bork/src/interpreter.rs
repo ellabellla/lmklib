@@ -1,4 +1,4 @@
-use std::{collections::HashMap, process};
+use std::{collections::HashMap, process, time::Duration};
 
 use lmk_hid::{key::{Keyboard, KeyOrigin}, mouse::{Mouse, MouseButton}, HID};
 
@@ -43,7 +43,15 @@ impl<'a> BorkInterp<'a> {
         let mut i = self.source;
         let mut cont;
         loop {
-            (cont, i) = BorkInterp::interp_command(&mut variables, &mut keyboard, &mut mouse, &mut parser, &mut if_stack, &mut while_stack, i)?;
+            keyboard.update_led_state(hid, Duration::from_millis(10)).map_err(|e| Error::IOError(e))?;
+            (cont, i) = BorkInterp::interp_command(
+                &mut variables, 
+                &mut keyboard, 
+                &mut mouse, 
+                &mut parser, 
+                &mut if_stack, 
+                &mut while_stack, 
+                i)?;
             keyboard.send(hid).map_err(|e| Error::IOError(e))?;
             mouse.send(hid).map_err(|e| Error::IOError(e))?;
             if !cont {
@@ -204,7 +212,9 @@ impl<'a> BorkInterp<'a> {
                 }
             },
             Value::Bracket(exp) => BorkInterp::resolve_expression(variables, keyboard, mouse, parser, exp)?,
-            Value::LED(_) => todo!(),
+            Value::LED(state) => {
+                Some(BorkInterp::resolve_bool(keyboard.led_state(&state)))
+            },
             Value::BNot(exp) => BorkInterp::resolve_expression(variables, keyboard, mouse, parser, exp)?.map(|v| !v),
             Value::Not(exp) => if BorkInterp::resolve_to_bool(BorkInterp::resolve_expression(variables, keyboard, mouse, parser, exp)?) == 1 {
                 Some(0)
@@ -509,12 +519,8 @@ impl<'a> BorkInterp<'a> {
                 }
             },
             Command::None => (),
-            Command::LED(_) => todo!(),
-            Command::ASCII(exp) => {
-                let c = BorkInterp::resolve_ascii(variables, keyboard, mouse, parser, &exp)?; 
-                if let Some(c) = c {
-                    keyboard.press_key(&lmk_hid::key::Key::Char(c, KeyOrigin::Keyboard));
-                }
+            Command::LED(state) => {
+                keyboard.press_string(&format!("{}", keyboard.led_state(&state)));
             },
             Command::Exit => return Ok((false, new_i)),
         }
