@@ -17,12 +17,12 @@ Hello, World!
 
 ### Fibonacci
 ```
-<+#fib;#x;#
+<+#fib;#x;'
     x <= 1 ? 
         x < 1 ? 0 : 1
     :
         <!fib;x-1> + <!fib;x-2>
-#>
+'>
 
 The fibonacci of 10 is <!fib;10>.
 ```
@@ -46,7 +46,6 @@ All characters out side of an escape, expression or tag are treated as keystroke
 |------|--------|-------------|
 |Literals|```"abcd"```|All characters inside the ```"``` will be treated as keystrokes to be sent. Aka literal keystrokes. Can include newlines.|
 |Expression|```'10+3'```| An expression. Operators and variables can be used. |
-|Ascii Expression|```@' @a + 10'```| An ascii character defined by an expression.|
 |Integers|```10``` ```-10```| A signed 64 bit integer. Typically used for mouse configurations |
 |Booleans|```0``` ```F``` ```T```| Integers are also be treated as booleans. If an integer is ```0``` than it is false, otherwise it is true. You can also use a ```T``` or ```F``` as a substitute for ```0``` and ```1```|
 |Unit| ```_``` | Unit is the result of certain operators that return no value. When used in a expression any operations done on it will result in the value of the other operand. When treated as a keystroke they resolve to ```0```.|
@@ -60,9 +59,10 @@ Expressions are values combined with operators.
 |Integers|```2```|Any integers.|
 |Booleans|```T*2```| True or False.|
 |Ascii| ```@a```| The number value of an ascii character. Used ```@character```.|
+|Ascii| ```\@1\```| The ascii character of a number. Used ```\@expression\```.|
 |Variables|```x+2```| A variable defined by the set tag or a function parameter. Only integer variables can be used in expressions.|
 |Call|```<!add;2;3>```| Calls to functions with integer return types can be used in expressions.|
-|LED State|```<&1>```| LED state tags can be used in expression. They will return a boolean.|
+|LED State|```\&1```| LED state tags can be used in expression. They will return a boolean.|
 
 #### Operators
 | Operator | Description | Precedence |
@@ -101,9 +101,11 @@ Expressions are values combined with operators.
 |```\m```|Middle mouse click|
 |```\\```|```\```|
 |```\"```|```"```|
+|```\'```|```'```|
 |```\$ \```| Print variable. Usage ```\$variable name\```|
 |```\@ \```| Print number as ascii. Usage ```\@expression\```|
 |```\x##```| Send keycode where ```##``` is the keycode in hex|
+|```\& ```|```\&1```|Gets an led state. ```0``` if off. ```1``` if on. Kana = 5, Compose = 4, ScrollLock = 3, CapsLock = 2, NumLock = 1|
 |```\<```|```<``` |
 
 ### Tags
@@ -120,6 +122,4 @@ Expressions are values combined with operators.
 |Function|```<+ ; ; >```|```<+"hello;"name;"Hello, World!\nMy name is <$name>">``` ```<+#add;#x;#y;'x+y'>```| Defines a function. The first parameter is the name of the function. The second is a list of input variables. The third is the content of the function that is evaluated when it is called. Function definitions return nothing. Functions must be defined before they can be used. Functions are expressional meaning the return value of the function is what the contents of the function evaluate too. All functions must evaluate to something. The type of the function return and the type of each parameter must be defined by prefixing their names with either ```"``` (a literal) or ```#``` (an integer). If the return type if ```#``` then the body of the function must be an expression. If the return type is ```"``` then the body of the function must be tags.|
 |Call Function|```<! ; >``` | ```<!hello;"ella">``` ```<!add;10;1>```| Calls a function with the given inputs. The first parameter is the name of the function being called. The second is a list of input parameters.|
 |Literal|```" "```| ```"hello"```| A literal can be used as a tag.|
-|LED State|```<& >```|```<&1>```|Gets an led state. ```0``` if off. ```1``` if on. This can also be used anywhere integers can be used. Kana = 5, Compose = 4, ScrollLock = 3, CapsLock = 2, NumLock = 1|
 |Expression|```' '```|```'10+3'```| An expression. Operators and variables can be used. |
-|Ascii Expression|```@' '``` | ```@' @a + 10'```| An ascii character defined by an expression.|
