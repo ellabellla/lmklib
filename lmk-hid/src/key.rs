@@ -1,6 +1,6 @@
 #![warn(missing_docs)]
 
-use std::{io::{self}, str::FromStr};
+use std::{io::{self}, str::FromStr, time::Duration};
 
 use crate::HID;
 
@@ -28,13 +28,19 @@ pub enum LEDState {
 /// Abstraction for LED State Packets
 pub struct LEDStatePacket {
     data: u8,
-}
+
+   }
 
 impl LEDStatePacket {
-    /// Create a new LED State Packet from an incoming raw packet.
-    pub fn new(hid: &mut HID) -> io::Result<LEDStatePacket> {
-        Ok(LEDStatePacket { data: hid.receive_states_packet()? })
+   /// New blank LED state packet
+   pub fn new() -> LEDStatePacket {
+        LEDStatePacket { data: 0x00 }
     }
+
+    /// Create a new LED State Packet from an incoming raw packet.
+    pub fn new_from_packet(hid: &mut HID, timeout: Duration) -> io::Result<LEDStatePacket> {
+         Ok(LEDStatePacket { data: hid.receive_states_packet(timeout)?.unwrap_or(0) })
+   }
 
     /// Get the state of a LED State Type.
     /// True means on
@@ -49,11 +55,14 @@ impl LEDStatePacket {
         }
     }
 
-    /// Update LED States with an incoming raw packet.
-    pub fn update(&mut self, hid: &mut HID) -> io::Result<()> {
-        self.data = hid.receive_states_packet()?;
-        Ok(())
+    /// Update LED States with an incoming raw packet with a timeout.
+    pub fn update(&mut self, hid: &mut HID, timeout: Duration) -> io::Result<()> {
+      match hid.receive_states_packet(timeout)? {
+        Some(data) => self.data = data,
+        None => (),
     }
+      Ok(())
+  }
 }
 
 #[derive(Debug, Eq, Hash, PartialEq, Clone, Copy)]
@@ -69,6 +78,7 @@ pub enum Key {
 pub struct Keyboard {
     packets: Vec<KeyPacket>,
     holding: KeyPacket,
+    led_states: LEDStatePacket,
 }
 
 impl FromStr for Keyboard {
@@ -84,7 +94,17 @@ impl FromStr for Keyboard {
 impl Keyboard {
     /// New
     pub fn new() -> Keyboard {
-        Keyboard { packets: Vec::new(), holding: KeyPacket::new() }
+        Keyboard { packets: Vec::new(), holding: KeyPacket::new(), led_states: LEDStatePacket::new() }
+    }
+
+    /// Get the current LED state
+    pub fn led_state(&self, state: &LEDState) -> bool {
+      self.led_states.get_state(state)
+    }
+
+    /// update LED states from incoming led state packets
+    pub fn update_led_state(&mut self, hid: &mut HID, timeout: Duration) -> io::Result<()> {
+      self.led_states.update(hid, timeout)
     }
 
     fn add_buffer(&mut self, packet: &KeyPacket) {
