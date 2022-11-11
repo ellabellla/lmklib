@@ -3,6 +3,7 @@ use std::{io::{self}};
 
 use crate::HID;
 
+#[derive(Debug)]
 /// Mouse Button
 pub enum MouseButton {
  ///   Left
@@ -24,6 +25,7 @@ impl MouseButton {
     }
 }
 
+#[derive(Debug)]
 /// Mouse movement direction
 pub enum MouseDir {
     /// X
@@ -52,21 +54,37 @@ impl Mouse {
 
     /// Click mouse button
     pub fn press_button(&mut self, button: &MouseButton) {
+        #[cfg(feature = "debug")]
+        {
+            println!("press {:?}", button);
+        }
         self.data[MOUSE_DATA_BUT_IDX] |= button.to_byte();
     }
 
     /// Hold mouse button
     pub fn hold_button(&mut self, button: &MouseButton) {
+        #[cfg(feature = "debug")]
+        {
+            println!("hold {:?}", button);
+        }
         self.hold |= button.to_byte();
     }
 
     /// Release mouse button
     pub fn release_button(&mut self, button: &MouseButton) {
+        #[cfg(feature = "debug")]
+        {
+            println!("release {:?}", button);
+        }
         self.hold &= !button.to_byte();
     }
 
     /// Move mouse a relative amount in a direction
     pub fn move_mouse(&mut self, displacement: &i8, dir: &MouseDir) {
+        #[cfg(feature = "debug")]
+        {
+            println!("move {:?} {:?}", displacement, dir);
+        }
         match dir {
             MouseDir::X => self.data[MOUSE_DATA_X_IDX] = displacement.to_be_bytes()[0],
             MouseDir::Y => self.data[MOUSE_DATA_Y_IDX] = displacement.to_be_bytes()[0],
@@ -75,6 +93,10 @@ impl Mouse {
 
     /// Scroll the scroll wheel
     pub fn scroll_wheel(&mut self, displacement: &i8) {
+        #[cfg(feature = "debug")]
+        {
+            println!("scroll {:?}", displacement);
+        }
         self.data[MOUSE_DATA_WHEL_IDX] = displacement.to_be_bytes()[0];
     }
 
