@@ -4,8 +4,8 @@ use std::{io::{self}, str::FromStr, time::Duration};
 
 use crate::HID;
 
-const KEY_PACKET_KEY_LEN: usize = 15;
-const KEY_PACKET_LEN: usize = 16;
+const KEY_PACKET_KEY_LEN: usize = 32;
+const KEY_PACKET_LEN: usize = KEY_PACKET_KEY_IDX + KEY_PACKET_KEY_LEN;
 const KEY_PACKET_MOD_IDX: usize = 0;
 const KEY_PACKET_KEY_IDX: usize = 1;
 
