@@ -12,16 +12,16 @@ struct Cli {
     input: String,
 
     #[arg(short, long, default_value_t=false)]
-    /// Halt on error
+    /// Halt on errors
     strict: bool,
 
-    #[arg(short, long, default_value_t=false)]
+    #[arg(short='c', long, default_value_t=false)]
     /// Hide comments
-    comments: bool,
+    no_comments: bool,
 
-    #[arg(short, long, default_value_t=false)]
+    #[arg(short='e', long, default_value_t=false)]
     /// Hide errors
-    errors: bool,    
+    no_errors: bool,    
 }
 
 mod parser;
@@ -33,7 +33,7 @@ fn main() {
     let input = match fs::read_to_string(&args.input) {
         Ok(input) => input,
         Err(_) => {
-            if !args.errors {
+            if !args.no_errors {
                 println!("Error, Couldn't open file {}.", &args.input)
             }
             return
@@ -43,7 +43,7 @@ fn main() {
     let mut hid = match HID::new(1, 0) {
         Ok(hid) => hid,
         Err(_) => {
-            if !args.errors {
+            if !args.no_errors {
                 println!("Error, Couldn't connect to HID.")
             }
             return
@@ -51,8 +51,8 @@ fn main() {
     };
     
     let interpreter = QuackInterp::new(&input);
-    if let Err((line, e)) = interpreter.run(&mut hid, &!args.comments, &!args.errors, &!args.strict) {
-        if !args.errors {
+    if let Err((line, e)) = interpreter.run(&mut hid, &!args.no_comments, &!args.no_errors, &!args.strict) {
+        if !args.no_errors {
             println!("{}", e.to_err_msg(&line))
         }
     }
