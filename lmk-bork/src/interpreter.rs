@@ -1,4 +1,4 @@
-use std::{collections::HashMap, process, time::Duration};
+use std::{collections::HashMap, process, time::Duration, thread};
 
 use lmk_hid::{key::{Keyboard, KeyOrigin}, mouse::{Mouse, MouseButton}, HID};
 
@@ -369,7 +369,7 @@ impl<'a> BorkInterp<'a> {
             let res = match &body {
                 FuncBody::Expression(exp) => Some(BorkInterp::resolve_expression(variables, keyboard, mouse, parser, &exp)?.unwrap_or(0)),
                 FuncBody::Literal(coms) => {
-                    parser.begin_function();
+                    parser.begin_function(name);
                     let mut res = match BorkInterp::interp_command(variables, keyboard, mouse, parser, if_stack, while_stack, &coms){
                         Ok(res) => res,
                         Err(e) => {
@@ -467,20 +467,23 @@ impl<'a> BorkInterp<'a> {
                     }
                 }
             },
-            /*Command::Set(name, exp) => {
-                let value = BorkInterp::resolve_expression(variables, keyboard, mouse, parser, &exp)?;
-                variables.insert(name.to_string(), Data::Integer(value.unwrap_or(0)));
-            },*/
-            Command::Print(name) => BorkInterp::press_key(variables, keyboard, mouse, parser, &Key::Variable(name))?,
+            Command::Set(name, param) => {
+                match param {
+                    Parameter::Expression(exp) => {
+                        let value = BorkInterp::resolve_expression(variables, keyboard, mouse, parser, &exp)?;
+                        variables.insert(name.to_string(), Data::Integer(value.unwrap_or(0)));
+                    },
+                    Parameter::Literal(keys) => {
+                        variables.insert(name.to_string(), Data::Literal(keys));
+                    },
+                }
+            },
             Command::Expression(exp) => {
                 let value = BorkInterp::resolve_expression(variables, keyboard, mouse, parser, &exp)?;
                 if let Some(value) = value {
                     keyboard.press_string(&format!("{}", value));
                 }
             },
-            Command::Left => mouse.press_button(&MouseButton::Left),
-            Command::Right => mouse.press_button(&MouseButton::Right),
-            Command::Middle => mouse.press_button(&MouseButton::Middle),
             Command::Move(x, y) => {
                 let x = BorkInterp::resolve_expression(variables, keyboard, mouse, parser, &x)?.map(|x|{
                     if x < i8::MIN as i64{
@@ -521,6 +524,15 @@ impl<'a> BorkInterp<'a> {
             Command::None => (),
             Command::LED(state) => {
                 keyboard.press_string(&format!("{}", keyboard.led_state(&state)));
+            },
+            Command::Sleep(exp) => {
+                let millis = BorkInterp::resolve_expression(variables, keyboard, mouse, parser, &exp)?;
+                if let Some(millis) = millis {
+                    if millis > 0 {
+                        let duration = Duration::from_millis(millis as u64);
+                        thread::sleep(duration);
+                    }
+                }
             },
             Command::Exit => return Ok((false, new_i)),
         }

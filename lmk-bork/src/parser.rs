@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use lmk_hid::key::{SpecialKey, Modifier, LEDState};
-use nom::{IResult, bytes::{complete::{tag, take_while, take_while1}}, multi::{fold_many_m_n, many1, separated_list1, many0}, InputIter, InputLength, Slice, AsChar, branch::{alt}, Parser, error::{ErrorKind, Error, ParseError}, sequence::{delimited, preceded, tuple, pair, terminated}, character::{complete::{digit1}}, InputTake, combinator::eof};
+use nom::{IResult, bytes::{complete::{tag, take_while, take_while1}}, multi::{fold_many_m_n, many1, separated_list1, many0}, InputIter, InputLength, Slice, AsChar, branch::{alt}, Parser, error::{ErrorKind, Error, ParseError}, sequence::{delimited, preceded, tuple, pair, terminated, separated_pair}, character::{complete::{digit1}}, InputTake, combinator::eof};
 
 macro_rules! tuple_mut_inner {
     ($i:ident, $a:expr) => {
@@ -133,18 +133,15 @@ pub enum Command <'a> {
     Else,
     While(Expression<'a>),
     End,
-    //Set(&'a str, Expression<'a>),
-    Print(&'a str),
+    Set(&'a str, Parameter<'a>),
     Expression(Expression<'a>),
-    Left,
-    Right,
-    Middle,
     Move(Expression<'a>, Expression<'a>),
     Pipe(&'a str),
     Call(&'a str, Vec<Parameter<'a>>),
     None,
     LED(LEDState),
     Exit,
+    Sleep(Expression<'a>),
 }
 
 fn integer<'a>(i: &'a str) -> IResult<&'a str, i64> {
@@ -184,18 +181,22 @@ fn variable_name<'a>(i: &'a str) -> IResult<&'a str, &'a str> {
     take_while1(|c: char|  c == '_' || c.is_alphabetic())(i)
 }
 
-fn checked_variable_name<'a>(variables: &HashMap<&'a str, DataType>, i_: &'a str) -> IResult<&'a str, &'a str>  {
+fn checked_variable_name<'a>(variables: &HashMap<&'a str, DataType>, i_: &'a str) -> IResult<&'a str, (&'a str, DataType)>  {
     let (i, name) = variable_name(i_)?;
     if let Some(variable) = variables.get(name) {
-        if matches!(variable, DataType::Integer) {
-            return Ok((i, name))
-        }
+        return Ok((i, (name, variable.clone())))
     }
     Err(nom::Err::Error(nom::error::Error::new(i_, ErrorKind::Verify)))
 }
 
-fn variable<'a>(variables: &HashMap<&'a str, DataType>, i: &'a str) -> IResult<&'a str, Value<'a>> {
-    checked_variable_name(variables, i).map(|(i, name)| (i, Value::Variable(name)))
+fn variable<'a>(variables: &HashMap<&'a str, DataType>, i_: &'a str) -> IResult<&'a str, Value<'a>> {
+    let (i, (name, data_type)) =  checked_variable_name(variables, i_)?;
+    if matches!(data_type, DataType::Integer) {
+        Ok((i, Value::Variable(name)))
+    } else {
+        Err(nom::Err::Error(nom::error::Error::new(i_, ErrorKind::Verify)))
+    }
+
 }
 
 fn variable_escape<'a>(variables: &HashMap<&'a str, DataType>, i_: &'a str) -> IResult<&'a str, Key<'a>> {
@@ -585,7 +586,7 @@ fn while_<'a>(variables: &mut HashMap<&'a str, DataType>, functions: & HashMap<&
 
 fn end<'a>(nest_stack: &mut Vec<NestType>, i: &'a str) -> IResult<&'a str, Command<'a>> {
     if let Some(last) = nest_stack.last() {
-        if !matches!(last, NestType::Function) && !matches!(last, NestType::Pipe){
+        if !matches!(last, NestType::Function(..)) && !matches!(last, NestType::Pipe){
             return tag(">").map(|_| Command::End).parse(i)
             .and_then(|res| {
                 nest_stack.pop();
@@ -598,41 +599,42 @@ fn end<'a>(nest_stack: &mut Vec<NestType>, i: &'a str) -> IResult<&'a str, Comma
     
 }
 
-/*fn set<'a>(variables: &mut HashMap<&'a str, DataType>, functions: & HashMap<&'a str, (DataType, Vec<ParameterName<'a>>, FuncBody<'a>)>, i_:&'a str) -> IResult<&'a str, Command<'a>> {
-    let (i, (name, exp)) = delimited(
+fn set<'a>(variables: &mut HashMap<&'a str, DataType>, functions: & HashMap<&'a str, (DataType, Vec<ParameterName<'a>>, FuncBody<'a>)>, i_:&'a str) -> IResult<&'a str, Command<'a>> {
+    let (i, (name, data)) = delimited(
         tag("<="), 
         separated_pair(
             variable_name, 
             tag(";"),
-            |i| expression(variables, functions, i)
+            |i| alt_mut!(
+                delimited(tag("'"), |i|expression(variables, functions, i), tag("'"))
+                    .map(|exp| Parameter::Expression(exp)).parse(i),
+                literal(functions, variables, i).map(|(i, lit)| (i, Parameter::Literal(lit)))
+            )
         ),
         tag(">")
     )(i_)?;
 
     if let Some(dtype) = variables.get(name) {
-        if !matches!(dtype, DataType::Integer) {
-            return Err(nom::Err::Error(Error::from_error_kind(i_, ErrorKind::Verify)))
+        match dtype {
+            DataType::Integer => match data {
+                Parameter::Expression(_) => (),
+                Parameter::Literal(_) => return Err(nom::Err::Error(Error::from_error_kind(i_, ErrorKind::Verify))),
+            },
+            DataType::Literal => match data {
+                Parameter::Expression(_) => return Err(nom::Err::Error(Error::from_error_kind(i_, ErrorKind::Verify))),
+                Parameter::Literal(_) => (),
+            },
+            DataType::Any => (),
         }
     } else {
-        variables.insert(name, DataType::Integer);
+        match data {
+            Parameter::Expression(_) => variables.insert(name, DataType::Integer),
+            Parameter::Literal(_) => variables.insert(name, DataType::Literal),
+        };
     }
 
-    Ok((i, Command::Set(name, exp)))
+    Ok((i, Command::Set(name, data)))
     
-}*/
-
-fn print<'a>(variables: &mut HashMap<&'a str, DataType>, i_:&'a str) -> IResult<&'a str, Command<'a>> {
-    let (i, name) = delimited(
-        tag("<$"), 
-        variable_name,
-        tag(">")
-    )(i_)?;
-
-    if let Some(_) = variables.get(name) {
-        Ok((i, Command::Print(name)))
-    } else {
-        Err(nom::Err::Error(Error::from_error_kind(i_, ErrorKind::Verify)))
-    }
 }
 
 fn exp<'a>(variables: &mut HashMap<&'a str, DataType>, functions: & HashMap<&'a str, (DataType, Vec<ParameterName<'a>>, FuncBody<'a>)>, i:&'a str) -> IResult<&'a str, Command<'a>> { 
@@ -651,18 +653,6 @@ fn ascii_escape<'a>(variables: &mut HashMap<&'a str, DataType>, functions: & Has
         tag("\\")
     ).map(|e| Key::ASCII(e))
     .parse(i)
-}
-
-fn click<'a>(i:&'a str) -> IResult<&'a str, Command> { 
-    delimited(
-        tag("<^"), 
-        alt((
-            tag("1").map(|_| Command::Left),
-            tag("2").map(|_| Command::Right),
-            tag("3").map(|_| Command::Middle),
-        )), 
-        tag(">")
-    )(i)
 }
 
 fn move_<'a>(variables: &mut HashMap<&'a str, DataType>, functions: & HashMap<&'a str, (DataType, Vec<ParameterName<'a>>, FuncBody<'a>)>, i:&'a str) -> IResult<&'a str, Command<'a>> {
@@ -789,6 +779,14 @@ fn escape_inner<'a>(i:&'a str) -> IResult<&'a str, Key<'a>> {
     ))(i)
 }
 
+fn sleep<'a>(functions: &HashMap<&'a str, (DataType, Vec<ParameterName<'a>>, FuncBody<'a>)>, variables: &mut HashMap<&'a str, DataType>, i:&'a str) -> IResult<&'a str, Command<'a>> {
+    delimited(
+        tag("<*'"), 
+        |i| expression(variables, functions, i), 
+        tag("'>")
+    ).map(|exp| Command::Sleep(exp)).parse(i)
+}
+
 fn escape<'a>(functions: &HashMap<&'a str, (DataType, Vec<ParameterName<'a>>, FuncBody<'a>)>, variables: &mut HashMap<&'a str, DataType>, i:&'a str) -> IResult<&'a str, Vec<Key<'a>>> {
     many1(|i|{
         alt_mut!(
@@ -829,16 +827,15 @@ fn command<'a>(variables: &mut HashMap<&'a str, DataType>, functions: &mut  Hash
             else_(nest_stack, i),
             key(functions, variables, i),
             hold(functions, variables, i),
-            //set(variables, functions, i),
-            print(variables, i),
+            sleep(functions, variables, i),
             exp(variables, functions, i),
-            click(i),
             move_(variables, functions, i),
             call(variables, functions, i),
             if_(variables, functions, nest_stack, i),
             while_(variables, functions, nest_stack, i),
             pipe(nest_stack, i),
             end(nest_stack, i),
+            set(variables, functions, i),
             exit(i),
             function(variables, functions, nest_stack, i)
         ),
@@ -851,9 +848,7 @@ fn function<'a>(variables: &mut HashMap<&'a str, DataType>, functions: & mut  Ha
         return Err(nom::Err::Error(nom::error::Error::from_error_kind(i_, ErrorKind::Verify)))
     }
 
-    nest_stack.push(NestType::Function);
-    
-    let res = preceded(
+    let (i, (fn_type, name, params)) = preceded(
         tag("<+"), 
         tuple((
             alt((tag("\""), tag("#"))),
@@ -871,13 +866,10 @@ fn function<'a>(variables: &mut HashMap<&'a str, DataType>, functions: & mut  Ha
                 )
             )
         )),
-    )(i_);
-    let (i, (fn_type, name, params)) = if let Ok(res) = res  {
-        res
-    } else {
-        nest_stack.pop();
-        return Err(res.unwrap_err())
-    };
+    )(i_)?;
+
+    nest_stack.push(NestType::Function(None));
+
     let fn_type = if fn_type == "#" {DataType::Integer} else {DataType::Literal};
 
     for param in &params {
@@ -953,11 +945,11 @@ fn whitespace0<'a>(i: &'a str) -> IResult<&'a str, ()> {
     .map(|_| ()).parse(i)
 }
 
-pub enum NestType {
+pub enum NestType<'a> {
     While,
     If,
     Pipe,
-    Function,
+    Function(Option<(&'a str, Vec<(&'a str, DataType)>)>),
 }
 
 #[derive(Clone)]
@@ -968,7 +960,7 @@ pub enum FuncBody<'a> {
 }
 
 pub struct BorkParser<'a> {
-    nest_stack: Vec<NestType>,
+    nest_stack: Vec<NestType<'a>>,
     functions:  HashMap<&'a str, (DataType, Vec<ParameterName<'a>>, FuncBody<'a>)>,
     variables: HashMap<&'a str, DataType>,
 }
@@ -987,13 +979,36 @@ impl<'a> BorkParser<'a> {
         self.functions.insert(name, (fn_type, params, body));
     }
 
-    pub fn begin_function(&mut self) {
-        self.nest_stack.push(NestType::Function)
+    pub fn begin_function(&mut self, name: &'a str) {
+        let mut saved = vec![];
+        if let Some((_, params, _)) = self.functions.get(name) {
+            for param in params {
+                match param {
+                    ParameterName::Expression(name) => if let Some(var) = self.variables.insert(&name, DataType::Integer) {
+                        saved.push((*name, var));
+                    },
+                    ParameterName::Literal(name) => if let Some(var) = self.variables.insert(&name, DataType::Literal) {
+                        saved.push((*name, var));
+                    },
+                }
+            }
+        }
+        self.nest_stack.push(NestType::Function(Some((name, saved))))
     }
 
     pub fn end_function(&mut self) {
-        if let Some(NestType::Function) =  self.nest_stack.last() {
-            self.nest_stack.pop();
+        if let Some(NestType::Function(..)) =  self.nest_stack.last() {
+            if let Some(NestType::Function(Some((name, saved)))) =  self.nest_stack.pop() {
+                if let Some((_, params, _)) = self.functions.get(name) {
+                    for param in params {
+                        match param {
+                            ParameterName::Expression(name) => self.variables.remove(name),
+                            ParameterName::Literal(name) => self.variables.remove(name),
+                        };
+                    }
+                }
+                self.variables.extend(saved.into_iter())
+            }
         }
     }
 
@@ -1172,16 +1187,23 @@ mod tests {
         let (_, com) = borker.parse_command(i).unwrap();
         assert!(matches!(com, Command::End));
 
+        let (_, com) = borker.parse_command("<*'1000'>").unwrap();
+        if let Command::Sleep(exp) = com {
+            assert_eq!(exp.ops.len(), 0);
+            assert!(matches!(exp.value, Value::Int(1000)));
+        } else {
+            assert!(false);
+        }
 
         let (_, com) = borker.parse_command(">").unwrap();
         assert!(matches!(com, Command::Literal(_a)));
 
-        /*if let Command::Set(name, exp) = borker.parse_command("<=x;10>").unwrap().1 {
+        if let Command::Set(name, Parameter::Expression(exp)) = borker.parse_command("<=x;'10'>").unwrap().1 {
             assert_eq!(name, "x");
             assert!(matches!(exp.value, Value::Int(10)));
         } else {
             assert!(false);
-        }*/
+        }
 
         if let Command::Expression(exp) = borker.parse_command("'10$x'>").unwrap().1 {
             assert!(matches!(exp.value, Value::Int(10)));
@@ -1197,8 +1219,6 @@ mod tests {
         } else {
             assert!(false);
         }
-
-        assert!(matches!(borker.parse_command("<$x>").unwrap().1, Command::Print("x")));
 
         if let Command::Expression(exp) = borker.parse_command("'x*10'").unwrap().1 {
             assert!(matches!(exp.value, Value::Variable("x")));
@@ -1268,10 +1288,6 @@ mod tests {
             assert!(false);
         }
 
-        assert!(matches!(borker.parse_command("<^1>"), Ok((_, Command::Left))));
-        assert!(matches!(borker.parse_command("<^2>"), Ok((_, Command::Right))));
-        assert!(matches!(borker.parse_command("<^3>"), Ok((_, Command::Middle))));
-
         if let Command::Move(x, y) = borker.parse_command("<%10;-20>").unwrap().1 {
             assert!(matches!(x.value, Value::Int(10)));
             assert!(matches!(y.value, Value::Int(-20)));
@@ -1287,7 +1303,7 @@ mod tests {
         }
 
 
-        assert!(matches!(function(&mut borker.variables, &mut borker.functions, &mut borker.nest_stack, "<+\"hello;\"name;\"Hello my name is\"<$name>>").unwrap(), ("", Command::None)));
+        assert!(matches!(function(&mut borker.variables, &mut borker.functions, &mut borker.nest_stack, "<+\"hello;\"name;\"Hello my name is\\$x\\\">").unwrap(), ("", Command::None)));
         if let (_, Command::Call("hello", params)) = borker.parse_command("<!hello;\"ella\">").unwrap() {
             assert_eq!(params.len(), 1);
             if let Parameter::Literal(s) = &params[0] {

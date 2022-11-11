@@ -58,8 +58,8 @@ Expressions are values combined with operators.
 |Brackets|```(x+2) * (x+1)```|Brackets can be used to group expression|
 |Integers|```2```|Any integers.|
 |Booleans|```T*2```| True or False.|
-|Ascii| ```@a```| The number value of an ascii character. Used ```@character```.|
-|Ascii| ```\@1\```| The ascii character of a number. Used ```\@expression\```.|
+|Ascii number| ```@a```| The number value of an ascii character. Used ```@character```.|
+|Ascii character| ```\@1\```| The ascii character of a number. Used ```\@expression\```.|
 |Variables|```x+2```| A variable defined by the set tag or a function parameter. Only integer variables can be used in expressions.|
 |Call|```<!add;2;3>```| Calls to functions with integer return types can be used in expressions.|
 |LED State|```\&1```| LED state tags can be used in expression. They will return a boolean.|
@@ -111,15 +111,16 @@ Expressions are values combined with operators.
 ### Tags
 |Name| Tag | Example | Description |
 |----|---------|---------|------------|
-|Key|```<>```|```<backspace>``` ```<crtl;"x">```|Sends keystroke of the corresponding special/modifier key. Keys can be chained together with ```;```. Keys can be chained with literals.|
-|Hold|```<->``` ```<_>```|```<_"x">``` ```<-backspace>```|Hold or release a key. Will accept both special/modifier keys and literals. Keys can be chained. If the tag begins with ```<-``` then the key is released. If the tag begins with ```<_``` then the key is held.|
+|Key|```<>```|```<BACKSPACE>``` ```<CTRL;"x">```|Sends keystroke of the corresponding special/modifier key. Keys can be chained together with ```;```. Keys can be chained with literals.|
+|Hold|```<->``` ```<_>```|```<_"x">``` ```<-BACKSPACE>```|Hold or release a key. Will accept both special/modifier keys and literals. Keys can be chained. If the tag begins with ```<-``` then the key is released. If the tag begins with ```<_``` then the key is held.|
 |If|```<? ; ; >```| ```<? x > 0; "x is greater than zero" ;? x < 0; "x is less than zero"  ; "x is zero" >```|An if statement. The basic building block of the tag is ```? condition ; result if true```. The first one is required and can then be chained one after the other with a ```;```. If a condition is true it's contents will be evaluated and then the tag will be exited skipping the rest. When a condition is false it's contents are skipped and the next condition is checked. The last block can omit the condition resulting in it being evaluated if all other conditions are false. Operators and variables can be used in conditions. |
 |Loop|```<* ; >```|```<*x<0; "x is less than zero" >```|A loop. Evaluates whats between the ```;``` and ```>``` while the condition between the ```*``` and ```;``` is true. Operators and variables can be used in the condition.|
 |Print|```<$ >```|```<$x>```|Print the value of a variable.|
-|Click Mouse|```<^ >```| ```<@1>```| Clicks the given mouse button. ```1``` is the left mouse button. ```2``` is the right mouse button. ```3``` is the middle mouse button|
 |Move Mouse|```<% ; >```|```<%10;-10>```|Move the mouse. ```<%x;y>``` The tag takes the relative x and y movement of the mouse as parameters. The values are capped between -127 and 127. Operators and variables can be used.|
 |Pipe|```<\| >```|```<\|ls /dev/>```| Run the given command and return its stdout. The command will be run with bash. Only the ```\>``` escape can be used inside the tag.|
 |Function|```<+ ; ; >```|```<+"hello;"name;"Hello, World!\nMy name is <$name>">``` ```<+#add;#x;#y;'x+y'>```| Defines a function. The first parameter is the name of the function. The second is a list of input variables. The third is the content of the function that is evaluated when it is called. Function definitions return nothing. Functions must be defined before they can be used. Functions are expressional meaning the return value of the function is what the contents of the function evaluate too. All functions must evaluate to something. The type of the function return and the type of each parameter must be defined by prefixing their names with either ```"``` (a literal) or ```#``` (an integer). If the return type if ```#``` then the body of the function must be an expression. If the return type is ```"``` then the body of the function must be tags.|
-|Call Function|```<! ; >``` | ```<!hello;"ella">``` ```<!add;10;1>```| Calls a function with the given inputs. The first parameter is the name of the function being called. The second is a list of input parameters.|
+|Call Function|```<! ; >``` | ```<!hello;"ella">``` ```<!add;'10';'1'>```| Calls a function with the given inputs. The first parameter is the name of the function being called. The second is a list of input parameters.|
+|Sleep|```<*' '>```|```<*'1000'>```|Sleep for an amount of time. Can be thought of as loop for x amount of milliseconds. Usage ```<*expression>```|
+|Set|```<= ; >```|```<=x;"Hello, world!">```| Set a variable equal to an expression or literal. Variables are strongly typed.|
 |Literal|```" "```| ```"hello"```| A literal can be used as a tag.|
 |Expression|```' '```|```'10+3'```| An expression. Operators and variables can be used. |
