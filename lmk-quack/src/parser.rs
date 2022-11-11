@@ -171,7 +171,7 @@ fn key<'a>(i: &'a str) -> IResult<&'a str, BasicKey> {
 fn modifier<'a>(i: &'a str) -> IResult<&'a str, Modifier> {
     alt((
         tag("ALT").map(|_| Modifier::LeftAlt),
-        tag("CTL").map(|_| Modifier::LeftControl),
+        tag("CTRL").map(|_| Modifier::LeftControl),
         tag("CONTROL").map(|_| Modifier::LeftControl),
         tag("COMMAND").map(|_| Modifier::LeftMeta),
         tag("GUI").map(|_| Modifier::LeftMeta),
@@ -389,6 +389,16 @@ fn var<'a>(i: &'a str) -> IResult<&'a str, Command<'a>> {
     ))(i).map(|(i, (_,_, var, _,_,_,expr))| (i, Command::Var(var, expr)))
 }
 
+fn set<'a>(i: &'a str) -> IResult<&'a str, Command<'a>> {
+    tuple((
+        variable,
+        space0,
+        tag("="),
+        space0,
+        expression,
+    ))(i).map(|(i, ( var, _,_,_,expr))| (i, Command::Var(var, expr)))
+}
+
 fn if_begin<'a>(i: &'a str) -> IResult<&'a str, Command<'a>> {
     tuple((
         tag("IF"),
@@ -529,6 +539,7 @@ pub fn parse_line<'a>(i: &'a str) -> IResult<&'a str, Command<'a>> {
                 while_control,
                 function_control,
                 random,
+                set,
             )),
             space0,
             take_while(|c| c == '\n'),
@@ -580,7 +591,7 @@ mod tests {
 
         assert!(matches!(parse_line("DELAY 100\n").unwrap().1, Command::Delay(_expr)));
 
-        assert!(matches!(parse_line("CTL SHIFT a\n").unwrap().1, Command::Shortcut(_mods, BasicKey::Char('a', KeyOrigin::Keyboard))));
+        assert!(matches!(parse_line("CTRL SHIFT a\n").unwrap().1, Command::Shortcut(_mods, BasicKey::Char('a', KeyOrigin::Keyboard))));
 
         assert!(matches!(parse_line("ENTER\n").unwrap().1, Command::Special(SpecialKey::Enter)));
 
