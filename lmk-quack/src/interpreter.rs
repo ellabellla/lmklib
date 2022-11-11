@@ -85,8 +85,8 @@ impl QuackInterp {
         for line in &mut lines {
             line.push('\n');
             for (word, text) in &consts {
-                *line = line.replace(&format!(" {} ", word), text);
-                *line = line.replace(&format!(" {}\n", word), text);
+                *line = line.replace(&format!(" {} ", word), &format!(" {} ", text));
+                *line = line.replace(&format!(" {}\n", word), &format!(" {}\n", text));
             }
 
             if let Ok((_, name)) = parse_function(line) {
@@ -123,11 +123,16 @@ impl QuackInterp {
     fn find_while_end(&self, i: &usize) -> Option<usize> {
         let mut depth = 1;
         let mut i = *i + 1;
-        while i < self.lines.len() && depth != 0 {
+        while i < self.lines.len() {
             match parse_line(&self.lines[i]) {
                 Ok((_, command)) => match command {
                     Command::While(_) => depth += 1,
-                    Command::EndWhile => depth -= 1,
+                    Command::EndWhile => {
+                        depth -= 1;
+                        if depth == 0 {
+                            return Some(i+1);
+                        }
+                    },
                     _ => (),
                 },
                 Err(_) => (),
