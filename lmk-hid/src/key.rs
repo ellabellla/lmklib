@@ -254,7 +254,7 @@ impl Keyboard {
       self.holding.clone()
    }
 
-   /// Press
+   /// Press key with layout support
    pub fn press(&mut self, layout_key: &str, c: char) -> Option<()> {
       let layout = Keyboard::get_layout(layout_key)?;
       match keycode_for_unicode(layout, c as u16) {
@@ -400,7 +400,7 @@ impl Keyboard {
       }
    }
 
-   /// Send keystrokes of keys in string
+   /// Send keystrokes of keys in string with layout support
    pub fn press_string(&mut self, layout_key: &str, str: &str) {
       #[cfg(feature = "debug")]
       {
