@@ -2,6 +2,7 @@
 members = [
     "lmk-hid",
     "lmk-kserver",
+    "lmk-kservice",
     "lmk-kout",
     "lmk-quack",
     "lmk-bork"
