@@ -1,5 +1,5 @@
 # Quack
-A lazy ducky script interpreter that implements a subset of [ducky script](https://docs.hak5.org/hak5-usb-rubber-ducky/ducky-script-quick-reference). By lazy it is meant that interpreter will continue on errors and do it's best to execute any script given to it. It will does very little work to verify the correctness of the scripts it's running.
+A lazy ducky script interpreter that implements a subset of [ducky script](https://docs.hak5.org/hak5-usb-rubber-ducky/ducky-script-quick-reference). Meaning the interpreter will continue on errors and do it's best to execute any script given to it. It will do very little work to verify the correctness of the scripts it's running.
 
 ## Examples
 
