@@ -71,16 +71,16 @@ impl<'a> BorkInterp<'a> {
     ) -> Result<(), Error> {
         match key {
             Key::Modifier(modi) => keyboard.press_modifier(&modi),
-            Key::Special(s) => {keyboard.press_key(&lmk_hid::key::Key::Special(*s));},
-            Key::Literal(c) => {keyboard.press_key(&lmk_hid::key::Key::Char(*c, KeyOrigin::Keyboard));},
+            Key::Special(s) => {keyboard.press_key(&lmk_hid::key::BasicKey::Special(*s));},
+            Key::Literal(c) => {keyboard.press_key(&lmk_hid::key::BasicKey::Char(*c, KeyOrigin::Keyboard));},
             Key::ASCII(exp) => {
                 let c = BorkInterp::resolve_ascii(variables, keyboard, mouse, parser, &exp)?;
                 if let Some(c) = c {
-                    keyboard.press_key(&lmk_hid::key::Key::Char(c, KeyOrigin::Keyboard));
+                    keyboard.press_key(&lmk_hid::key::BasicKey::Char(c, KeyOrigin::Keyboard));
                 }
             },
             Key::Variable(name) => match BorkInterp::resolve_variable(variables, name)? {
-                Data::Integer(i) => keyboard.press_string(&format!("{}", i)),
+                Data::Integer(i) => keyboard.press_basic_string(&format!("{}", i)),
                 Data::Literal(keys) => for key in keys { BorkInterp::press_key(variables, keyboard, mouse, parser, &key)? },
             },
             Key::Keycode(byte) => keyboard.press_keycode(*byte),
@@ -101,12 +101,12 @@ impl<'a> BorkInterp<'a> {
     ) -> Result<(), Error> {
         match key {
             Key::Modifier(modi) => keyboard.hold_mod(&modi),
-            Key::Special(s) => {keyboard.hold(&lmk_hid::key::Key::Special(*s));},
-            Key::Literal(c) => {keyboard.hold(&lmk_hid::key::Key::Char(*c, KeyOrigin::Keyboard));},
+            Key::Special(s) => {keyboard.hold_key(&lmk_hid::key::BasicKey::Special(*s));},
+            Key::Literal(c) => {keyboard.hold_key(&lmk_hid::key::BasicKey::Char(*c, KeyOrigin::Keyboard));},
             Key::ASCII(exp) => {
                 let c = BorkInterp::resolve_ascii(variables, keyboard, mouse, parser, &exp)?;
                 if let Some(c) = c {
-                    keyboard.hold(&lmk_hid::key::Key::Char(c, KeyOrigin::Keyboard));
+                    keyboard.hold_key(&lmk_hid::key::BasicKey::Char(c, KeyOrigin::Keyboard));
                 }
             },
             Key::Variable(name) => match BorkInterp::resolve_variable(variables, name)? {
@@ -131,12 +131,12 @@ impl<'a> BorkInterp<'a> {
     ) -> Result<(), Error> {
         match key {
             Key::Modifier(modi) => keyboard.release_mod(&modi),
-            Key::Special(s) => {keyboard.release(&lmk_hid::key::Key::Special(*s));},
-            Key::Literal(c) => {keyboard.release(&lmk_hid::key::Key::Char(*c, KeyOrigin::Keyboard));},
+            Key::Special(s) => {keyboard.release_key(&lmk_hid::key::BasicKey::Special(*s));},
+            Key::Literal(c) => {keyboard.release_key(&lmk_hid::key::BasicKey::Char(*c, KeyOrigin::Keyboard));},
             Key::ASCII(exp) => {
                 let c = BorkInterp::resolve_ascii(variables, keyboard, mouse, parser, &exp)?;
                 if let Some(c) = c {
-                   keyboard.release(&lmk_hid::key::Key::Char(c, KeyOrigin::Keyboard));
+                   keyboard.release_key(&lmk_hid::key::BasicKey::Char(c, KeyOrigin::Keyboard));
                 }
             },
             Key::Variable(name) => match BorkInterp::resolve_variable(variables, name)? {
@@ -481,7 +481,7 @@ impl<'a> BorkInterp<'a> {
             Command::Expression(exp) => {
                 let value = BorkInterp::resolve_expression(variables, keyboard, mouse, parser, &exp)?;
                 if let Some(value) = value {
-                    keyboard.press_string(&format!("{}", value));
+                    keyboard.press_basic_string(&format!("{}", value));
                 }
             },
             Command::Move(x, y) => {
@@ -514,16 +514,16 @@ impl<'a> BorkInterp<'a> {
                     .output()
                     .map_err(|e| Error::PipeError(e))?;
                 
-                keyboard.press_string(&String::from_utf8(output.stdout).map_err(|e| Error::PipeParseError(e))?)
+                keyboard.press_basic_string(&String::from_utf8(output.stdout).map_err(|e| Error::PipeParseError(e))?)
             },
             Command::Call(name, params) => {
                 if let Some(value) = BorkInterp::resolve_call(variables, keyboard, mouse, parser, &mut Vec::new(), &mut Vec::new(), DataType::Any, name, params)? {
-                    keyboard.press_string(&format!("{}", value));
+                    keyboard.press_basic_string(&format!("{}", value));
                 }
             },
             Command::None => (),
             Command::LED(state) => {
-                keyboard.press_string(&format!("{}", keyboard.led_state(&state)));
+                keyboard.press_basic_string(&format!("{}", keyboard.led_state(&state)));
             },
             Command::Sleep(exp) => {
                 let millis = BorkInterp::resolve_expression(variables, keyboard, mouse, parser, &exp)?;

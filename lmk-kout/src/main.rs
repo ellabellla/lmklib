@@ -21,7 +21,7 @@ fn kout_stdin(hid: &mut HID) {
         } else {
             newline.send_keep(hid).unwrap();
         }
-        keyboard.press_string(&line);
+        keyboard.press_basic_string(&line);
         keyboard.send(hid).unwrap();
     }
 }
@@ -46,7 +46,7 @@ fn main() {
                 kout_stdin(&mut hid);
             } else {
                 if let Ok(contents) = fs::read_to_string(&input) {
-                    keyboard.press_string(&contents);
+                    keyboard.press_basic_string(&contents);
                     keyboard.send(&mut hid).unwrap();
                 } else {
                     println!("Couldn't open file \"{}\"", input);

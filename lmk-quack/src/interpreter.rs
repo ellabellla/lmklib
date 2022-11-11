@@ -1,6 +1,6 @@
 use std::{collections::HashMap, time::Duration, thread, fmt::{Display}};
 
-use lmk_hid::{key::{Keyboard, Key, SpecialKey, KeyOrigin}, HID};
+use lmk_hid::{key::{Keyboard, BasicKey, SpecialKey, KeyOrigin}, HID};
 use rand::{Rng};
 
 use crate::parser::{parse_define, parse_line, Value, Expression, Operator, Command, parse_function, string_variable, Random};
@@ -209,9 +209,9 @@ impl QuackInterp {
     fn press_string<'a>(&self, rt: &mut Runtime, str: &'a str) -> Result<(), Error> {
         if let Some(name) = string_variable(str) {
             let value = rt.variables.get(name).ok_or(Error::UnresolvedValue)?;
-            rt.keyboard.press_string(&value.to_string());
+            rt.keyboard.press_basic_string(&value.to_string());
         } else {
-            rt.keyboard.press_string(str)
+            rt.keyboard.press_basic_string(str)
         }
         Ok(())
     }
@@ -227,9 +227,9 @@ impl QuackInterp {
             Command::String(str) => self.press_string(rt, str)?,
             Command::StringLN(str) => {
                 self.press_string(rt, str)?;
-                rt.keyboard.press_key(&Key::Special(SpecialKey::Enter));
+                rt.keyboard.press_key(&BasicKey::Special(SpecialKey::Enter));
             },
-            Command::Special(special) => {rt.keyboard.press_key(&Key::Special(special));},
+            Command::Special(special) => {rt.keyboard.press_key(&BasicKey::Special(special));},
             Command::Modifier(modifier) => rt.keyboard.press_modifier(&modifier),
             Command::Shortcut(modifiers, key) => {rt.keyboard.press_shortcut(&modifiers, &key);},
             Command::Delay(expression) => {
@@ -242,8 +242,8 @@ impl QuackInterp {
                 
                 thread::sleep(Duration::from_millis(amount));
             },
-            Command::Hold(key) => {rt.keyboard.hold(&key);},
-            Command::Release(key) => rt.keyboard.release(&key),
+            Command::Hold(key) => {rt.keyboard.hold_key(&key);},
+            Command::Release(key) => rt.keyboard.release_key(&key),
             Command::HoldMod(modifier) => rt.keyboard.hold_mod(&modifier),
             Command::ReleaseMod(modifier) => rt.keyboard.release_mod(&modifier),
             Command::InjectMod => (),
@@ -318,7 +318,7 @@ impl QuackInterp {
                     Random::ANY => ANY[rng.gen_range(0..ANY.len())],
                 } as char;
 
-                rt.keyboard.press_key(&Key::Char(c, KeyOrigin::Keyboard));
+                rt.keyboard.press_key(&BasicKey::Char(c, KeyOrigin::Keyboard));
             }
         };
         Ok((&rt.i + 1, None))

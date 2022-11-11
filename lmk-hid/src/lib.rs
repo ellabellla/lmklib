@@ -4,6 +4,9 @@
 /// Keyboard module
 pub mod key;
 
+/// Key Translation Module
+mod translate;
+
 /// Mouse Module
 pub mod mouse;
 

@@ -1,4 +1,4 @@
-use lmk_hid::key::{SpecialKey, Modifier, Key, KeyOrigin};
+use lmk_hid::key::{SpecialKey, Modifier, BasicKey, KeyOrigin};
 use nom::character::complete::{digit1, alpha1, space1, space0, alphanumeric1};
 use nom::combinator::{eof};
 use nom::bytes::complete::{take, take_while, take_till};
@@ -56,10 +56,10 @@ pub enum Command<'a> {
     StringLN(&'a str),
     Special(SpecialKey),
     Modifier(Modifier),
-    Shortcut(Vec<Modifier>, Key),
+    Shortcut(Vec<Modifier>, BasicKey),
     Delay(Expression<'a>),
-    Hold(Key),
-    Release(Key),
+    Hold(BasicKey),
+    Release(BasicKey),
     HoldMod(Modifier),
     ReleaseMod(Modifier),
     InjectMod,
@@ -159,12 +159,12 @@ fn delay<'a>(i: &'a str) -> IResult<&'a str, Command<'a>> {
         .map(|(i, (_,_,value))| (i, Command::Delay(value)))
 }
 
-fn key<'a>(i: &'a str) -> IResult<&'a str, Key> {
+fn key<'a>(i: &'a str) -> IResult<&'a str, BasicKey> {
     alt((
         special
-            .map(|s| Key::Special(s)),
+            .map(|s| BasicKey::Special(s)),
         take(1u32)
-            .map(|c:&str| Key::Char(c.chars().next().unwrap(), KeyOrigin::Keyboard))
+            .map(|c:&str| BasicKey::Char(c.chars().next().unwrap(), KeyOrigin::Keyboard))
     ))(i)
 }  
 
@@ -563,7 +563,7 @@ pub fn parse_define<'a>(i: &'a str) -> IResult<&'a str, (&'a str, &'a str)> {
 
 #[cfg(test)]
 mod tests {
-    use lmk_hid::key::{Key, KeyOrigin, Modifier, SpecialKey};
+    use lmk_hid::key::{BasicKey, KeyOrigin, Modifier, SpecialKey};
 
     use crate::{parser::{parse_line, Command, Value, parse_define, Operator, bool, Random}};
 
@@ -580,12 +580,12 @@ mod tests {
 
         assert!(matches!(parse_line("DELAY 100\n").unwrap().1, Command::Delay(_expr)));
 
-        assert!(matches!(parse_line("CTL SHIFT a\n").unwrap().1, Command::Shortcut(_mods, Key::Char('a', KeyOrigin::Keyboard))));
+        assert!(matches!(parse_line("CTL SHIFT a\n").unwrap().1, Command::Shortcut(_mods, BasicKey::Char('a', KeyOrigin::Keyboard))));
 
         assert!(matches!(parse_line("ENTER\n").unwrap().1, Command::Special(SpecialKey::Enter)));
 
-        assert!(matches!(parse_line("HOLD a\n").unwrap().1, Command::Hold(Key::Char('a', KeyOrigin::Keyboard))));
-        assert!(matches!(parse_line("RELEASE a\n").unwrap().1, Command::Release(Key::Char('a', KeyOrigin::Keyboard))));
+        assert!(matches!(parse_line("HOLD a\n").unwrap().1, Command::Hold(BasicKey::Char('a', KeyOrigin::Keyboard))));
+        assert!(matches!(parse_line("RELEASE a\n").unwrap().1, Command::Release(BasicKey::Char('a', KeyOrigin::Keyboard))));
 
         assert!(matches!(parse_line("HOLD GUI\n").unwrap().1, Command::HoldMod(Modifier::LeftMeta)));
         assert!(matches!(parse_line("RELEASE GUI\n").unwrap().1, Command::ReleaseMod(Modifier::LeftMeta)));

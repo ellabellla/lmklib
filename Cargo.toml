@@ -5,5 +5,6 @@ members = [
     "lmk-kservice",
     "lmk-kout",
     "lmk-quack",
-    "lmk-bork"
+    "lmk-bork",
+    "keyboard-layouts"
 ]
