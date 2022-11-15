@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # Create gadget
-mkdir /sys/kernel/config/usb_gadget/mykeyboard
-cd /sys/kernel/config/usb_gadget/mykeyboard
+mkdir /sys/kernel/config/usb_gadget/lmk
+cd /sys/kernel/config/usb_gadget/lmk
 
 # Add basic information
 echo 0x0100 > bcdDevice # Version 1.0.0
@@ -53,8 +53,16 @@ do
     echo 0 > "functions/mass_storage.usb0/lun.$c/ro"
     echo 0 > "functions/mass_storage.usb0/lun.$c/nofua"
     echo 1 > "functions/mass_storage.usb0/lun.$c/removable"
+    chmod 777 "functions/mass_storage.usb0/lun.$c/file"
 done
 
+# Create Ethernet Adapter
+mkdir -p functions/ecm.usb0
+# first byte of address must be even
+HOST="de:ad:be:ef:00:00" # "HostPC"
+SELF="c0:ff:ee:c0:ff:ee" # "BadUSB"
+echo $HOST > functions/ecm.usb0/host_addr
+echo $SELF > functions/ecm.usb0/dev_addr
 
 # Create configuration
 mkdir configs/c.1
@@ -67,9 +75,13 @@ echo "Configuration" > configs/c.1/strings/0x409/configuration
 ln -s functions/hid.keyboard configs/c.1/
 ln -s functions/hid.mouse configs/c.1/
 ln -s functions/mass_storage.usb0 configs/c.1/
+ln -s functions/ecm.usb0 configs/c.1/
 
 # Enable gadget
 ls /sys/class/udc > UDC
 
 chmod 777 /dev/hidg0
 chmod 777 /dev/hidg1
+
+ifconfig usb0 10.0.0.1 netmask 255.255.255.252 up
+route add -net default gw 10.0.0.2
