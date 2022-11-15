@@ -101,9 +101,9 @@ impl Mouse {
     }
 
     /// Full buffered mouse events
-    pub fn send(&mut self, hid: &mut HID) -> io::Result<usize>{
+    pub fn send(&mut self, hid: &mut HID) -> io::Result<()>{
         if self.data == [0;5] && self.hold == 0x00 {
-            return Ok(5)
+            return Ok(())
         }
 
         if self.hold == 0x00 {

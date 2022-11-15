@@ -46,6 +46,7 @@ mod hid {
                     .open(format!("/dev/hidg{}", keyboard_id))?,
             })
         }
+
         
         /// Receive raw LED states packet from HID interface with a timeout. [crate::key::LEDStatePacket] provides an abstraction for raw state packets.
         pub fn receive_states_packet(&mut self, timeout: Duration) -> io::Result<Option<u8>>{
@@ -53,13 +54,13 @@ mod hid {
         }
 
         /// Send raw key pack to HID interface. [crate::key::Keyboard] and [crate::key::KeyPacket] provides an abstractions for raw key packets.
-        pub fn send_key_packet(&mut self, data: &[u8]) -> io::Result<usize> {
-            self.keyboard_hid.write(data)
+        pub fn send_key_packet(&mut self, data: &[u8]) -> io::Result<()> {
+            self.keyboard_hid.write_all(data)
         }
     
         /// Send raw mouse packet to HID interface. [crate::mouse::Mouse] provides an abstractions for raw mouse packets.
-        pub fn send_mouse_packet(&mut self, data: &[u8]) -> io::Result<usize> {
-            self.mouse_hid.write(data)
+        pub fn send_mouse_packet(&mut self, data: &[u8]) -> io::Result<()> {
+            self.mouse_hid.write_all(data)
         }
     }
     

@@ -412,26 +412,25 @@ impl Keyboard {
    }
 
    /// Flush Buffered keystrokes to HID interface
-   pub fn send(&mut self, hid: &mut HID) -> io::Result<usize> {
+   pub fn send(&mut self, hid: &mut HID) -> io::Result<()> {
       if self.packets.len() == 0 {
-         return Ok(0);
+         return Ok(());
       }
 
       self.packets.push(self.create_release_packet());
-      let res = KeyPacket::send_all(&self.packets, hid);
+      KeyPacket::send_all(&self.packets, hid)?;
       self.packets.clear();
-      res
+      Ok(())
    }
 
    /// Send Buffered keystrokes to HID interface and keep buffered keystrokes
-   pub fn send_keep(&self, hid: &mut HID) -> io::Result<usize> {
+   pub fn send_keep(&self, hid: &mut HID) -> io::Result<()> {
       if self.packets.len() == 0 {
-         return Ok(0);
+         return Ok(());
       }
 
-      let res = KeyPacket::send_all(&self.packets, hid)?;
-      let res2 = hid.send_key_packet(&self.create_release_packet().data)?;
-      Ok(res + res2)
+      KeyPacket::send_all(&self.packets, hid)?;
+      hid.send_key_packet(&self.create_release_packet().data)
    }
 }
 
@@ -594,18 +593,17 @@ impl KeyPacket {
    }
 
    /// Send packet to hid interface
-   pub fn send(&self, hid: &mut HID) -> io::Result<usize> {
+   pub fn send(&self, hid: &mut HID) -> io::Result<()> {
       hid.send_key_packet(&self.data)
    }
 
    /// Send a list of packets to hid interface
-   pub fn send_all(packets: &Vec<KeyPacket>, hid: &mut HID) -> io::Result<usize> {
-      let mut size = 0;
+   pub fn send_all(packets: &Vec<KeyPacket>, hid: &mut HID) -> io::Result<()> {
       for packet in packets {
-         size += packet.send(hid)?;
+         packet.send(hid)?;
       }
 
-      Ok(size)
+      Ok(())
    }
 
    /// Print packet data
