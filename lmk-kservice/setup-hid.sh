@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 # Create gadget
 mkdir /sys/kernel/config/usb_gadget/mykeyboard
@@ -25,7 +25,7 @@ echo "0123456789" > strings/0x409/serialnumber
 mkdir functions/hid.keyboard
 
 echo 1 > functions/hid.keyboard/protocol
-echo 16 > functions/hid.keyboard/report_length # 8-byte reports
+echo 33 > functions/hid.keyboard/report_length # 8-byte reports
 echo 1 > functions/hid.keyboard/subclass
 
 # Write report descriptor
@@ -41,36 +41,32 @@ echo 5 > functions/hid.mouse/report_length
 cp /usr/hid/mouse.desc functions/hid.mouse/report_desc
 
 # Create MASS STORAGE function
-mkdir functions/mass_storage.0
-echo 1 > functions/mass_storage.0/stall
+mkdir functions/mass_storage.usb0
+echo 1 > functions/mass_storage.usb0/stall
+for (( c=0; c<8; c++ ))
+do 
+    if (( $c != 0 ))
+    then
+        mkdir "functions/mass_storage.usb0/lun.$c"
+    fi
+    echo 0 > "functions/mass_storage.usb0/lun.$c/cdrom"
+    echo 0 > "functions/mass_storage.usb0/lun.$c/ro"
+    echo 0 > "functions/mass_storage.usb0/lun.$c/nofua"
+    echo 1 > "functions/mass_storage.usb0/lun.$c/removable"
+done
 
-echo 1 > functions/mass_storage.0/lun.0/removable
-mkdir functions/mass_storage.0/lun.1/
-echo 1 > functions/mass_storage.0/lun.1/removable
-mkdir functions/mass_storage.0/lun.2/
-echo 1 > functions/mass_storage.0/lun.2/removable
-mkdir functions/mass_storage.0/lun.3/
-echo 1 > functions/mass_storage.0/lun.3/removable
-mkdir functions/mass_storage.0/lun.4/
-echo 1 > functions/mass_storage.0/lun.4/removable
-mkdir functions/mass_storage.0/lun.5/
-echo 1 > functions/mass_storage.0/lun.5/removable
-mkdir functions/mass_storage.0/lun.6/
-echo 1 > functions/mass_storage.0/lun.6/removable
-mkdir functions/mass_storage.0/lun.7/
-echo 1 > functions/mass_storage.0/lun.7/removable
 
 # Create configuration
 mkdir configs/c.1
 mkdir configs/c.1/strings/0x409
 
-echo 200 > configs/c.1/MaxPower # 200 mA
-echo "Example configuration" > configs/c.1/strings/0x409/configuration
+echo 250 > configs/c.1/MaxPower # 200 mA
+echo "Configuration" > configs/c.1/strings/0x409/configuration
 
 # Link HID function to configuration
 ln -s functions/hid.keyboard configs/c.1/
 ln -s functions/hid.mouse configs/c.1/
-ln -s functions/mass_storage.0 configs/c1.1/
+ln -s functions/mass_storage.usb0 configs/c.1/
 
 # Enable gadget
 ls /sys/class/udc > UDC
