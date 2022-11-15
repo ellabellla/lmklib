@@ -17,8 +17,8 @@ echo 0x1d6b > idVendor # Linux Foundation
 # Create English locale
 mkdir strings/0x409
 
-echo "My manufacturer" > strings/0x409/manufacturer
-echo "My virtual keyboard" > strings/0x409/product
+echo "Ella Pash" > strings/0x409/manufacturer
+echo "LMK" > strings/0x409/product
 echo "0123456789" > strings/0x409/serialnumber
 
 # Create HID function
@@ -40,6 +40,25 @@ echo 5 > functions/hid.mouse/report_length
 
 cp /usr/hid/mouse.desc functions/hid.mouse/report_desc
 
+# Create MASS STORAGE function
+modprobe usb_f_mass_storage
+mkdir functions/mass_storage.ms0
+echo 1 > functions/mass_storage.ms0/lun.0/removable
+mkdir functions/mass_storage.ms0/lun.1/
+echo 1 > functions/mass_storage.ms0/lun.1/removable
+mkdir functions/mass_storage.ms0/lun.2/
+echo 1 > functions/mass_storage.ms0/lun.2/removable
+mkdir functions/mass_storage.ms0/lun.3/
+echo 1 > functions/mass_storage.ms0/lun.3/removable
+mkdir functions/mass_storage.ms0/lun.4/
+echo 1 > functions/mass_storage.ms0/lun.4/removable
+mkdir functions/mass_storage.ms0/lun.5/
+echo 1 > functions/mass_storage.ms0/lun.5/removable
+mkdir functions/mass_storage.ms0/lun.6/
+echo 1 > functions/mass_storage.ms0/lun.6/removable
+mkdir functions/mass_storage.ms0/lun.7/
+echo 1 > functions/mass_storage.ms0/lun.7/removable
+
 # Create configuration
 mkdir configs/c.1
 mkdir configs/c.1/strings/0x409
@@ -50,6 +69,7 @@ echo "Example configuration" > configs/c.1/strings/0x409/configuration
 # Link HID function to configuration
 ln -s functions/hid.keyboard configs/c.1/
 ln -s functions/hid.mouse configs/c.1/
+ln -s functions/mass_storage.ms0 configs/c1.1/
 
 # Enable gadget
 ls /sys/class/udc > UDC
