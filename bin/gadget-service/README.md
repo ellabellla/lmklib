@@ -1,6 +1,19 @@
-# Raspberry Pi HID Setup Service
+# Raspberry Pi Gadget Setup Service Installer
 
 ## Usage
-Run "build-reports.sh" to rebuild the report descriptor binaries from xml. [hidrd-convert](https://github.com/DIGImend/hidrd) is required.
+```bash
+Usage: gadget-service <COMMAND>
 
-Run "install.sh", with sudo, to install the service using systemd. Copies the files "hid.service" into "/etc/systemd/system/", and the report descriptors and gadget schema into "/usr/gadget/". [fschema](../../external/fschema/) is required.
+Commands:
+  install    Install the gadget service
+  uninstall  Uninstall the gadget service
+  clean      Remove all files created during install
+  help       Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help     Print help information
+  -V, --version  Print version information
+```
+
+## Report Descriptors
+Run "build-reports.sh" to rebuild the report descriptor binaries from xml. [hidrd-convert](https://github.com/DIGImend/hidrd) is required.
