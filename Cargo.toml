@@ -6,7 +6,8 @@ members = [
     "bin/kout",
     "bin/quack",
     "bin/bork",
-    "external/keyboard-layouts"
+    "external/keyboard-layouts",
+    "external/fschema/fschema",
 ]
 
 [workspace.dependencies]

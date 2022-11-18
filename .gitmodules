@@ -1,3 +1,6 @@
 [submodule "lmk-keyboard-layouts"]
 	path = keyboard-layouts
 	url = git@github.com:ellabellla/keyboard-layouts.git
+[submodule "external/fschema"]
+	path = external/fschema
+	url = https://github.com/ellabellla/fschema.git
