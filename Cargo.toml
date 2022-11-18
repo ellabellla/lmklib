@@ -2,7 +2,7 @@
 members = [
     "lib/virt-hid",
     "bin/kserver",
-    "bin/kservice",
+    "bin/gadget-service",
     "bin/kout",
     "bin/quack",
     "bin/bork",
