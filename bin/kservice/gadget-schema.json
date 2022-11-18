@@ -45,14 +45,14 @@
                 "protocol": ["1"],
                 "report_length": ["33"],
                 "subclass": ["1"],
-                "report_desc": ["/usr/hid/keyboard.desc", {"ftype": "Copy"}]
+                "report_desc": ["/usr/gadget/keyboard.desc", {"ftype": "Copy"}]
             },
             
             "hid.mouse": {
                 "protocol": ["0"],
                 "report_length": ["5"],
                 "subclass": ["0"],
-                "report_desc": ["/usr/hid/mouse.desc", {"ftype": "Copy"}]
+                "report_desc": ["/usr/gadget/mouse.desc", {"ftype": "Copy"}]
             },
 
             "ecm.usb0": {

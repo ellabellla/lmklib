@@ -1,0 +1,10 @@
+[Unit]
+Description=Setup Gadget
+
+[Service]
+Type=oneshot
+ExecStart=fschema /usr/gadget/gadget-schema.json /sys/kernel/config/usb_gadget/lmk
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

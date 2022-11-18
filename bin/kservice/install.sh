@@ -1,11 +1,11 @@
 #!/bin/bash
 
-mkdir /usr/hid/
-cp keyboard.desc /usr/hid/keyboard.desc
-cp mouse.desc /usr/hid/mouse.desc
+mkdir /usr/gadget/
+cp keyboard.desc /usr/gadget/keyboard.desc
+cp mouse.desc /usr/gadget/mouse.desc
+cp gadget-schema.json /usr/gadget/gadget-schema.json
 
-cp setup-hid.sh /usr/bin/setup-hid.sh
-cp hid.service /etc/systemd/system/hid.service
+cp gadget.service /etc/systemd/system/gadget.service
 
 systemctl daemon-reload
-systemctl enable hid.service
+systemctl enable gadget.service
