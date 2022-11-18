@@ -1,6 +1,6 @@
 use std::{collections::HashMap, process, time::Duration, thread};
 
-use lmk_hid::{key::{Keyboard, KeyOrigin}, mouse::{Mouse, MouseButton}, HID};
+use virt_hid::{key::{Keyboard, KeyOrigin}, mouse::{Mouse, MouseButton}, HID};
 
 use crate::parser::{BorkParser, Command, Key, Expression, NestType, Parameter, ParameterName, FuncBody, Value, DataType, Operator, };
 
@@ -71,12 +71,12 @@ impl<'a> BorkInterp<'a> {
     ) -> Result<(), Error> {
         match key {
             Key::Modifier(modi) => keyboard.press_modifier(&modi),
-            Key::Special(s) => {keyboard.press_key(&lmk_hid::key::BasicKey::Special(*s));},
-            Key::Literal(c) => {keyboard.press_key(&lmk_hid::key::BasicKey::Char(*c, KeyOrigin::Keyboard));},
+            Key::Special(s) => {keyboard.press_key(&virt_hid::key::BasicKey::Special(*s));},
+            Key::Literal(c) => {keyboard.press_key(&virt_hid::key::BasicKey::Char(*c, KeyOrigin::Keyboard));},
             Key::ASCII(exp) => {
                 let c = BorkInterp::resolve_ascii(variables, keyboard, mouse, parser, &exp)?;
                 if let Some(c) = c {
-                    keyboard.press_key(&lmk_hid::key::BasicKey::Char(c, KeyOrigin::Keyboard));
+                    keyboard.press_key(&virt_hid::key::BasicKey::Char(c, KeyOrigin::Keyboard));
                 }
             },
             Key::Variable(name) => match BorkInterp::resolve_variable(variables, name)? {
@@ -101,12 +101,12 @@ impl<'a> BorkInterp<'a> {
     ) -> Result<(), Error> {
         match key {
             Key::Modifier(modi) => keyboard.hold_mod(&modi),
-            Key::Special(s) => {keyboard.hold_key(&lmk_hid::key::BasicKey::Special(*s));},
-            Key::Literal(c) => {keyboard.hold_key(&lmk_hid::key::BasicKey::Char(*c, KeyOrigin::Keyboard));},
+            Key::Special(s) => {keyboard.hold_key(&virt_hid::key::BasicKey::Special(*s));},
+            Key::Literal(c) => {keyboard.hold_key(&virt_hid::key::BasicKey::Char(*c, KeyOrigin::Keyboard));},
             Key::ASCII(exp) => {
                 let c = BorkInterp::resolve_ascii(variables, keyboard, mouse, parser, &exp)?;
                 if let Some(c) = c {
-                    keyboard.hold_key(&lmk_hid::key::BasicKey::Char(c, KeyOrigin::Keyboard));
+                    keyboard.hold_key(&virt_hid::key::BasicKey::Char(c, KeyOrigin::Keyboard));
                 }
             },
             Key::Variable(name) => match BorkInterp::resolve_variable(variables, name)? {
@@ -131,12 +131,12 @@ impl<'a> BorkInterp<'a> {
     ) -> Result<(), Error> {
         match key {
             Key::Modifier(modi) => keyboard.release_mod(&modi),
-            Key::Special(s) => {keyboard.release_key(&lmk_hid::key::BasicKey::Special(*s));},
-            Key::Literal(c) => {keyboard.release_key(&lmk_hid::key::BasicKey::Char(*c, KeyOrigin::Keyboard));},
+            Key::Special(s) => {keyboard.release_key(&virt_hid::key::BasicKey::Special(*s));},
+            Key::Literal(c) => {keyboard.release_key(&virt_hid::key::BasicKey::Char(*c, KeyOrigin::Keyboard));},
             Key::ASCII(exp) => {
                 let c = BorkInterp::resolve_ascii(variables, keyboard, mouse, parser, &exp)?;
                 if let Some(c) = c {
-                   keyboard.release_key(&lmk_hid::key::BasicKey::Char(c, KeyOrigin::Keyboard));
+                   keyboard.release_key(&virt_hid::key::BasicKey::Char(c, KeyOrigin::Keyboard));
                 }
             },
             Key::Variable(name) => match BorkInterp::resolve_variable(variables, name)? {
@@ -505,8 +505,8 @@ impl<'a> BorkInterp<'a> {
                     }
                 }).unwrap_or(0);
 
-                mouse.move_mouse(&x, &lmk_hid::mouse::MouseDir::X);
-                mouse.move_mouse(&y, &lmk_hid::mouse::MouseDir::Y);
+                mouse.move_mouse(&x, &virt_hid::mouse::MouseDir::X);
+                mouse.move_mouse(&y, &virt_hid::mouse::MouseDir::Y);
             },
             Command::Pipe(coms) => {                
                 let output = process::Command::new("bash")

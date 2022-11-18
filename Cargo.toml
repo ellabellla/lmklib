@@ -1,10 +1,17 @@
 [workspace]
 members = [
-    "lmk-hid",
-    "lmk-kserver",
-    "lmk-kservice",
-    "lmk-kout",
-    "lmk-quack",
-    "lmk-bork",
-    "keyboard-layouts"
+    "lib/virt-hid",
+    "lib/fschema",
+    "bin/kserver",
+    "bin/kservice",
+    "bin/kout",
+    "bin/quack",
+    "bin/bork",
+    "external/keyboard-layouts"
 ]
+
+[workspace.dependencies]
+virt-hid = { path = "lib/virt-hid" }
+fschema = { path = "lib/fschema" }
+keyboard-layouts = { path= "external/keyboard-layouts" }
+gen_layouts_sys = { path= "external/keyboard-layouts/gen_layouts_sys" }

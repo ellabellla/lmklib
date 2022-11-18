@@ -1,6 +1,6 @@
 use std::{collections::HashMap, time::Duration, thread, fmt::{Display}};
 
-use lmk_hid::{key::{Keyboard, BasicKey, SpecialKey, KeyOrigin}, HID};
+use virt_hid::{key::{Keyboard, BasicKey, SpecialKey, KeyOrigin}, HID};
 use rand::{Rng};
 
 use crate::parser::{parse_define, parse_line, Value, Expression, Operator, Command, parse_function, string_variable, Random};

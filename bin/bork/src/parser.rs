@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use lmk_hid::key::{SpecialKey, Modifier, LEDState};
+use virt_hid::key::{SpecialKey, Modifier, LEDState};
 use nom::{IResult, bytes::{complete::{tag, take_while, take_while1}}, multi::{fold_many_m_n, many1, separated_list1, many0}, InputIter, InputLength, Slice, AsChar, branch::{alt}, Parser, error::{ErrorKind, Error, ParseError}, sequence::{delimited, preceded, tuple, pair, terminated, separated_pair}, character::{complete::{digit1}}, InputTake, combinator::eof};
 
 macro_rules! tuple_mut_inner {
@@ -1099,7 +1099,7 @@ impl<'a> BorkParser<'a> {
 
 #[cfg(test)]
 mod tests {
-    use lmk_hid::key::{SpecialKey, Modifier, LEDState};
+    use virt_hid::key::{SpecialKey, Modifier, LEDState};
     use crate::parser::{Command, Key, Value, Operator, Parameter, function};
 
     use super::BorkParser;

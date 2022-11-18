@@ -4,7 +4,7 @@ use std::fs::{self};
 
 use clap::{Parser};
 use interpreter::BorkInterp;
-use lmk_hid::HID;
+use virt_hid::HID;
 
 mod parser;
 mod interpreter;

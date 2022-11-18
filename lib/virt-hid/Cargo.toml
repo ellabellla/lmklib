@@ -1,5 +1,5 @@
 [package]
-name = "lmk-hid"
+name = "virt-hid"
 version = "0.1.0"
 edition = "2021"
 
@@ -11,5 +11,5 @@ debug = ["tempfile"]
 [dependencies]
 nix = { version = "0.25.0", features = ["poll"] }
 tempfile = { version = "3", optional = true }
-gen_layouts_sys = { path= "../keyboard-layouts/gen_layouts_sys" }
-keyboard-layouts = { path= "../keyboard-layouts" }
+gen_layouts_sys = { workspace = true }
+keyboard-layouts = { workspace = true }

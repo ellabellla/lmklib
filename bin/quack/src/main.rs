@@ -3,7 +3,7 @@ use std::{fs};
 
 use clap::Parser;
 use interpreter::QuackInterp;
-use lmk_hid::HID;
+use virt_hid::HID;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]

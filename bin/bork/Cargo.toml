@@ -9,6 +9,6 @@ edition = "2021"
 debug = []
 
 [dependencies]
-lmk-hid = { path = "../lmk-hid" }
+virt-hid = { workspace = true }
 nom = "7"
 clap = { version = "4.0.15", features = ["derive"] }

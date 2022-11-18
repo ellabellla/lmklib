@@ -59,8 +59,8 @@ done
 # Create Ethernet Adapter
 mkdir -p functions/ecm.usb0
 # first byte of address must be even
-HOST="de:ad:be:ef:00:00" # "HostPC"
-SELF="c0:ff:ee:c0:ff:ee" # "BadUSB"
+HOST="de:ca:ff:c0:ff:ee"
+SELF="ca:55:1e:c0:ff:ee"
 echo $HOST > functions/ecm.usb0/host_addr
 echo $SELF > functions/ecm.usb0/dev_addr
 

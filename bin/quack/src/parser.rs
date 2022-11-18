@@ -1,4 +1,4 @@
-use lmk_hid::key::{SpecialKey, Modifier, BasicKey, KeyOrigin};
+use virt_hid::key::{SpecialKey, Modifier, BasicKey, KeyOrigin};
 use nom::character::complete::{digit1, alpha1, space1, space0, alphanumeric1};
 use nom::combinator::{eof};
 use nom::bytes::complete::{take, take_while, take_till};
@@ -574,7 +574,7 @@ pub fn parse_define<'a>(i: &'a str) -> IResult<&'a str, (&'a str, &'a str)> {
 
 #[cfg(test)]
 mod tests {
-    use lmk_hid::key::{BasicKey, KeyOrigin, Modifier, SpecialKey};
+    use virt_hid::key::{BasicKey, KeyOrigin, Modifier, SpecialKey};
 
     use crate::{parser::{parse_line, Command, Value, parse_define, Operator, bool, Random}};
 

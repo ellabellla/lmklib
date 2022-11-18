@@ -1,7 +1,7 @@
 #![doc = include_str!("../README.md")]
 use std::{io::{self, BufRead}, str::FromStr, fs};
 use clap::{Parser};
-use lmk_hid::{key::{Keyboard}, HID};
+use virt_hid::{key::{Keyboard}, HID};
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
