@@ -1,0 +1,124 @@
+{
+    "postbuild": [
+        "chmod 777 /dev/hidg0",
+        "chmod 777 /dev/hidg1",
+        "ifconfig usb0 10.0.0.1 netmask 255.255.255.252 up",
+        "route add -net default gw 10.0.0.2"
+    ],
+    "root": {
+        "bcdDevice": ["0x0100"],
+        "bcdUSB": ["0x0200"],
+        "bDeviceClass": ["0x00"],
+        "bDeviceProtocol": ["0x00"],
+        "bDeviceSubClass": ["0x00"],
+        "bMaxPacketSize0": ["0x00"],
+        "idProduct": ["0x0104"],
+        "idVendor": ["0x1d6b"],
+
+        "UDC": ["ls /sys/class/udc", {"defer": 2, "ftype":"Piped"}],
+
+        "strings": {
+            "0x409": {
+                "manufacturer": ["Ella Pash"],
+                "product": ["LMK"],
+                "serialnumber": ["0123456789"]
+            }
+        },
+
+        "configs": {
+            "c.1": {
+                "MaxPower": ["250"],
+                "strings": {
+                    "0x409" : {
+                        "configuration": ["Configuration"]
+                    }
+                },
+                "hid.keyboard": ["functions/hid.keyboard", {"internal":true, "defer":1, "ftype":"Link"}],
+                "hid.mouse": ["functions/hid.mouse", {"internal":true, "defer":1, "ftype":"Link"}],
+                "mass_storage.usb0": ["functions/mass_storage.usb0", {"internal":true, "defer":1, "ftype":"Link"}],
+                "ecm.usb0": ["functions/ecm.usb0", {"internal":true, "defer":1, "ftype":"Link"}]
+            }
+        },
+
+        "functions": {
+            "hid.keyboard": {
+                "protocol": ["1"],
+                "report_length": ["33"],
+                "subclass": ["1"],
+                "report_desc": ["/usr/hid/keyboard.desc", {"ftype": "Copy"}]
+            },
+            
+            "hid.mouse": {
+                "protocol": ["0"],
+                "report_length": ["5"],
+                "subclass": ["0"],
+                "report_desc": ["/usr/hid/mouse.desc", {"ftype": "Copy"}]
+            },
+
+            "ecm.usb0": {
+                "host_addr": ["de:ca:ff:c0:ff:ee"],
+                "dev_addr": ["ca:55:1e:c0:ff:ee"]
+            },
+
+            "mass_storage.usb0": {
+                "stall": ["1"],
+                "lun.0": {
+                    "cdrom": ["0"],
+                    "ro": ["0"],
+                    "nofua": ["0"],
+                    "removable": ["1"],
+                    "file": ["", {"mode":"777"}]
+                },
+                "lun.1": {
+                    "cdrom": ["0"],
+                    "ro": ["0"],
+                    "nofua": ["0"],
+                    "removable": ["1"],
+                    "file": ["", {"mode":"777"}]
+                },
+                "lun.2": {
+                    "cdrom": ["0"],
+                    "ro": ["0"],
+                    "nofua": ["0"],
+                    "removable": ["1"],
+                    "file": ["", {"mode":"777"}]
+                },
+                "lun.3": {
+                    "cdrom": ["0"],
+                    "ro": ["0"],
+                    "nofua": ["0"],
+                    "removable": ["1"],
+                    "file": ["", {"mode":"777"}]
+                },
+                "lun.4": {
+                    "cdrom": ["0"],
+                    "ro": ["0"],
+                    "nofua": ["0"],
+                    "removable": ["1"],
+                    "file": ["", {"mode":"777"}]
+                },
+                "lun.5": {
+                    "cdrom": ["0"],
+                    "ro": ["0"],
+                    "nofua": ["0"],
+                    "removable": ["1"],
+                    "file": ["", {"mode":"777"}]
+                },
+                "lun.6": {
+                    "cdrom": ["0"],
+                    "ro": ["0"],
+                    "nofua": ["0"],
+                    "removable": ["1"],
+                    "file": ["", {"mode":"777"}]
+                },
+                "lun.7": {
+                    "cdrom": ["0"],
+                    "ro": ["0"],
+                    "nofua": ["0"],
+                    "removable": ["1"],
+                    "file": ["", {"mode":"777"}]
+                }
+            }
+        }
+    }
+}
