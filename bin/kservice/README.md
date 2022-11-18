@@ -3,4 +3,4 @@
 ## Usage
 Run "build-reports.sh" to rebuild the report descriptor binaries from xml. [hidrd-convert](https://github.com/DIGImend/hidrd) is required.
 
-Run "install.sh", with sudo, to install the service using systemd. Copies the files "hid.service" into "/etc/systemd/system/", "setup-hid.sh" into "/usr/bin/", and the report descriptors into "/usr/hid/".
+Run "install.sh", with sudo, to install the service using systemd. Copies the files "hid.service" into "/etc/systemd/system/", and the report descriptors and gadget schema into "/usr/gadget/". [fschema](../../external/fschema/) is required.
