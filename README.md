@@ -4,9 +4,9 @@ A software suite for using a Raspberry Pi Zero as a smart mechanical keyboard. U
 ## The Suite
 | Name | Readme | Description |
 |------|--------|-------------|
-|KServer|[link](lmk-kserver/)|A server that interfaces with the Raspberry Pi's GPIO and sends mouse and key events based on hardware input to either the Pi or host. Whilst providing an interface to other programs to modify key and mouse settings, record activity, keyboard layouts, macros, and get LED state data.|
-|KService|[link](lmk-kserver/)|A Systemd service that setups the raspberry pi as a usb-gadget on boot.|
-|HID|[link](lmk-hid/)|A hid interface library.|
-|Kout|[link](lmk-kout/)|A command line program to convert piped in text or files to key strokes.|
-|Quack|[link](lmk-quack/)|A lazy ducky script interpreter that implements a subset of ducky script.|
-|Bork|[link](lmk-bork/)|A terse keyboard scripting language used for key and mouse automation and keystroke and mouse recording.|
+|KServer|[link](bin/kserver/)|A server that interfaces with the Raspberry Pi's GPIO and sends mouse and key events based on hardware input to either the Pi or host. Whilst providing an interface to other programs to modify key and mouse settings, record activity, keyboard layouts, macros, and get LED state data.|
+|Gadget-Service|[link](bin/gadget-service/)|A Systemd service and installer that sets up a raspberry pi as a usb-gadget on boot.|
+|Virt-HID|[link](bin/vit-hid/)|A hid interface library.|
+|Kout|[link](bin/kout/)|A command line program to convert piped in text or files to key strokes.|
+|Quack|[link](bin/quack/)|A lazy ducky script interpreter that implements a subset of ducky script.|
+|Bork|[link](bin/bork/)|A terse keyboard scripting language used for key and mouse automation and keystroke and mouse recording.|
