@@ -2,8 +2,7 @@
     "postbuild": [
         "chmod 777 /dev/hidg0",
         "chmod 777 /dev/hidg1",
-        "ifconfig usb0 10.0.0.1 netmask 255.255.255.252 up",
-        "route add -net default gw 10.0.0.2"
+        "ifconfig usb0 10.0.0.1 netmask 255.255.255.252 up"
     ],
     "root": {
         "bcdDevice": ["0x0100"],
