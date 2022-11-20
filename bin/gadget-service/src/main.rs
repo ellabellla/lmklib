@@ -18,6 +18,10 @@ pub enum Commands {
     Install,
     /// Uninstall the gadget service
     Uninstall,
+    /// Enable
+    Enable,
+    /// Disable
+    Disable,
     /// Remove all files created during install
     Clean,
 }
@@ -36,6 +40,8 @@ const GADGET_SCHEMA_FILE: &'static str = "gadget-schema.json";
 
 const GADGET_SERVICE_INSTALL: &'static str = "systemctl daemon-reload && systemctl enable gadget.service";
 const GADGET_SERVICE_UNINSTALL: &'static str = "systemctl stop gadget.service && systemctl disable gadget.service && systemctl daemon-reload";
+const GADGET_SERVICE_ENABLE: &'static str = "systemctl disable gadget.service && systemctl daemon-reload";
+const GADGET_SERVICE_DISABLE: &'static str = "systemctl enable gadget.service && systemctl daemon-reload";
 
 pub fn main() {
     let args = Cli::parse();
@@ -58,6 +64,12 @@ pub fn main() {
         Commands::Clean => if let Err(e) = clean(){
             println!("Clean could not finish due to an error, {}", e);
         },
+        Commands::Enable => if let Err(e) = enable(){
+            println!("The gadget service could not be enabled due to an error, {}", e);
+        },
+        Commands::Disable => if let Err(e) = disable(){
+            println!("The gadget service could not be disabled due to an error, {}", e);
+        },
     }
 
 }
@@ -69,21 +81,20 @@ fn install() -> io::Result<()> {
     fs::write(DATA_LOC.to_string() + GADGET_SCHEMA_FILE, GADGET_SCHEMA)?;
     fs::write(SERVICE_LOC, SERVICE)?;
 
-    Command::new("bash")
-        .args(["-c", GADGET_SERVICE_INSTALL])
-        .spawn()
-        .and_then(|mut child| child.wait())
-        .map(|_| ())
+    run_command(GADGET_SERVICE_INSTALL)
 }
 
 fn uninstall() -> io::Result<()> {
-    Command::new("bash")
-        .args(["-c", GADGET_SERVICE_UNINSTALL])
-        .spawn()
-        .and_then(|mut child| child.wait())
-        .map(|_| ())?;
-
+    run_command(GADGET_SERVICE_UNINSTALL)?;
     clean()
+}
+
+fn enable() -> io::Result<()> {
+    run_command(GADGET_SERVICE_ENABLE)
+}
+
+fn disable() -> io::Result<()> {
+    run_command(GADGET_SERVICE_DISABLE)
 }
 
 fn clean() -> io::Result<()> {
@@ -91,6 +102,14 @@ fn clean() -> io::Result<()> {
     ignore_not_found(fs::remove_file(DATA_LOC.to_string() + MOUSE_FILE))?;
     ignore_not_found(fs::remove_file(DATA_LOC.to_string() + GADGET_SCHEMA_FILE))?;
     ignore_not_found(fs::remove_file(SERVICE_LOC))
+}
+
+fn run_command(command: &str) -> io::Result<()> {
+    Command::new("bash")
+        .args(["-c", command])
+        .spawn()
+        .and_then(|mut child| child.wait())
+        .map(|_| ())
 }
 
 fn ignore_not_found(res: io::Result<()>) -> io::Result<()> {
