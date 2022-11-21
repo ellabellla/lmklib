@@ -4,3 +4,6 @@
 [submodule "external/fschema"]
 	path = external/fschema
 	url = git@github.com:ellabellla/fschema.git
+[submodule "external/keyboard-layouts"]
+	path = external/keyboard-layouts
+	url = git@github.com:ellabellla/keyboard-layouts.git
