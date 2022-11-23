@@ -89,6 +89,11 @@
                 "p_ssize": ["3", "24bit"]
             },
 
+            "Printer": "Printer interface",
+            "printer.usb0": {
+                "pnp_string": ["MFG:RICOH;MDL:Aficio 1224C;CMD:POSTSCRIPT;"]
+            },
+
             "Mass Storage": "Connect disk images as mass storage",
             "mass_storage.usb0": {
                 "stall": ["1"],
