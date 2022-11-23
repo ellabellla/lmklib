@@ -1,6 +1,6 @@
 {
     "postbuild": [
-        "chmod 777 /dev/hidg0 # Allow non privileged access to the Jeyboard HID Controller",
+        "chmod 777 /dev/hidg0 # Allow non privileged access to the Keyboard HID Controller",
         "chmod 777 /dev/hidg1 # Allow non privileged access to the Mouse HID Controller",
         "ifconfig usb0 10.0.0.1 netmask 255.255.255.252 up # Setup the Ethernet Adapter"
     ],
