@@ -3,7 +3,7 @@ Description=Setup Gadget
 
 [Service]
 Type=oneshot
-ExecStart=fschema /usr/gadget/gadget-schema.json /sys/kernel/config/usb_gadget/lmk
+ExecStart=gadget-service configure
 RemainAfterExit=yes
 
 [Install]

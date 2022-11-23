@@ -1,6 +1,6 @@
 #![doc = include_str!("../README.md")]
 
-use std::{fs, io, process::Command};
+use std::{fs, io, process::{Command, exit}, path::{PathBuf, Path}, str::FromStr};
 
 use clap::{Parser, Subcommand};
 use nix::unistd::Uid;
@@ -22,6 +22,8 @@ pub enum Commands {
     Enable,
     /// Disable
     Disable,
+    /// Configure the usb gadget
+    Configure,
     /// Remove all files created during install
     Clean,
 }
@@ -32,11 +34,11 @@ const MOUSE_DESC: &'static [u8] = include_bytes!("../mouse.desc");
 const GADGET_SCHEMA: &'static str = include_str!("../gadget-schema.json");
 const SERVICE: &'static str = include_str!("../gadget.service");
 
+const CONFIG_LOC: &'static str = "/sys/kernel/config/usb_gadget/lmk";
 const SERVICE_LOC: &'static str = "/etc/systemd/system/gadget.service";
 const DATA_LOC: &'static str = "/usr/gadget/";
 const KEYBOARD_FILE: &'static str = "keyboard.desc";
 const MOUSE_FILE: &'static str = "mouse.desc";
-const GADGET_SCHEMA_FILE: &'static str = "gadget-schema.json";
 
 const GADGET_SERVICE_INSTALL: &'static str = "systemctl daemon-reload && systemctl enable gadget.service";
 const GADGET_SERVICE_UNINSTALL: &'static str = "systemctl stop gadget.service && systemctl disable gadget.service && systemctl daemon-reload";
@@ -56,7 +58,7 @@ pub fn main() {
                 let _ = uninstall();
                 Err(e)
             }) {
-                println!("Install aborted due to an error, {}", e);
+                println!("Install could not finish due to an error, {}", e);
             },
         Commands::Uninstall => if let Err(e) = uninstall() {
             println!("Uninstall could not finish due to an error, {}", e);
@@ -70,6 +72,7 @@ pub fn main() {
         Commands::Disable => if let Err(e) = disable(){
             println!("The gadget service could not be disabled due to an error, {}", e);
         },
+        Commands::Configure => configure(),
     }
 
 }
@@ -78,7 +81,6 @@ fn install() -> io::Result<()> {
     fs::create_dir_all(DATA_LOC)?;
     fs::write(DATA_LOC.to_string() + KEYBOARD_FILE, KEYBOARD_DESC)?;
     fs::write(DATA_LOC.to_string() + MOUSE_FILE, MOUSE_DESC)?;
-    fs::write(DATA_LOC.to_string() + GADGET_SCHEMA_FILE, GADGET_SCHEMA)?;
     fs::write(SERVICE_LOC, SERVICE)?;
 
     run_command(GADGET_SERVICE_INSTALL)
@@ -97,10 +99,31 @@ fn disable() -> io::Result<()> {
     run_command(GADGET_SERVICE_DISABLE)
 }
 
+fn configure() {
+    if !Path::new(&(DATA_LOC.to_string() + KEYBOARD_FILE)).exists() ||
+        !Path::new(&(DATA_LOC.to_string() + MOUSE_FILE)).exists()
+    {
+        println!("The gadget service must be installed first");
+        exit(1)
+    }
+
+    let schema = fschema_lib::FSchema::from_str(GADGET_SCHEMA).unwrap_or_else(|e| {
+        println!("The gadget service encountered an internal configuration error, {}", e);
+        exit(1)
+    });
+
+    schema.create(PathBuf::from_str(CONFIG_LOC).unwrap_or_else(|e| {
+        println!("The gadget service encountered an internal configuration error, {}", e);
+        exit(1)
+    })).unwrap_or_else(|e| {
+        println!("The gadget service could not configure the usb gadget due to an error, {}", e);
+        exit(1)
+    });
+}
+
 fn clean() -> io::Result<()> {
     ignore_not_found(fs::remove_file(DATA_LOC.to_string() + KEYBOARD_FILE))?;
     ignore_not_found(fs::remove_file(DATA_LOC.to_string() + MOUSE_FILE))?;
-    ignore_not_found(fs::remove_file(DATA_LOC.to_string() + GADGET_SCHEMA_FILE))?;
     ignore_not_found(fs::remove_file(SERVICE_LOC))
 }
 

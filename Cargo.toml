@@ -12,5 +12,6 @@ members = [
 
 [workspace.dependencies]
 virt-hid = { path = "lib/virt-hid" }
+fschema-lib = { path = "external/fschema/fschema-lib" }
 keyboard-layouts = { path= "external/keyboard-layouts" }
 gen_layouts_sys = { path= "external/keyboard-layouts/gen_layouts_sys" }
