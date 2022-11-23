@@ -1,10 +1,11 @@
 {
     "postbuild": [
-        "chmod 777 /dev/hidg0",
-        "chmod 777 /dev/hidg1",
-        "ifconfig usb0 10.0.0.1 netmask 255.255.255.252 up"
+        "chmod 777 /dev/hidg0 # Allow non privileged access to the Jeyboard HID Controller",
+        "chmod 777 /dev/hidg1 # Allow non privileged access to the Mouse HID Controller",
+        "ifconfig usb0 10.0.0.1 netmask 255.255.255.252 up # Setup the Ethernet Adapter"
     ],
     "root": {
+        "USB": "Device Info",
         "bcdDevice": ["0x0100"],
         "bcdUSB": ["0x0200"],
         "bDeviceClass": ["0x00"],
@@ -14,8 +15,10 @@
         "idProduct": ["0x0104"],
         "idVendor": ["0x1d6b"],
 
+        "Init": "Initialize the usb gadget after creating the configuration, deferred till last.",
         "UDC": ["ls /sys/class/udc", {"defer": 2, "ftype":"Piped"}],
 
+        "USB String": "Device String Metadata",
         "strings": {
             "0x409": {
                 "manufacturer": ["Ella Pash"],
@@ -24,6 +27,7 @@
             }
         },
 
+        "Configuration": "Gadget Configuration",
         "configs": {
             "c.1": {
                 "MaxPower": ["500"],
@@ -33,6 +37,7 @@
                     }
                 },
 
+                "Link": "Link usb functions to config, deferred until after the functions have been created.",
                 "hid.keyboard": ["functions/hid.keyboard", {"internal":true, "defer":1, "ftype":"Link"}],
                 "hid.mouse": ["functions/hid.mouse", {"internal":true, "defer":1, "ftype":"Link"}],
                 "midi.usb0": ["functions/midi.usb0", {"internal":true, "defer":1, "ftype":"Link"}],
@@ -42,7 +47,9 @@
             }
         },
 
+        "Functionality": "Functionality of the usb gadget",
         "functions": {
+            "Keyboard": "Software Keyboard",
             "hid.keyboard": {
                 "protocol": ["1"],
                 "report_length": ["33"],
@@ -50,6 +57,7 @@
                 "report_desc": ["/usr/gadget/keyboard.desc", {"ftype": "Copy"}]
             },
             
+            "Mouse": "Software mouse",
             "hid.mouse": {
                 "protocol": ["0"],
                 "report_length": ["5"],
@@ -57,17 +65,20 @@
                 "report_desc": ["/usr/gadget/mouse.desc", {"ftype": "Copy"}]
             },
 
+            "Ethernet": "Ethernet Adapter",
             "ecm.usb0": {
-                "host_addr": ["de:ca:ff:c0:ff:ee"],
-                "dev_addr": ["ca:55:1e:c0:ff:ee"]
+                "host_addr": ["de:ca:ff:c0:ff:ee", "mac address of the computer"],
+                "dev_addr": ["ca:55:1e:c0:ff:ee", "mac address of the keyboard"]
             },
 
+            "Midi": "Midi Controller",
             "midi.usb0": {
                 "id": ["LMK"],
                 "in_ports": ["16"],
                 "out_ports": ["16"]
             },
 
+            "UAC2": "Audio interface",
             "uac2.usb0": {
                 "c_srate": ["48000", "48kHz"],
                 "c_chmask": ["110011", {"ftype": "Bits"}, "BR BL _ _ FR FL", "https://www.usb.org/document-library/audio-devices-rev-20-and-adopters-agreement"],
@@ -78,8 +89,11 @@
                 "p_ssize": ["3", "24bit"]
             },
 
+            "Mass Storage": "Connect disk images as mass storage",
             "mass_storage.usb0": {
                 "stall": ["1"],
+                
+                "Mount Points": "Max 8 mount points, initialized with no disk image.",
                 "lun.0": {
                     "cdrom": ["0"],
                     "ro": ["0"],
