@@ -26,14 +26,17 @@
 
         "configs": {
             "c.1": {
-                "MaxPower": ["250"],
+                "MaxPower": ["500"],
                 "strings": {
                     "0x409" : {
-                        "configuration": ["Configuration"]
+                        "configuration": ["LMK Configuration"]
                     }
                 },
+
                 "hid.keyboard": ["functions/hid.keyboard", {"internal":true, "defer":1, "ftype":"Link"}],
                 "hid.mouse": ["functions/hid.mouse", {"internal":true, "defer":1, "ftype":"Link"}],
+                "midi.usb0": ["functions/midi.usb0", {"internal":true, "defer":1, "ftype":"Link"}],
+                "uac2.usb0": ["functions/uac2.usb0", {"internal":true, "defer":1, "ftype":"Link"}],
                 "mass_storage.usb0": ["functions/mass_storage.usb0", {"internal":true, "defer":1, "ftype":"Link"}],
                 "ecm.usb0": ["functions/ecm.usb0", {"internal":true, "defer":1, "ftype":"Link"}]
             }
@@ -57,6 +60,22 @@
             "ecm.usb0": {
                 "host_addr": ["de:ca:ff:c0:ff:ee"],
                 "dev_addr": ["ca:55:1e:c0:ff:ee"]
+            },
+
+            "midi.usb0": {
+                "id": ["LMK"],
+                "in_ports": ["16"],
+                "out_ports": ["16"]
+            },
+
+            "uac2.usb0": {
+                "c_srate": ["48000", "48kHz"],
+                "c_chmask": ["110011", {"ftype": "Bits"}, "BR BL _ _ FR FL", "https://www.usb.org/document-library/audio-devices-rev-20-and-adopters-agreement"],
+                "c_ssize": ["3", "24bit"],
+
+                "p_srate": ["48000", "48kHz"],
+                "p_chmask": ["110011", {"ftype": "Bits"}, "BR BL _ _ FR FL", "https://www.usb.org/document-library/audio-devices-rev-20-and-adopters-agreement"],
+                "p_ssize": ["3", "24bit"]
             },
 
             "mass_storage.usb0": {
