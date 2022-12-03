@@ -4,3 +4,6 @@
 [submodule "external/keyboard-layouts"]
 	path = external/keyboard-layouts
 	url = git@github.com:ellabellla/keyboard-layouts.git
+[submodule "external/configfs"]
+	path = external/configfs
+	url = git@github.com:ellabellla/configfs.git
