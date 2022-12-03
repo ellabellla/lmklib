@@ -42,8 +42,8 @@ const MOUSE_FILE: &'static str = "mouse.desc";
 
 const GADGET_SERVICE_INSTALL: &'static str = "systemctl daemon-reload && systemctl enable gadget.service";
 const GADGET_SERVICE_UNINSTALL: &'static str = "systemctl stop gadget.service && systemctl disable gadget.service && systemctl daemon-reload";
-const GADGET_SERVICE_ENABLE: &'static str = "systemctl disable gadget.service && systemctl daemon-reload";
-const GADGET_SERVICE_DISABLE: &'static str = "systemctl enable gadget.service && systemctl daemon-reload";
+const GADGET_SERVICE_ENABLE: &'static str = "systemctl enable gadget.service && systemctl daemon-reload";
+const GADGET_SERVICE_DISABLE: &'static str = "systemctl disable gadget.service && systemctl daemon-reload";
 
 pub fn main() {
     let args = Cli::parse();
