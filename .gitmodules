@@ -7,3 +7,6 @@
 [submodule "external/configfs"]
 	path = external/configfs
 	url = git@github.com:ellabellla/configfs.git
+[submodule "external/mcp23017-rpi-libg"]
+	path = external/mcp23017-rpi-libg
+	url = git@github.com:ellabellla/mcp23017-rpi-lib.git
