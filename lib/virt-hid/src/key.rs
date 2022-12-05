@@ -32,6 +32,19 @@ pub enum LEDState {
     NumLock,
 }
 
+impl LEDState {
+  /// Get the state of a LED State Type.
+   pub fn get_state(&self, packet: u8) -> bool {
+      match self {
+         LEDState::Kana => packet & (0x01 << 4) != 0,
+         LEDState::Compose => packet & (0x01 << 3) != 0,
+         LEDState::ScrollLock => packet & (0x01 << 2) != 0,
+         LEDState::CapsLock => packet & (0x01 << 1) != 0,
+         LEDState::NumLock => packet & (0x01) != 0,
+     }
+   }
+}
+
 /// Abstraction for LED State Packets
 pub struct LEDStatePacket {
     data: u8,
@@ -54,13 +67,7 @@ impl LEDStatePacket {
     /// True means on
     /// False means off
     pub fn get_state(&self, state: &LEDState) -> bool {
-        match state {
-            LEDState::Kana => self.data & self.data & (0x01 << 4) != 0,
-            LEDState::Compose => self.data & (0x01 << 3) != 0,
-            LEDState::ScrollLock => self.data & (0x01 << 2) != 0,
-            LEDState::CapsLock => self.data & (0x01 << 1) != 0,
-            LEDState::NumLock => self.data & (0x01) != 0,
-        }
+        state.get_state(self.data)
     }
 
     /// Update LED States with an incoming raw packet with a timeout.
@@ -70,6 +77,12 @@ impl LEDStatePacket {
             None => (),
         }
         Ok(())
+    }
+}
+
+impl From<&LEDStatePacket> for u8 {
+    fn from(led: &LEDStatePacket) -> Self {
+        led.data
     }
 }
 
