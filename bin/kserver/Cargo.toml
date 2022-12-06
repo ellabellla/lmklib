@@ -6,3 +6,11 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+virt-hid = { workspace = true }
+mcp23017-rpi-lib = { workspace = true }
+configfs = { workspace = true }
+tokio = { version = "1", features = ["full"] }
+libc = "0.2"
+serde = { version = "1.0", features = ["derive"]}
+typetag = "0.2.3"
+serde_json = "1.0"
