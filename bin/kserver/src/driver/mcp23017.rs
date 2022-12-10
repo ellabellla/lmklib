@@ -278,7 +278,7 @@ impl<'de> Deserialize<'de> for MCP23017DriverBuilder {
             address: u16,
             bus: Option<u8>,
             inputs: Vec<Box<dyn MCP23017Input>>
-        };
+        }
 
         let mcp = MCP23017::deserialize(deserializer)?;
         let mut used = HashSet::new();
