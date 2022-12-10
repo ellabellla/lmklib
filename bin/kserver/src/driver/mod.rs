@@ -1,20 +1,12 @@
-use std::{ops::Range, collections::HashMap};
+use std::{ops::Range, collections::HashMap, sync::Arc};
 
-use serde::{Serialize, ser::SerializeSeq, Deserialize, de::{Visitor, self}};
+use serde::{Serialize, ser::SerializeSeq, Deserialize, de::{self}};
+use tokio::sync::RwLock;
 
 pub mod mcp23017;
 
 #[typetag::serde]
-pub trait DigitalDriver {
-    fn name(&self) -> &str;
-    fn iter(&self) -> std::slice::Iter<bool>;
-    fn poll(&self, idx: usize) -> bool;
-    fn poll_range(&self, range: &Range<usize>) -> Option<&[bool]>;
-    fn tick(&mut self);
-}
-
-#[typetag::serde]
-pub trait AnalogDriver {
+pub trait DriverInterface {
     fn name(&self) -> &str;
     fn iter(&self) -> std::slice::Iter<u16>;
     fn poll(&self, idx: usize) -> u16;
@@ -22,10 +14,7 @@ pub trait AnalogDriver {
     fn tick(&mut self);
 }
 
-pub enum Driver {
-    Digital(Box<dyn DigitalDriver>),
-    Analog(Box<dyn AnalogDriver>),
-}
+pub type Driver = Box<dyn DriverInterface>;
 
 pub struct DriverManager {
     pub(crate) drivers: HashMap<String, Driver>,
@@ -46,14 +35,7 @@ impl Serialize for DriverManager {
     where
         S: serde::Serializer 
     {
-        let mut seq = serializer.serialize_seq(Some(self.drivers.len()))?;
-        for (_, driver) in &self.drivers {
-            match driver {
-                Driver::Digital(driver) =>  seq.serialize_element(driver)?,
-                Driver::Analog(driver) =>  seq.serialize_element(driver)?,
-            };
-        }
-        seq.end()
+        self.drivers.values().collect::<Vec<&Driver>>().serialize(serializer)
     }
 }
 
@@ -62,43 +44,13 @@ impl<'de> Deserialize<'de> for DriverManager {
     where
         D: serde::Deserializer<'de> 
     {
-        deserializer.deserialize_seq(DriverManager{drivers: HashMap::new()})
-    }
-}
-
-impl<'de> Visitor<'de> for DriverManager {
-    type Value = DriverManager;
-
-    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-        formatter.write_str("expected drivers")
-    }
-
-    fn visit_seq<A>(mut self, mut seq: A) -> Result<Self::Value, A::Error>
-        where
-            A: de::SeqAccess<'de>, 
-    {
-        loop {
-            if let Ok(driver) = seq.next_element::<Box<dyn DigitalDriver>>() {
-                let Some(driver) = driver else {
-                    break;
-                };
-
-                if self.drivers.insert(driver.name().to_string(), Driver::Digital(driver)).is_some() {
-                    return Err(de::Error::custom("driver names must be unique"))
-                }
-            } else if let Ok(driver) = seq.next_element::<Box<dyn AnalogDriver>>() {
-                let Some(driver) = driver else {
-                    break;
-                };
-
-                if self.drivers.insert(driver.name().to_string(), Driver::Analog(driver)).is_some() {
-                    return Err(de::Error::custom("driver names must be unique"))
-                }
-            } else {
-                return Err(de::Error::custom("driver configuration couldn't be loaded"))
+        let drivers = Vec::<Driver>::deserialize(deserializer)?;
+        let mut driver_map = HashMap::new();
+        for driver in drivers {
+            if driver_map.insert(driver.name().to_string(), driver).is_some() {
+                return Err(de::Error::custom("driver names must be unique"))
             }
         }
-
-        Ok(self)
+        Ok(DriverManager{drivers: driver_map})
     }
 }

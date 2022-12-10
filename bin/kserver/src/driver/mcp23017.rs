@@ -1,17 +1,25 @@
 use std::{collections::HashSet, ops::Range};
 
 use mcp23017_rpi_lib::{Pin, MCP23017, Mode, State};
-use serde::{Serialize, ser::SerializeMap, Deserialize, de::{Visitor, self}};
+use serde::{Serialize, Deserialize, de::{self}};
 
-use super::DigitalDriver;
+use super::{DriverInterface};
 
 
 #[typetag::serde]
 trait MCP23017Input {
     fn setup(&self, mcp: &mut MCP23017) -> Result<(), mcp23017_rpi_lib::Error>;
-    fn read(&self, mcp: &MCP23017) -> Result<Vec<bool>, mcp23017_rpi_lib::Error>;
+    fn read(&self, mcp: &MCP23017) -> Result<Vec<u16>, mcp23017_rpi_lib::Error>;
     fn pins(&self) -> Vec<Pin>;
     fn len(&self) -> usize;
+}
+
+fn bool_int(bool: bool) -> u16 {
+    if bool {
+        1
+    } else {
+        0
+    }
 }
 
 struct Matrix {
@@ -28,71 +36,57 @@ impl Matrix {
 impl Serialize for Matrix {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer {
-        let mut map = serializer.serialize_map(Some(2))?;
-        map.serialize_entry("x", &self.x.iter().map(|x| u8::from(x)).collect::<Vec<u8>>())?;
-        map.serialize_entry("y", &self.y.iter().map(|x| u8::from(x)).collect::<Vec<u8>>())?;
-        map.end()
+        S: serde::Serializer 
+    {
+        #[derive(Serialize)]
+        struct Matrix {
+            x: Vec<u8>,
+            y: Vec<u8>
+        }
+
+        Matrix{
+            x: self.x.iter().map(|x| u8::from(x)).collect::<Vec<u8>>(),
+            y: self.y.iter().map(|x| u8::from(x)).collect::<Vec<u8>>()
+        }.serialize(serializer)
     }
 }
 
 impl<'de> Deserialize<'de> for Matrix {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
-        D: serde::Deserializer<'de> {
-        deserializer.deserialize_map(Matrix{x: vec![], y: vec![]})
-    }
-}
-
-impl<'de> Visitor<'de> for Matrix {
-    type Value = Matrix;
-
-    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-        formatter.write_str("expected matrix")
-    }
-
-    fn visit_map<A>(mut self, mut map: A) -> Result<Self::Value, A::Error>
-        where
-            A: serde::de::MapAccess<'de>, 
+        D: serde::Deserializer<'de> 
     {
-        while let Some(key) =  map.next_key::<String>()? {
-            if key.to_lowercase() == "x" {
-                if self.x.len() != 0 {
-                    continue;
-                }
+        #[derive(Deserialize)]
+        struct Matrix {
+            x: Vec<u8>,
+            y: Vec<u8>
+        }
 
-                let pins = map.next_value::<Vec<u8>>()?;
-                let pins = pins.iter()
-                    .map(|pin| Pin::new(*pin));
-                if pins.clone().any(|pin| pin.is_none()) {
-                    return Err(de::Error::custom("expected a pin number between 0 and 15"))
-                }
+        let matrix = Matrix::deserialize(deserializer)?;
 
-                self.x.extend(pins.filter_map(|p| p));
-            } else if key.to_lowercase() == "y" {
-                if self.y.len() != 0 {
-                    continue;
-                }
-
-                let pins = map.next_value::<Vec<u8>>()?;
-                let pins = pins.iter()
-                    .map(|pin| Pin::new(*pin));
-                if pins.clone().any(|pin| pin.is_none()) {
-                    return Err(de::Error::custom("expected a pin number between 0 and 15"))
-                }
-
-                self.y.extend(pins.filter_map(|p| p))
-            }
-        }    
-
-        if self.x.len() == 0 {
+        if matrix.x.len() == 0 {
             return Err(de::Error::custom("atleast one x pin must be given"))
         }
-        if self.y.len() == 0 {
+        if matrix.y.len() == 0 {
             return Err(de::Error::custom("atleast one y pin must be given"))
         }
 
-        Ok(self)
+        let x = matrix.x.iter()
+            .map(|pin| Pin::new(*pin));
+        if x.clone().any(|pin| pin.is_none()) {
+            return Err(de::Error::custom("expected a pin number between 0 and 15"))
+        }
+
+        let y = matrix.y.iter()
+            .map(|pin| Pin::new(*pin));
+        if y.clone().any(|pin| pin.is_none()) {
+            return Err(de::Error::custom("expected a pin number between 0 and 15"))
+        }
+
+        Ok(super::mcp23017::Matrix{
+            x: x.filter_map(|p| p).collect(),
+            y: y.filter_map(|p| p).collect(),
+        })
     }
 }
 
@@ -110,12 +104,12 @@ impl MCP23017Input for Matrix {
         Ok(())
     }
 
-    fn read(&self, mcp: &MCP23017) -> Result<Vec<bool>, mcp23017_rpi_lib::Error> {
+    fn read(&self, mcp: &MCP23017) -> Result<Vec<u16>, mcp23017_rpi_lib::Error> {
         let mut out = Vec::with_capacity(self.x.len() * self.y.len());
         for y in &self.y {
             mcp.output(y, State::High)?;
             for x in &self.x {
-                out.push(mcp.input(x)?.into());
+                out.push(bool_int(mcp.input(x)?.into()));
             }
             mcp.output(y, State::Low)?;
         }
@@ -150,12 +144,16 @@ impl Input {
 impl Serialize for Input {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer {
-        let mut map = serializer.serialize_map(Some(3))?;
-        map.serialize_entry("pin", &u8::from(&self.pin))?;
-        map.serialize_entry("on_state", &self.on_state)?;
-        map.serialize_entry("pull_high", &self.pull_high)?;
-        map.end()
+        S: serde::Serializer 
+    {
+        #[derive(Serialize)]
+        struct Input {
+            pin: u8,
+            on_stage: bool,
+            pull_high: bool,
+        }
+        Input{pin: u8::from(&self.pin), on_stage: self.on_state, pull_high: self.pull_high}
+        .serialize(serializer)
     }
 }
 
@@ -164,50 +162,23 @@ impl<'de> Deserialize<'de> for Input {
     where
         D: serde::Deserializer<'de> 
     {
-        deserializer.deserialize_map(InputVisitor{pin: None, on_state: false, pull_high: false})    
-    }
-}
-
-struct InputVisitor{
-    pin: Option<Pin>,
-    on_state: bool,
-    pull_high: bool,
-}
-
-impl<'de> Visitor<'de> for InputVisitor {
-    type Value = Input;
-
-    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-        formatter.write_str("expected input")
-    }
-
-    fn visit_map<A>(mut self, mut map: A) -> Result<Self::Value, A::Error>
-        where
-            A: serde::de::MapAccess<'de>, 
-    {
-        while let Some(key) =  map.next_key::<String>()? {
-            if key.to_lowercase() == "pin" {
-                if self.pin.is_some() {
-                    continue;
-                }
-                let Some(pin) = Pin::new(map.next_value()?) else {
-                    return Err(de::Error::custom("expected a pin number between 0 and 15"))
-                };
-                self.pin = Some(pin);
-            } else if key.to_lowercase() == "on_state" {
-               self.on_state = map.next_value()?;
-            } else if key.to_lowercase() == "pull_high" {
-                self.pull_high = map.next_value()?;
-            }
-        }    
-
-        let Some(pin) = self.pin else {
-            return Err(de::Error::custom("a pin number must be given"))
+        #[derive(Deserialize)]
+        struct Input {
+            pin: u8,
+            on_stage: bool,
+            pull_high: bool,
+        }
+        let input = Input::deserialize(deserializer)?;
+        let Some(pin) = Pin::new(input.pin) else {
+            return Err(de::Error::custom("expected a pin number between 0 and 15"))
         };
-
-        Ok(Input{ pin: pin, on_state: self.on_state, pull_high: self.pull_high })
+        Ok(super::mcp23017::Input{
+            pin,
+            on_state: input.on_stage,
+            pull_high: input.pull_high
+        })
     }
-} 
+}
 
 #[typetag::serde]
 impl MCP23017Input for Input {
@@ -219,9 +190,9 @@ impl MCP23017Input for Input {
         Ok(())
     }
 
-    fn read(&self, mcp: &MCP23017) -> Result<Vec<bool>, mcp23017_rpi_lib::Error> {
+    fn read(&self, mcp: &MCP23017) -> Result<Vec<u16>, mcp23017_rpi_lib::Error> {
         let state: bool = mcp.input(&self.pin)?.into();
-        Ok(vec![state == self.on_state])
+        Ok(vec![bool_int(state == self.on_state)])
     }
 
     fn pins(&self) -> Vec<Pin> {
@@ -301,81 +272,34 @@ impl<'de> Deserialize<'de> for MCP23017DriverBuilder {
     where
         D: serde::Deserializer<'de> 
     {
-        deserializer.deserialize_map(MCP23017DriverBuilder{
-            used: HashSet::new(), 
-            inputs: Vec::new(),  
-            output_size: 0, 
-            address: 0, 
-            bus: 0, 
-            name: "".to_string()
-        })
-    }
-}
-
-
-impl<'de> Visitor<'de> for MCP23017DriverBuilder {
-    type Value = MCP23017DriverBuilder;
-
-    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-        formatter.write_str("expected mcp23017 driver")
-    }
-
-    fn visit_map<A>(mut self, mut map: A) -> Result<Self::Value, A::Error>
-        where
-            A: de::MapAccess<'de>, 
-    {
-        let mut address = None;
-        let mut bus = None;
-        let mut name = None;
-        while let Some(key) =  map.next_key::<String>()? {
-            if key.to_lowercase() == "inputs" {
-                if self.inputs.len() != 0 {
-                    continue;
-                }
-               
-                self.inputs = map.next_value()?;
-            } else if key.to_lowercase() == "address" {
-                if address.is_some() {
-                    continue;
-                }
-
-               address = Some(map.next_value()?);
-            } else if key.to_lowercase() == "bus" {
-                if bus.is_some() {
-                    continue;
-                }
-
-               bus = Some(map.next_value()?);
-            } else if key.to_lowercase() == "name" {
-                if name.is_some() {
-                    continue;
-                }
-
-               name = Some(map.next_value()?);
-            }
-        }
-
-        let Some(address) = address else {
-            return Err(de::Error::custom("an address must be supplied"))
-        };
-        let Some(name) = name else {
-            return Err(de::Error::custom("a name must be supplied"))
+        #[derive(Deserialize)]
+        struct MCP23017 {
+            name: String,
+            address: u16,
+            bus: Option<u8>,
+            inputs: Vec<Box<dyn MCP23017Input>>
         };
 
-        self.name = name;
-        self.address = address;
-        self.bus = bus.unwrap_or(1);
-
-        for input in &self.inputs {
-            self.output_size += input.len();
+        let mcp = MCP23017::deserialize(deserializer)?;
+        let mut used = HashSet::new();
+        let mut output_size = 0;
+        for input in &mcp.inputs {
+            output_size += input.len();
             for pin in input.pins() {
-                if !self.used.insert(pin.clone()) {
+                if !used.insert(pin.clone()) {
                     return Err(de::Error::custom(format!("pin {} cannot be reused", pin)));
                 }
             }
         }
 
-        Ok(self)
+        Ok(MCP23017DriverBuilder{
+            used, 
+            inputs: mcp.inputs,  
+            output_size, 
+            address: mcp.address, 
+            bus: mcp.bus.unwrap_or(1), 
+            name: mcp.name
+        })
     }
 }
 
@@ -385,30 +309,30 @@ pub struct MCP23017Driver {
     address: u16,
     bus: u8,
     inputs: Vec<Box<dyn MCP23017Input>>,
-    state: Vec<bool>,
+    state: Vec<u16>,
     mcp: MCP23017,
 }
 
 #[typetag::serde]
-impl DigitalDriver for MCP23017Driver {
+impl DriverInterface for MCP23017Driver {
     fn name(&self) -> &str {
         &self.name
     }
 
-    fn iter(&self) -> std::slice::Iter<bool> {
+    fn iter(&self) -> std::slice::Iter<u16> {
         self.state.iter()
     }
 
-    fn poll(&self, idx: usize) -> bool {
-        self.state.get(idx).map(|b| b.to_owned()).unwrap_or(false)
+    fn poll(&self, idx: usize) -> u16 {
+        self.state.get(idx).map(|b| b.to_owned()).unwrap_or(0)
     }
 
-    fn poll_range(&self, range: &Range<usize>) -> Option<&[bool]> {
+    fn poll_range(&self, range: &Range<usize>) -> Option<&[u16]> {
         self.state.get(range.clone())
     }
 
     fn tick(&mut self) {
-        let mut state: Vec<bool> = Vec::with_capacity(self.state.len());
+        let mut state: Vec<u16> = Vec::with_capacity(self.state.len());
         for input in &self.inputs {
             let Ok(input_state) = input.read(&self.mcp) else {
                 return;
@@ -425,12 +349,15 @@ impl Serialize for MCP23017Driver {
     where
         S: serde::Serializer 
     {
-        let mut map = serializer.serialize_map(Some(3))?;
-        map.serialize_entry("name", &self.name)?;
-        map.serialize_entry("address", &self.address)?;
-        map.serialize_entry("bus", &self.bus)?;
-        map.serialize_entry("inputs", &self.inputs)?;
-        map.end()
+        #[derive(Serialize)]
+        struct MCP23017<'a> {
+            name: &'a str,
+            address: u16,
+            bus: u8,
+            inputs: &'a Vec<Box<dyn MCP23017Input>>
+        }
+        MCP23017{name: &self.name, address: self.address, bus: self.bus, inputs: &self.inputs}
+        .serialize(serializer)
     }
 }
 
