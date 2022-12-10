@@ -1,6 +1,6 @@
 use std::{ops::Range, fmt::Display};
 
-use serde::{Serialize, ser::SerializeMap, Deserialize, de};
+use serde::{Serialize, Deserialize, de};
 use slab::Slab;
 use itertools::Itertools;
 
