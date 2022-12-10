@@ -107,7 +107,9 @@ impl Mouse {
         }
 
         if self.hold == 0x00 {
-            hid.send_mouse_packet(&self.data)
+            let res = hid.send_mouse_packet(&self.data);
+            self.data = [0; 5];
+            res
         } else {
             self.data[MOUSE_DATA_BUT_IDX] |= self.hold;
             hid.send_mouse_packet(&self.data)?;
