@@ -1,7 +1,6 @@
-use std::{ops::Range, collections::HashMap, sync::Arc};
+use std::{ops::Range, collections::HashMap};
 
-use serde::{Serialize, ser::SerializeSeq, Deserialize, de::{self}};
-use tokio::sync::RwLock;
+use serde::{Serialize, Deserialize, de::{self}};
 
 pub mod mcp23017;
 
