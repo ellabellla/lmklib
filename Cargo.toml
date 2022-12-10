@@ -9,6 +9,7 @@ members = [
     "external/keyboard-layouts",
     "external/fschema/fschema",
     "external/configfs",
+    "external/mcp23017-rpi-libg"
 ]
 
 [workspace.dependencies]
@@ -17,3 +18,4 @@ fschema-lib = { path = "external/fschema/fschema-lib" }
 keyboard-layouts = { path= "external/keyboard-layouts" }
 gen_layouts_sys = { path= "external/keyboard-layouts/gen_layouts_sys" }
 configfs = { path = "external/configfs" }
+mcp23017-rpi-lib = { path = "external/mcp23017-rpi-libg" }
