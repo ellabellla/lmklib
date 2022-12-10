@@ -1,13 +1,29 @@
 
-use std::sync::{RwLock, Arc};
+use std::{sync::{RwLock, Arc}, io};
 
 use serde::{Serialize, Deserialize};
+use virt_hid::{key::{Keyboard}, mouse::Mouse};
 use crate::layout::Layout;
 
 pub mod keyboard;
-use keyboard::KeyboardBundle;
 
 use self::keyboard::Key;
+
+pub struct HID {
+    pub(crate) keyboard: Keyboard,
+    pub(crate) mouse: Mouse,
+    hid: virt_hid::HID,
+}
+
+impl HID {
+    pub fn new(mouse_id: u8, keyboard_id: u8) -> io::Result<HID> {
+        Ok(HID { keyboard: Keyboard::new(), mouse: Mouse::new(), hid: virt_hid::HID::new(mouse_id, keyboard_id)? })
+    }
+    
+    pub fn send(&mut self) -> io::Result<()> {
+        self.keyboard.send(&mut self.hid)
+    }
+}
 
 pub enum ReturnCommand {
     Switch(usize),
@@ -46,19 +62,19 @@ impl From<&Function> for  FunctionType  {
 }
 
 pub struct FunctionBuilder {
-    keyboard: Arc<RwLock<KeyboardBundle>>,
+    keyboard: Arc<RwLock<HID>>,
 }
 
 impl FunctionBuilder {
-    pub fn new(keyboard: KeyboardBundle) -> FunctionBuilder {
-        FunctionBuilder { keyboard: Arc::new(RwLock::new(keyboard)) }
+    pub fn new(hid: HID) -> FunctionBuilder {
+        FunctionBuilder { keyboard: Arc::new(RwLock::new(hid)) }
     }
 
     pub fn build(&self, ftype: FunctionType) -> Function {
         match ftype {
             FunctionType::Key(char) => Some(Box::new(Key{
                 key: char, 
-                keyboard_bundle: self.keyboard.clone(), 
+                hid: self.keyboard.clone(), 
                 prev_state: 0
             })),
             FunctionType::Up => Up::new(),

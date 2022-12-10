@@ -1,10 +1,10 @@
-use std::{process::exit, ops::Range, collections::HashMap, thread, time::Duration, path::PathBuf, str::FromStr, fmt::Display, fs, io::Write};
+use std::{process::exit, collections::HashMap, thread, time::Duration, path::PathBuf, str::FromStr, fmt::Display, fs, io::Write};
 
 use clap::Parser;
-use driver::{DriverManager, mcp23017::MCP23017DriverBuilder, DriverInterface};
-use function::{FunctionBuilder, keyboard::KeyboardBundle, FunctionType};
-use mcp23017_rpi_lib::Pin;
-use virt_hid::{key::Keyboard, HID};
+use driver::{DriverManager};
+use function::{FunctionBuilder};
+
+use crate::function::HID;
 
 
 mod ledstate;
@@ -96,8 +96,8 @@ async fn main() {
             .or_exit("Unable to parse layout config");
 
         
-        let keyboard_bundle = KeyboardBundle::new(Keyboard::new(), HID::new(1, 0).unwrap());
-        let func_builder = FunctionBuilder::new(keyboard_bundle);
+        let hid = HID::new(1, 0).or_exit("Unable to create hid");
+        let func_builder = FunctionBuilder::new(hid);
 
         let mut layout = builder.build(driver_manager, &func_builder);
 

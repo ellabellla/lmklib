@@ -1,27 +1,13 @@
-use std::{sync::{Arc, RwLock}, io};
+use std::{sync::{Arc, RwLock}};
 
-use virt_hid::{key::{BasicKey, Keyboard, KeyOrigin}, HID};
+use virt_hid::key::{BasicKey, KeyOrigin};
 
-use super::{FunctionInterface, ReturnCommand, FunctionType};
+use super::{FunctionInterface, ReturnCommand, FunctionType, HID};
 
-pub struct KeyboardBundle {
-    keyboard: Keyboard,
-    hid: HID,
-}
-
-impl KeyboardBundle {
-    pub fn new(keyboard: Keyboard, hid: HID) -> KeyboardBundle {
-        KeyboardBundle { keyboard, hid }
-    }
-    
-    pub fn send(&mut self) -> io::Result<()> {
-        self.keyboard.send(&mut self.hid)
-    }
-}
 
 pub struct Key{
     pub(crate) key: char,
-    pub(crate) keyboard_bundle: Arc<RwLock<KeyboardBundle>>,
+    pub(crate) hid: Arc<RwLock<HID>>,
 
     pub(crate) prev_state: u16,
 }
@@ -30,19 +16,19 @@ impl FunctionInterface for Key {
     fn event(&mut self, state: u16) -> ReturnCommand {
         'block: {
             if state != 0 && self.prev_state == 0 {
-                let Ok(mut bundle) = self.keyboard_bundle.write() else {
+                let Ok(mut hid) = self.hid.write() else {
                     break 'block;
                 };
 
-                bundle.keyboard.hold_key(&BasicKey::Char(self.key, KeyOrigin::Keyboard));
-                bundle.send().ok();
+                hid.keyboard.hold_key(&BasicKey::Char(self.key, KeyOrigin::Keyboard));
+                hid.send().ok();
             } else if state == 0 && self.prev_state != 0{
-                let Ok(mut bundle) = self.keyboard_bundle.write() else {
+                let Ok(mut hid) = self.hid.write() else {
                     break 'block;
                 };
                 
-                bundle.keyboard.release_key(&BasicKey::Char(self.key, KeyOrigin::Keyboard));
-                bundle.send().ok();
+                hid.keyboard.release_key(&BasicKey::Char(self.key, KeyOrigin::Keyboard));
+                hid.send().ok();
             }
         }
 
