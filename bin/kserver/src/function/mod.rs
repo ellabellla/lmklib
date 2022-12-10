@@ -30,6 +30,9 @@ impl ReturnCommand {
 #[derive(Clone, Serialize, Deserialize)]
 pub enum FunctionType {
     Key(char),
+    Up,
+    Down,
+    Switch(usize),
     None,
 }
 
@@ -58,6 +61,9 @@ impl FunctionBuilder {
                 keyboard_bundle: self.keyboard.clone(), 
                 prev_state: 0
             })),
+            FunctionType::Up => Up::new(),
+            FunctionType::Down => Down::new(),
+            FunctionType::Switch(id) => Switch::new(id),
             FunctionType::None => None,
         }
     }
@@ -70,3 +76,59 @@ pub trait FunctionInterface {
 
 
 pub type Function = Option<Box<dyn FunctionInterface + Send + Sync>>;
+
+pub struct Up;
+
+impl Up {
+    pub fn new() -> Function {
+        Some(Box::new(Up))
+    }
+}
+
+impl FunctionInterface for Up {
+    fn event(&mut self, _state: u16) -> ReturnCommand {
+        return ReturnCommand::Up
+    }
+
+    fn ftype(&self) -> FunctionType {
+        FunctionType::Up
+    }
+}
+
+pub struct Down;
+
+impl Down {
+    pub fn new() -> Function {
+        Some(Box::new(Down))
+    }
+}
+
+impl FunctionInterface for Down {
+    fn event(&mut self, _state: u16) -> ReturnCommand {
+        return ReturnCommand::Down
+    }
+
+    fn ftype(&self) -> FunctionType {
+        FunctionType::Down
+    }
+}
+
+pub struct Switch {
+    id: usize
+}
+
+impl Switch {
+    pub fn new(id: usize) -> Function {
+        Some(Box::new(Switch{id}))
+    }
+}
+
+impl FunctionInterface for Switch {
+    fn event(&mut self, _state: u16) -> ReturnCommand {
+        return ReturnCommand::Switch(self.id)
+    }
+
+    fn ftype(&self) -> FunctionType {
+        FunctionType::Switch(self.id)
+    }
+}
