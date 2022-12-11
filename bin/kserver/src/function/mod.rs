@@ -2,13 +2,13 @@
 use std::{sync::{RwLock, Arc}, io};
 
 use serde::{Serialize, Deserialize};
-use virt_hid::{key::{Keyboard}, mouse::Mouse};
+use virt_hid::{key::{Keyboard, SpecialKey, Modifier, BasicKey}, mouse::Mouse};
 use crate::layout::Layout;
 
 pub mod keyboard;
 pub mod mouse;
 
-use self::{keyboard::Key, mouse::{ConstMouse, LeftClick, RightClick, ConstWheel}};
+use self::{keyboard::{Key, BasicString, ComplexString, Special, Shortcut, ModifierKey}, mouse::{ConstMouse, LeftClick, RightClick, ConstWheel}};
 
 pub struct HID {
     pub(crate) keyboard: Keyboard,
@@ -59,6 +59,13 @@ pub enum FunctionType {
     LeftClick,
     RightClick,
     ConstWheel{amount: i8, period: u64},
+    String(String),
+    ComplexString { str: String, layout: String },
+    Special(SpecialKey),
+    Shortcut { modifiers: Vec<Modifier>, keys: Vec<BasicKey> },
+    Modifier(Modifier),
+    StringLn(String),
+    ComplexStringLn { str: String, layout: String },
 }
 
 impl From<&Function> for  FunctionType  {
@@ -81,11 +88,14 @@ impl FunctionBuilder {
 
     pub fn build(&self, ftype: FunctionType) -> Function {
         match ftype {
-            FunctionType::Key(char) => Some(Box::new(Key{
-                key: char, 
-                hid: self.hid.clone(), 
-                prev_state: 0
-            })),
+            FunctionType::Key(key) => Key::new(key, self.hid.clone()),
+            FunctionType::Special(special) => Special::new(special, self.hid.clone()),
+            FunctionType::Modifier(modifier) => ModifierKey::new(modifier, self.hid.clone()),
+            FunctionType::String(str) => BasicString::new(str, self.hid.clone()),
+            FunctionType::ComplexString { str, layout } => ComplexString::new(str, layout, self.hid.clone()),
+            FunctionType::StringLn(string) => BasicString::new(format!("{}\n", string), self.hid.clone()),
+            FunctionType::ComplexStringLn { str, layout } => ComplexString::new(format!("{}\n", str), layout, self.hid.clone()),
+            FunctionType::Shortcut { modifiers, keys } => Shortcut::new(modifiers, keys, self.hid.clone()),
             FunctionType::Up => Up::new(),
             FunctionType::Down => Down::new(),
             FunctionType::Switch(id) => Switch::new(id),
