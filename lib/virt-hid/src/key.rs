@@ -8,6 +8,7 @@ use std::{
 
 use gen_layouts_sys::*;
 use keyboard_layouts::{keycode_for_unicode, Keycode, deadkey_for_keycode, key_for_keycode, modifier_for_keycode};
+use serde::{Serialize, Deserialize};
 
 pub use crate::translate::*;
 use crate::HID;
@@ -86,7 +87,7 @@ impl From<&LEDStatePacket> for u8 {
     }
 }
 
-#[derive(Debug, Eq, Hash, PartialEq, Clone, Copy)]
+#[derive(Debug, Eq, Hash, PartialEq, Clone, Copy, Serialize, Deserialize)]
 /// Basic Key Press
 pub enum BasicKey {
     /// Key from Char

@@ -9,6 +9,7 @@ edition = "2021"
 debug = ["tempfile"]
 
 [dependencies]
+serde = { version = "1.0", features = ["derive"] }
 nix = { version = "0.25.0", features = ["poll"] }
 tempfile = { version = "3", optional = true }
 gen_layouts_sys = { workspace = true }
