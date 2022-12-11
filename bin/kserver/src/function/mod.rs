@@ -8,7 +8,7 @@ use crate::layout::Layout;
 pub mod keyboard;
 pub mod mouse;
 
-use self::{keyboard::Key, mouse::ConstMouse};
+use self::{keyboard::Key, mouse::{ConstMouse, LeftClick, RightClick, ConstWheel}};
 
 pub struct HID {
     pub(crate) keyboard: Keyboard,
@@ -21,8 +21,11 @@ impl HID {
         Ok(HID { keyboard: Keyboard::new(), mouse: Mouse::new(), hid: virt_hid::HID::new(mouse_id, keyboard_id)? })
     }
     
-    pub fn send(&mut self) -> io::Result<()> {
-        self.keyboard.send(&mut self.hid)?;
+    pub fn send_keyboard(&mut self) -> io::Result<()> {
+        self.keyboard.send(&mut self.hid)
+    }
+    
+    pub fn send_mouse(&mut self) -> io::Result<()> {
         self.mouse.send(&mut self.hid)
     }
 }
@@ -48,11 +51,14 @@ impl ReturnCommand {
 #[derive(Clone, Serialize, Deserialize)]
 pub enum FunctionType {
     Key(char),
-    ConstMouse(i8, i8),
+    ConstMouse{x: i8, y: i8},
     Up,
     Down,
     Switch(usize),
     None,
+    LeftClick,
+    RightClick,
+    ConstWheel{amount: i8, period: u64},
 }
 
 impl From<&Function> for  FunctionType  {
@@ -83,7 +89,10 @@ impl FunctionBuilder {
             FunctionType::Up => Up::new(),
             FunctionType::Down => Down::new(),
             FunctionType::Switch(id) => Switch::new(id),
-            FunctionType::ConstMouse(x, y) => ConstMouse::new(x, y, self.hid.clone()),
+            FunctionType::ConstMouse{x, y} => ConstMouse::new(x, y, self.hid.clone()),
+            FunctionType::ConstWheel{amount, period} => ConstWheel::new(amount, period, self.hid.clone()),
+            FunctionType::LeftClick => LeftClick::new(self.hid.clone()),
+            FunctionType::RightClick => RightClick::new(self.hid.clone()),
             FunctionType::None => None,
         }
     }

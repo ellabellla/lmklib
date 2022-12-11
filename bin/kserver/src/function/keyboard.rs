@@ -21,14 +21,14 @@ impl FunctionInterface for Key {
                 };
 
                 hid.keyboard.hold_key(&BasicKey::Char(self.key, KeyOrigin::Keyboard));
-                hid.send().ok();
+                hid.send_keyboard().ok();
             } else if state == 0 && self.prev_state != 0{
                 let Ok(mut hid) = self.hid.write() else {
                     break 'block;
                 };
                 
                 hid.keyboard.release_key(&BasicKey::Char(self.key, KeyOrigin::Keyboard));
-                hid.send().ok();
+                hid.send_keyboard().ok();
             }
         }
 
