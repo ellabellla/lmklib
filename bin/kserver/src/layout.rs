@@ -268,9 +268,7 @@ impl Layout {
     }
 
     pub fn tick(&mut self) {
-        for driver in self.driver_manager.drivers.values_mut() {
-            driver.tick();
-        }
+        self.driver_manager.tick();
     }
 
     pub fn poll(&mut self) {

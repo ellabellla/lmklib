@@ -16,16 +16,26 @@ pub trait DriverInterface {
 pub type Driver = Box<dyn DriverInterface>;
 
 pub struct DriverManager {
-    pub(crate) drivers: HashMap<String, Driver>,
+    drivers: HashMap<String, Driver>,
 }
 
 impl DriverManager {
+    pub fn new(drivers: HashMap<String, Driver>) -> DriverManager {
+        DriverManager { drivers }
+    }
+
     pub fn get(&self, name: &str) -> Option<&Driver> {
         self.drivers.get(name)
     }
 
     pub fn get_mut(&mut self, name: &str) -> Option<&mut Driver> {
         self.drivers.get_mut(name)
+    }
+
+    pub fn tick(&mut self) {
+        for driver in self.drivers.values_mut() {
+            driver.tick();
+        }
     }
 }
 

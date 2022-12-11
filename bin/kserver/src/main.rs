@@ -70,7 +70,7 @@ async fn main() {
         
         fs::File::create(config.join(DRIVER_JSON))
             .or_exit("Unable to create default driver config")
-            .write_all(&serde_json::to_string_pretty(&DriverManager{drivers:HashMap::new()})
+            .write_all(&serde_json::to_string_pretty(&DriverManager::new(HashMap::new()))
                 .or_exit("Unable to create default driver config")
                 .as_bytes()
             )
