@@ -102,14 +102,10 @@ impl Mouse {
 
     /// Full buffered mouse events
     pub fn send(&mut self, hid: &mut HID) -> io::Result<()>{
-        if self.data == [0;5] && self.hold == 0x00 {
-            return Ok(())
-        }
-
         if self.hold == 0x00 {
-            let res = hid.send_mouse_packet(&self.data);
+            hid.send_mouse_packet(&self.data)?;
             self.data = [0; 5];
-            res
+            hid.send_mouse_packet(&self.data)
         } else {
             self.data[MOUSE_DATA_BUT_IDX] |= self.hold;
             hid.send_mouse_packet(&self.data)?;
