@@ -2,13 +2,13 @@
 use std::{sync::{RwLock, Arc}, io};
 
 use serde::{Serialize, Deserialize};
-use virt_hid::{key::{Keyboard, SpecialKey, Modifier, BasicKey}, mouse::Mouse};
-use crate::layout::Layout;
+use virt_hid::{key::{Keyboard, SpecialKey, Modifier, BasicKey}, mouse::{Mouse, MouseDir}};
+use crate::layout::{Layout};
 
 pub mod keyboard;
 pub mod mouse;
 
-use self::{keyboard::{Key, BasicString, ComplexString, Special, Shortcut, ModifierKey}, mouse::{ConstMouse, LeftClick, RightClick, ConstWheel}};
+use self::{keyboard::{Key, BasicString, ComplexString, Special, Shortcut, ModifierKey}, mouse::{ConstMove, LeftClick, RightClick, ConstScroll, Move, Scroll, ImmediateMove, ImmediateScroll}};
 
 pub struct HID {
     pub(crate) keyboard: Keyboard,
@@ -51,14 +51,14 @@ impl ReturnCommand {
 #[derive(Clone, Serialize, Deserialize)]
 pub enum FunctionType {
     Key(char),
-    ConstMouse{x: i8, y: i8},
+    ConstMove{x: i8, y: i8},
     Up,
     Down,
     Switch(usize),
     None,
     LeftClick,
     RightClick,
-    ConstWheel{amount: i8, period: u64},
+    ConstScroll{amount: i8, period: u64},
     String(String),
     ComplexString { str: String, layout: String },
     Special(SpecialKey),
@@ -66,6 +66,10 @@ pub enum FunctionType {
     Modifier(Modifier),
     StringLn(String),
     ComplexStringLn { str: String, layout: String },
+    Move { dir: MouseDir, invert: bool, threshold: u16, scale: f64 },
+    Scroll { period: u64, invert: bool, threshold: u16, scale: f64 },
+    ImmediateMove { x: i8, y: i8 },
+    ImmediateScroll(i8),
 }
 
 impl From<&Function> for  FunctionType  {
@@ -99,8 +103,12 @@ impl FunctionBuilder {
             FunctionType::Up => Up::new(),
             FunctionType::Down => Down::new(),
             FunctionType::Switch(id) => Switch::new(id),
-            FunctionType::ConstMouse{x, y} => ConstMouse::new(x, y, self.hid.clone()),
-            FunctionType::ConstWheel{amount, period} => ConstWheel::new(amount, period, self.hid.clone()),
+            FunctionType::Scroll { period, invert, threshold, scale } => Scroll::new(period, invert, threshold, scale, self.hid.clone()),
+            FunctionType::Move { dir, invert, threshold, scale } => Move::new(dir, invert, threshold, scale, self.hid.clone()),
+            FunctionType::ImmediateMove { x, y } => ImmediateMove::new(x, y, self.hid.clone()),
+            FunctionType::ImmediateScroll(amount) => ImmediateScroll::new(amount, self.hid.clone()),
+            FunctionType::ConstMove{x, y} => ConstMove::new(x, y, self.hid.clone()),
+            FunctionType::ConstScroll{amount, period} => ConstScroll::new(amount, period, self.hid.clone()),
             FunctionType::LeftClick => LeftClick::new(self.hid.clone()),
             FunctionType::RightClick => RightClick::new(self.hid.clone()),
             FunctionType::None => None,
