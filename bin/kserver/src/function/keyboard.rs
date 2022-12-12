@@ -1,5 +1,6 @@
-use std::{sync::{Arc, RwLock}};
+use std::{sync::{Arc}};
 
+use tokio::sync::RwLock;
 use virt_hid::key::{BasicKey, KeyOrigin, SpecialKey, Modifier};
 
 use super::{FunctionInterface, ReturnCommand, FunctionType, HID, Function};
@@ -19,22 +20,16 @@ impl Key {
 
 impl FunctionInterface for Key {
     fn event(&mut self, state: u16) -> ReturnCommand {
-        'block: {
-            if state != 0 && self.prev_state == 0 {
-                let Ok(mut hid) = self.hid.write() else {
-                    break 'block;
-                };
+        if state != 0 && self.prev_state == 0 {
+            let mut hid = self.hid.blocking_write(); 
 
-                hid.keyboard.hold_key(&BasicKey::Char(self.key, KeyOrigin::Keyboard));
-                hid.send_keyboard().ok();
-            } else if state == 0 && self.prev_state != 0{
-                let Ok(mut hid) = self.hid.write() else {
-                    break 'block;
-                };
-                
-                hid.keyboard.release_key(&BasicKey::Char(self.key, KeyOrigin::Keyboard));
-                hid.send_keyboard().ok();
-            }
+            hid.keyboard.hold_key(&BasicKey::Char(self.key, KeyOrigin::Keyboard));
+            hid.send_keyboard().ok();
+        } else if state == 0 && self.prev_state != 0{
+            let mut hid = self.hid.blocking_write();
+            
+            hid.keyboard.release_key(&BasicKey::Char(self.key, KeyOrigin::Keyboard));
+            hid.send_keyboard().ok();
         }
 
         self.prev_state = state;
@@ -60,22 +55,16 @@ impl Special {
 
 impl FunctionInterface for Special {
     fn event(&mut self, state: u16) -> ReturnCommand {
-        'block: {
-            if state != 0 && self.prev_state == 0 {
-                let Ok(mut hid) = self.hid.write() else {
-                    break 'block;
-                };
+        if state != 0 && self.prev_state == 0 {
+            let mut hid = self.hid.blocking_write();
 
-                hid.keyboard.hold_key(&BasicKey::Special(self.special));
-                hid.send_keyboard().ok();
-            } else if state == 0 && self.prev_state != 0{
-                let Ok(mut hid) = self.hid.write() else {
-                    break 'block;
-                };
-                
-                hid.keyboard.release_key(&BasicKey::Special(self.special));
-                hid.send_keyboard().ok();
-            }
+            hid.keyboard.hold_key(&BasicKey::Special(self.special));
+            hid.send_keyboard().ok();
+        } else if state == 0 && self.prev_state != 0{
+            let mut hid = self.hid.blocking_write();
+            
+            hid.keyboard.release_key(&BasicKey::Special(self.special));
+            hid.send_keyboard().ok();
         }
 
         self.prev_state = state;
@@ -101,22 +90,16 @@ impl ModifierKey {
 
 impl FunctionInterface for ModifierKey {
     fn event(&mut self, state: u16) -> ReturnCommand {
-        'block: {
-            if state != 0 && self.prev_state == 0 {
-                let Ok(mut hid) = self.hid.write() else {
-                    break 'block;
-                };
+        if state != 0 && self.prev_state == 0 {
+            let mut hid = self.hid.blocking_write();
 
-                hid.keyboard.hold_mod(&self.modifier);
-                hid.send_keyboard().ok();
-            } else if state == 0 && self.prev_state != 0{
-                let Ok(mut hid) = self.hid.write() else {
-                    break 'block;
-                };
-                
-                hid.keyboard.release_mod(&self.modifier);
-                hid.send_keyboard().ok();
-            }
+            hid.keyboard.hold_mod(&self.modifier);
+            hid.send_keyboard().ok();
+        } else if state == 0 && self.prev_state != 0 {
+            let mut hid = self.hid.blocking_write();
+            
+            hid.keyboard.release_mod(&self.modifier);
+            hid.send_keyboard().ok();
         }
 
         self.prev_state = state;
@@ -142,15 +125,11 @@ impl BasicString {
 
 impl FunctionInterface for BasicString {
     fn event(&mut self, state: u16) -> ReturnCommand {
-        'block: {
-            if state != 0 && self.prev_state == 0 {
-                let Ok(mut hid) = self.hid.write() else {
-                    break 'block;
-                };
+        if state != 0 && self.prev_state == 0 {
+            let mut hid = self.hid.blocking_write();
 
-                hid.keyboard.press_basic_string(&self.string);
-                hid.send_keyboard().ok();
-            }
+            hid.keyboard.press_basic_string(&self.string);
+            hid.send_keyboard().ok();
         }
 
         self.prev_state = state;
@@ -177,15 +156,11 @@ impl ComplexString {
 
 impl FunctionInterface for ComplexString {
     fn event(&mut self, state: u16) -> ReturnCommand {
-        'block: {
-            if state != 0 && self.prev_state == 0 {
-                let Ok(mut hid) = self.hid.write() else {
-                    break 'block;
-                };
+        if state != 0 && self.prev_state == 0 {
+            let mut hid = self.hid.blocking_write();
 
-                hid.keyboard.press_string(&self.layout, &self.string);
-                hid.send_keyboard().ok();
-            }
+            hid.keyboard.press_string(&self.layout, &self.string);
+            hid.send_keyboard().ok();
         }
 
         self.prev_state = state;
@@ -212,27 +187,23 @@ impl Shortcut {
 
 impl FunctionInterface for Shortcut {
     fn event(&mut self, state: u16) -> ReturnCommand {
-        'block: {
-            if state != 0 && self.prev_state == 0 {
-                let Ok(mut hid) = self.hid.write() else {
-                    break 'block;
-                };
+        if state != 0 && self.prev_state == 0 {
+            let mut hid = self.hid.blocking_write();
 
-                for modifier in &self.modifiers {
-                    hid.keyboard.hold_mod(modifier);
-                }
-                for key in &self.keys {
-                    hid.keyboard.hold_key(key);
-                }
-                hid.send_keyboard().ok();
-                for key in &self.keys {
-                    hid.keyboard.release_key(key);
-                }
-                for modifier in &self.modifiers {
-                    hid.keyboard.release_mod(modifier);
-                }
-                hid.send_keyboard().ok();
+            for modifier in &self.modifiers {
+                hid.keyboard.hold_mod(modifier);
             }
+            for key in &self.keys {
+                hid.keyboard.hold_key(key);
+            }
+            hid.send_keyboard().ok();
+            for key in &self.keys {
+                hid.keyboard.release_key(key);
+            }
+            for modifier in &self.modifiers {
+                hid.keyboard.release_mod(modifier);
+            }
+            hid.send_keyboard().ok();
         }
 
         self.prev_state = state;

@@ -1,5 +1,6 @@
-use std::{sync::{Arc, RwLock}, time::{Instant, Duration}};
+use std::{sync::{Arc}, time::{Instant, Duration}};
 
+use tokio::sync::RwLock;
 use virt_hid::mouse::{MouseDir, MouseButton};
 
 use super::{FunctionInterface, HID, ReturnCommand, FunctionType, Function};
@@ -18,17 +19,13 @@ impl ImmediateMove {
 
 impl FunctionInterface for ImmediateMove {
     fn event(&mut self, state: u16) -> super::ReturnCommand {
-        'block: {
-            if state != 0 && self.prev_state == 0 {
-                let Ok(mut hid) = self.hid.write() else {
-                    break 'block;
-                };
+        if state != 0 && self.prev_state == 0 {
+            let mut hid = self.hid.blocking_write();
 
-                hid.mouse.move_mouse(&self.amount.0, &MouseDir::X);
-                hid.mouse.move_mouse(&self.amount.1, &MouseDir::Y);
-    
-                hid.send_mouse().ok();
-            }
+            hid.mouse.move_mouse(&self.amount.0, &MouseDir::X);
+            hid.mouse.move_mouse(&self.amount.1, &MouseDir::Y);
+
+            hid.send_mouse().ok();
         }
 
         self.prev_state = state;
@@ -53,15 +50,11 @@ impl ImmediateScroll {
 
 impl FunctionInterface for ImmediateScroll {
     fn event(&mut self, state: u16) -> super::ReturnCommand {
-        'block: {
-            if state != 0 && self.prev_state == 0 {
-                let Ok(mut hid) = self.hid.write() else {
-                    break 'block;
-                };
+        if state != 0 && self.prev_state == 0 {
+            let mut hid = self.hid.blocking_write();
 
-                hid.mouse.scroll_wheel(&self.amount);
-                hid.send_mouse().ok();
-            }
+            hid.mouse.scroll_wheel(&self.amount);
+            hid.send_mouse().ok();
         }
 
         self.prev_state = state;
@@ -86,9 +79,7 @@ impl ConstMove {
 
 impl FunctionInterface for ConstMove {
     fn event(&mut self, state: u16) -> super::ReturnCommand {
-        let Ok(mut hid) = self.hid.write() else {
-            return ReturnCommand::None;
-        };
+        let mut hid = self.hid.blocking_write();
 
         if state != 0 {
             hid.mouse.move_mouse(&self.amount.0, &MouseDir::X);
@@ -120,9 +111,7 @@ impl ConstScroll {
 impl FunctionInterface for ConstScroll {
     fn event(&mut self, state: u16) -> super::ReturnCommand {
 
-        let Ok(mut hid) = self.hid.write() else {
-            return ReturnCommand::None;
-        };
+        let mut hid = self.hid.blocking_write();
 
         if state != 0 {
             let now = Instant::now();
@@ -160,9 +149,7 @@ impl Move {
 
 impl FunctionInterface for Move {
     fn event(&mut self, state: u16) -> ReturnCommand {
-        let Ok(mut hid) = self.hid.write() else {
-            return ReturnCommand::None;
-        };
+        let mut hid = self.hid.blocking_write();
 
         if state > self.threshold {
             let mut val = (state as f64) / (u16::MAX as f64);
@@ -217,9 +204,7 @@ impl Scroll {
 
 impl FunctionInterface for Scroll {
     fn event(&mut self, state: u16) -> ReturnCommand {
-        let Ok(mut hid) = self.hid.write() else {
-            return ReturnCommand::None;
-        };
+        let mut hid = self.hid.blocking_write();
 
         let now = Instant::now();
         if state > self.threshold && now.duration_since(self.prev_time) > self.period {
@@ -271,18 +256,14 @@ impl LeftClick {
 
 impl FunctionInterface for LeftClick {
     fn event(&mut self, state: u16) -> super::ReturnCommand {
-        'block: {
-            let Ok(mut hid) = self.hid.write() else {
-                break 'block;
-            };
+        let mut hid = self.hid.blocking_write();
 
-            if state != 0 && self.prev_state == 0 {
-                hid.mouse.hold_button(&MouseButton::Left);
-                hid.send_mouse().ok();
-            } else if state == 0 && self.prev_state != 0 {
-                hid.mouse.release_button(&MouseButton::Left);
-                hid.send_mouse().ok();
-            }
+        if state != 0 && self.prev_state == 0 {
+            hid.mouse.hold_button(&MouseButton::Left);
+            hid.send_mouse().ok();
+        } else if state == 0 && self.prev_state != 0 {
+            hid.mouse.release_button(&MouseButton::Left);
+            hid.send_mouse().ok();
         }
 
         self.prev_state = state;
@@ -308,18 +289,14 @@ impl RightClick {
 
 impl FunctionInterface for RightClick {
     fn event(&mut self, state: u16) -> super::ReturnCommand {
-        'block: {
-            let Ok(mut hid) = self.hid.write() else {
-                break 'block;
-            };
+        let mut hid = self.hid.blocking_write();
 
-            if state != 0 && self.prev_state == 0 {
-                hid.mouse.hold_button(&MouseButton::Right);
-                hid.send_mouse().ok();
-            } else if state == 0 && self.prev_state != 0 {
-                hid.mouse.release_button(&MouseButton::Right);
-                hid.send_mouse().ok();
-            }
+        if state != 0 && self.prev_state == 0 {
+            hid.mouse.hold_button(&MouseButton::Right);
+            hid.send_mouse().ok();
+        } else if state == 0 && self.prev_state != 0 {
+            hid.mouse.release_button(&MouseButton::Right);
+            hid.send_mouse().ok();
         }
 
         self.prev_state = state;

@@ -1,14 +1,16 @@
 
-use std::{sync::{RwLock, Arc}, io};
+use std::{sync::{Arc}, io};
 
 use serde::{Serialize, Deserialize};
+use tokio::sync::RwLock;
 use virt_hid::{key::{Keyboard, SpecialKey, Modifier, BasicKey}, mouse::{Mouse, MouseDir}};
 use crate::layout::{Layout};
 
 pub mod keyboard;
 pub mod mouse;
+pub mod midi;
 
-use self::{keyboard::{Key, BasicString, ComplexString, Special, Shortcut, ModifierKey}, mouse::{ConstMove, LeftClick, RightClick, ConstScroll, Move, Scroll, ImmediateMove, ImmediateScroll}};
+use self::{keyboard::{Key, BasicString, ComplexString, Special, Shortcut, ModifierKey}, mouse::{ConstMove, LeftClick, RightClick, ConstScroll, Move, Scroll, ImmediateMove, ImmediateScroll}, midi::{Note, MidiController, Channel, ConstPitchBend, PitchBend}};
 
 pub struct HID {
     pub(crate) keyboard: Keyboard,
