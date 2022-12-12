@@ -4,7 +4,7 @@ use clap::Parser;
 use driver::{DriverManager};
 use function::{FunctionBuilder};
 
-use crate::function::{HID, midi::MidiController};
+use crate::function::{HID, midi::MidiController, cmd::CommandPool};
 
 
 mod ledstate;
@@ -85,6 +85,7 @@ async fn main() {
             .or_exit("Unable to create default layout config");
     }
     
+    let (command_pool, command_pool_join) = CommandPool::new().or_exit("Unable to create command pool");
 
     tokio::task::spawn_blocking(move || {
         let driver_manager: DriverManager = serde_json::from_reader(fs::File::open(config.join(DRIVER_JSON))
@@ -98,7 +99,7 @@ async fn main() {
         
         let hid = HID::new(1, 0).or_exit("Unable to create hid");
         let midi_controller = MidiController::new().or_exit("Unable to create midi controller");
-        let func_builder = FunctionBuilder::new(hid, midi_controller);
+        let func_builder = FunctionBuilder::new(hid, midi_controller, command_pool);
 
         let mut layout = builder.build(driver_manager, &func_builder);
 
@@ -109,6 +110,7 @@ async fn main() {
         }
     }).await.unwrap();
 
+    command_pool_join.await.unwrap();
     // let mut builder = MCP23017DriverBuilder::new("mcp1", 0x20, 3);
     // let x = vec![Pin::new(14).or_exit("pin"), Pin::new(11).or_exit("pin"), Pin::new(8).or_exit("pin")];
     // let y = vec![Pin::new(15).or_exit("pin"), Pin::new(13).or_exit("pin"), Pin::new(9).or_exit("pin")];

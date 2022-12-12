@@ -9,8 +9,9 @@ use crate::layout::{Layout};
 pub mod keyboard;
 pub mod mouse;
 pub mod midi;
+pub mod cmd;
 
-use self::{keyboard::{Key, BasicString, ComplexString, Special, Shortcut, ModifierKey}, mouse::{ConstMove, LeftClick, RightClick, ConstScroll, Move, Scroll, ImmediateMove, ImmediateScroll}, midi::{Note, MidiController, Channel, ConstPitchBend, PitchBend, Instrument, GMSoundSet, note_param}};
+use self::{keyboard::{Key, BasicString, ComplexString, Special, Shortcut, ModifierKey}, mouse::{ConstMove, LeftClick, RightClick, ConstScroll, Move, Scroll, ImmediateMove, ImmediateScroll}, midi::{Note, MidiController, Channel, ConstPitchBend, PitchBend, Instrument, GMSoundSet, note_param}, cmd::{Bash, Pipe, CommandPool}};
 
 pub struct HID {
     pub(crate) keyboard: Keyboard,
@@ -76,6 +77,8 @@ pub enum FunctionType {
     ConstPitchBend{channel: Channel, bend: u16},
     PitchBend { channel: Channel, invert: bool, threshold: u16, scale: f64 },
     Instrument { channel: Channel, instrument: GMSoundSet },
+    Bash(String),
+    Pipe(String),
 }
 
 impl From<&Function> for  FunctionType  {
@@ -90,11 +93,12 @@ impl From<&Function> for  FunctionType  {
 pub struct FunctionBuilder {
     hid: Arc<RwLock<HID>>,
     midi_controller: Arc<RwLock<MidiController>>,
+    command_pool: Arc<RwLock<CommandPool>>,
 }
 
 impl FunctionBuilder {
-    pub fn new(hid: HID, midi_controller: MidiController) -> FunctionBuilder {
-        FunctionBuilder { hid: Arc::new(RwLock::new(hid)), midi_controller: Arc::new(RwLock::new(midi_controller)) }
+    pub fn new(hid: HID, midi_controller: MidiController, command_pool: CommandPool) -> FunctionBuilder {
+        FunctionBuilder { hid: Arc::new(RwLock::new(hid)), midi_controller: Arc::new(RwLock::new(midi_controller)), command_pool: Arc::new(RwLock::new(command_pool)) }
     }
 
     pub fn build(&self, ftype: FunctionType) -> Function {
@@ -123,6 +127,8 @@ impl FunctionBuilder {
             FunctionType::ConstPitchBend{channel, bend} => ConstPitchBend::new(channel, bend, self.midi_controller.clone()),
             FunctionType::PitchBend { channel, invert, threshold, scale } => PitchBend::new(channel, invert, threshold, scale, self.midi_controller.clone()),
             FunctionType::Instrument { channel, instrument } => Instrument::new(channel, instrument.into(), self.midi_controller.clone()),
+            FunctionType::Bash(command) => Bash::new(command, self.command_pool.clone()),
+            FunctionType::Pipe(command) => Pipe::new(command, self.command_pool.clone()),
         }
     }
 }
