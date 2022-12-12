@@ -10,7 +10,7 @@ pub mod keyboard;
 pub mod mouse;
 pub mod midi;
 
-use self::{keyboard::{Key, BasicString, ComplexString, Special, Shortcut, ModifierKey}, mouse::{ConstMove, LeftClick, RightClick, ConstScroll, Move, Scroll, ImmediateMove, ImmediateScroll}, midi::{Note, MidiController, Channel, ConstPitchBend, PitchBend}};
+use self::{keyboard::{Key, BasicString, ComplexString, Special, Shortcut, ModifierKey}, mouse::{ConstMove, LeftClick, RightClick, ConstScroll, Move, Scroll, ImmediateMove, ImmediateScroll}, midi::{Note, MidiController, Channel, ConstPitchBend, PitchBend, Instrument, GMSoundSet, note_param}};
 
 pub struct HID {
     pub(crate) keyboard: Keyboard,
@@ -72,9 +72,10 @@ pub enum FunctionType {
     Scroll { period: u64, invert: bool, threshold: u16, scale: f64 },
     ImmediateMove { x: i8, y: i8 },
     ImmediateScroll(i8),
-    Note{channel: Channel, freq: f32, velocity: u8},
+    Note{channel: Channel, note: note_param::Note, velocity: u8},
     ConstPitchBend{channel: Channel, bend: u16},
     PitchBend { channel: Channel, invert: bool, threshold: u16, scale: f64 },
+    Instrument { channel: Channel, instrument: GMSoundSet },
 }
 
 impl From<&Function> for  FunctionType  {
@@ -118,9 +119,10 @@ impl FunctionBuilder {
             FunctionType::LeftClick => LeftClick::new(self.hid.clone()),
             FunctionType::RightClick => RightClick::new(self.hid.clone()),
             FunctionType::None => None,
-            FunctionType::Note{channel, freq, velocity} => Note::new(channel, freq, velocity, self.midi_controller.clone()),
+            FunctionType::Note{channel, note, velocity} => Note::new(channel, note, velocity, self.midi_controller.clone()),
             FunctionType::ConstPitchBend{channel, bend} => ConstPitchBend::new(channel, bend, self.midi_controller.clone()),
             FunctionType::PitchBend { channel, invert, threshold, scale } => PitchBend::new(channel, invert, threshold, scale, self.midi_controller.clone()),
+            FunctionType::Instrument { channel, instrument } => Instrument::new(channel, instrument.into(), self.midi_controller.clone()),
         }
     }
 }
