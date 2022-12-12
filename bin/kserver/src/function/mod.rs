@@ -72,6 +72,9 @@ pub enum FunctionType {
     Scroll { period: u64, invert: bool, threshold: u16, scale: f64 },
     ImmediateMove { x: i8, y: i8 },
     ImmediateScroll(i8),
+    Note{channel: Channel, freq: f32, velocity: u8},
+    ConstPitchBend{channel: Channel, bend: u16},
+    PitchBend { channel: Channel, invert: bool, threshold: u16, scale: f64 },
 }
 
 impl From<&Function> for  FunctionType  {
@@ -85,11 +88,12 @@ impl From<&Function> for  FunctionType  {
 
 pub struct FunctionBuilder {
     hid: Arc<RwLock<HID>>,
+    midi_controller: Arc<RwLock<MidiController>>,
 }
 
 impl FunctionBuilder {
-    pub fn new(hid: HID) -> FunctionBuilder {
-        FunctionBuilder { hid: Arc::new(RwLock::new(hid)) }
+    pub fn new(hid: HID, midi_controller: MidiController) -> FunctionBuilder {
+        FunctionBuilder { hid: Arc::new(RwLock::new(hid)), midi_controller: Arc::new(RwLock::new(midi_controller)) }
     }
 
     pub fn build(&self, ftype: FunctionType) -> Function {
@@ -114,6 +118,9 @@ impl FunctionBuilder {
             FunctionType::LeftClick => LeftClick::new(self.hid.clone()),
             FunctionType::RightClick => RightClick::new(self.hid.clone()),
             FunctionType::None => None,
+            FunctionType::Note{channel, freq, velocity} => Note::new(channel, freq, velocity, self.midi_controller.clone()),
+            FunctionType::ConstPitchBend{channel, bend} => ConstPitchBend::new(channel, bend, self.midi_controller.clone()),
+            FunctionType::PitchBend { channel, invert, threshold, scale } => PitchBend::new(channel, invert, threshold, scale, self.midi_controller.clone()),
         }
     }
 }

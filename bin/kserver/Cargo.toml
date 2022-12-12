@@ -18,3 +18,5 @@ slab = "0.4"
 itertools = "0.10.5"
 dirs = "4.0.0"
 clap = { version = "4.0.29", features = ["derive"] }
+midir = "0.8.0"
+midi-msg = "0.4"

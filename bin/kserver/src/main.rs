@@ -4,7 +4,7 @@ use clap::Parser;
 use driver::{DriverManager};
 use function::{FunctionBuilder};
 
-use crate::function::HID;
+use crate::function::{HID, midi::MidiController};
 
 
 mod ledstate;
@@ -97,7 +97,8 @@ async fn main() {
 
         
         let hid = HID::new(1, 0).or_exit("Unable to create hid");
-        let func_builder = FunctionBuilder::new(hid);
+        let midi_controller = MidiController::new().or_exit("Unable to create midi controller");
+        let func_builder = FunctionBuilder::new(hid, midi_controller);
 
         let mut layout = builder.build(driver_manager, &func_builder);
 
