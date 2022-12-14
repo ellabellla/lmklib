@@ -13,7 +13,7 @@ pub mod midi;
 pub mod cmd;
 pub mod hid;
 
-use self::{keyboard::{Key, BasicString, ComplexString, Special, Shortcut, ModifierKey}, mouse::{ConstMove, LeftClick, RightClick, ConstScroll, Move, Scroll, ImmediateMove, ImmediateScroll}, midi::{Note, MidiController, Channel, ConstPitchBend, PitchBend, Instrument, GMSoundSet, note_param}, cmd::{Bash, Pipe, CommandPool}, hid::HID};
+use self::{keyboard::{Key, BasicString, ComplexString, Special, Shortcut, ModifierKey}, mouse::{ConstMove, LeftClick, RightClick, ConstScroll, Move, Scroll, ImmediateMove, ImmediateScroll}, midi::{Note, MidiController, Channel, ConstPitchBend, PitchBend, Instrument, GMSoundSet, note_param}, cmd::{Bash, Pipe, CommandPool}, hid::{HID, SwitchHid}};
 
 
 pub enum ReturnCommand {
@@ -62,6 +62,7 @@ pub enum FunctionType {
     Instrument { channel: Channel, instrument: GMSoundSet },
     Bash(String),
     Pipe(String),
+    SwitchHid,
 }
 
 impl FunctionType  {
@@ -112,6 +113,7 @@ impl FunctionBuilder {
             FunctionType::Instrument { channel, instrument } => Instrument::new(channel, instrument.into(), self.midi_controller.clone()),
             FunctionType::Bash(command) => Bash::new(command, self.command_pool.clone()),
             FunctionType::Pipe(command) => Pipe::new(command, self.command_pool.clone()),
+            FunctionType::SwitchHid => SwitchHid::new(self.hid.clone()),
         }
     }
 }

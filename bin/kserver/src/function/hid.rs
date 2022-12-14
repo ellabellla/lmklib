@@ -1,8 +1,38 @@
 use std::{sync::Arc};
 
+use configfs::async_trait;
 use tokio::{sync::{RwLock, mpsc::{UnboundedSender, self}, oneshot}};
 use uinput::{event::{self, controller::Mouse, relative::{Position, Wheel}, keyboard::{Key, Misc, KeyPad, InputAssist}}, Device};
 use virt_hid::{key::{self, BasicKey, KeyOrigin, SpecialKey, Modifier}, mouse::{self, MouseDir, MouseButton}};
+
+use super::{Function, FunctionInterface, ReturnCommand, FunctionType};
+
+pub struct SwitchHid {
+    prev_state: u16,
+    hid: Arc<RwLock<HID>>,
+}
+
+impl SwitchHid {
+    pub fn new(hid: Arc<RwLock<HID>>) -> Function {
+        Some(Box::new(SwitchHid{prev_state: 0, hid}))
+    }
+}
+
+#[async_trait]
+impl FunctionInterface for SwitchHid {
+    async fn event(&mut self, state: u16) -> ReturnCommand {
+        if state != 0 && self.prev_state == 0 {
+            self.hid.read().await.switch();
+        }
+
+        self.prev_state = state;
+        ReturnCommand::None
+    }
+
+    fn ftype(&self) -> FunctionType {
+        FunctionType::SwitchHid
+    }
+}
 
 #[derive(Debug)]
 enum Command {
@@ -19,7 +49,8 @@ enum Command {
     HoldButton(MouseButton),
     ReleaseButton(MouseButton),
     SendKeyboard,
-    SendMouse
+    SendMouse,
+    Switch,
 }
 
 pub struct HID {
@@ -57,7 +88,7 @@ impl HID {
 
             let mut keyboard = key::Keyboard::new(); 
             let mut mouse = mouse::Mouse::new();
-            let real = true;
+            let mut real = true;
 
             while let Some(command) = rx.recv().await {
                 match command {
@@ -174,6 +205,7 @@ impl HID {
                     Command::SendMouse => if real {
                         mouse.send(&mut hid).ok();
                     },
+                    Command::Switch => real = !real,
                 }
             }
         });
@@ -241,6 +273,10 @@ impl HID {
     
     pub fn send_mouse(&self) {
         self.tx.send(Command::SendMouse).ok();
+    }
+
+    pub fn switch(&self) {
+        self.tx.send(Command::Switch).ok();
     }
 }
 
