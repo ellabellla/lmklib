@@ -5,7 +5,7 @@ use driver::{DriverManager};
 use function::{FunctionBuilder};
 use tokio::sync::RwLock;
 
-use crate::{function::{HID, midi::MidiController, cmd::CommandPool}, driver::SerdeDriverManager};
+use crate::{function::{midi::MidiController, cmd::CommandPool, hid::HID}, driver::SerdeDriverManager};
 
 
 mod ledstate;
@@ -85,14 +85,15 @@ async fn main() {
             )
             .or_exit("Unable to create default layout config");
     }
-    
-    let (command_pool, command_pool_join) = CommandPool::new().or_exit("Unable to create command pool");
+
+    let command_pool = CommandPool::new().or_exit("Unable to create command pool");
+
     let driver_manager: SerdeDriverManager = serde_json::from_reader(fs::File::open(config.join(DRIVER_JSON))
         .or_exit("Unable to read driver config"))
         .or_exit("Unable to parse driver config");
     let driver_manager: Arc<RwLock<DriverManager>> = Arc::new(RwLock::new(driver_manager.build().await.or_exit("Unable to build driver manager")));
-
-    let hid = HID::new(1, 0).or_exit("Unable to create hid");
+    
+    let hid = HID::new(1, 0).await.or_exit("Unable to create hid");
     let midi_controller = MidiController::new().await.or_exit("Unable to create midi controller");
     let func_builder = FunctionBuilder::new(hid, midi_controller, command_pool);
 
@@ -110,7 +111,6 @@ async fn main() {
         }
     }).await.unwrap();
 
-    command_pool_join.await.unwrap();
     // let mut builder = MCP23017DriverBuilder::new("mcp1", 0x20, 3);
     // let x = vec![Pin::new(14).or_exit("pin"), Pin::new(11).or_exit("pin"), Pin::new(8).or_exit("pin")];
     // let y = vec![Pin::new(15).or_exit("pin"), Pin::new(13).or_exit("pin"), Pin::new(9).or_exit("pin")];
