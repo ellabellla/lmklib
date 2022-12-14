@@ -5,7 +5,7 @@ use configfs::async_trait;
 use serde::{Serialize, Deserialize};
 use tokio::sync::RwLock;
 use virt_hid::{key::{SpecialKey, Modifier, BasicKey}, mouse::{MouseDir}};
-use crate::layout::{Layout};
+use crate::{layout::{Layout}, OrLogIgnore};
 
 pub mod keyboard;
 pub mod mouse;
@@ -88,6 +88,7 @@ impl FunctionBuilder {
     }
 
     pub fn build(&self, ftype: FunctionType) -> Function {
+        let debug = format!("{:?}", ftype);
         match ftype {
             FunctionType::Key(key) => Key::new(key, self.hid.clone()),
             FunctionType::Special(special) => Special::new(special, self.hid.clone()),
@@ -117,7 +118,7 @@ impl FunctionBuilder {
             FunctionType::Pipe(command) => Pipe::new(command, self.command_pool.clone()),
             FunctionType::SwitchHid => SwitchHid::new(self.hid.clone()),
             FunctionType::Log(log_level, msg) => Log::new(log_level, msg),
-        }
+        }.or_log_ignore(&format!("Unable to build function (Function Builder), {}", debug))
     }
 }
 
