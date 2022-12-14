@@ -1,38 +1,20 @@
 
-use std::{sync::{Arc}, io};
+use std::{sync::{Arc}};
 
 use configfs::async_trait;
 use serde::{Serialize, Deserialize};
 use tokio::sync::RwLock;
-use virt_hid::{key::{Keyboard, SpecialKey, Modifier, BasicKey}, mouse::{Mouse, MouseDir}};
+use virt_hid::{key::{SpecialKey, Modifier, BasicKey}, mouse::{MouseDir}};
 use crate::layout::{Layout};
 
 pub mod keyboard;
 pub mod mouse;
 pub mod midi;
 pub mod cmd;
+pub mod hid;
 
-use self::{keyboard::{Key, BasicString, ComplexString, Special, Shortcut, ModifierKey}, mouse::{ConstMove, LeftClick, RightClick, ConstScroll, Move, Scroll, ImmediateMove, ImmediateScroll}, midi::{Note, MidiController, Channel, ConstPitchBend, PitchBend, Instrument, GMSoundSet, note_param}, cmd::{Bash, Pipe, CommandPool}};
+use self::{keyboard::{Key, BasicString, ComplexString, Special, Shortcut, ModifierKey}, mouse::{ConstMove, LeftClick, RightClick, ConstScroll, Move, Scroll, ImmediateMove, ImmediateScroll}, midi::{Note, MidiController, Channel, ConstPitchBend, PitchBend, Instrument, GMSoundSet, note_param}, cmd::{Bash, Pipe, CommandPool}, hid::HID};
 
-pub struct HID {
-    pub(crate) keyboard: Keyboard,
-    pub(crate) mouse: Mouse,
-    hid: virt_hid::HID,
-}
-
-impl HID {
-    pub fn new(mouse_id: u8, keyboard_id: u8) -> io::Result<Arc<RwLock<HID>>> {
-        Ok(Arc::new(RwLock::new(HID { keyboard: Keyboard::new(), mouse: Mouse::new(), hid: virt_hid::HID::new(mouse_id, keyboard_id)? })))
-    }
-    
-    pub fn send_keyboard(&mut self) -> io::Result<()> {
-        self.keyboard.send(&mut self.hid)
-    }
-    
-    pub fn send_mouse(&mut self) -> io::Result<()> {
-        self.mouse.send(&mut self.hid)
-    }
-}
 
 pub enum ReturnCommand {
     Switch(usize),

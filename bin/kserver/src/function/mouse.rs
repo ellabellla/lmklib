@@ -22,12 +22,12 @@ impl ImmediateMove {
 impl FunctionInterface for ImmediateMove {
     async fn event(&mut self, state: u16) -> super::ReturnCommand {
         if state != 0 && self.prev_state == 0 {
-            let mut hid = self.hid.write().await;
+            let hid = self.hid.read().await;
 
-            hid.mouse.move_mouse(&self.amount.0, &MouseDir::X);
-            hid.mouse.move_mouse(&self.amount.1, &MouseDir::Y);
+            hid.move_mouse(self.amount.0, MouseDir::X).await;
+            hid.move_mouse(self.amount.1, MouseDir::Y).await;
 
-            hid.send_mouse().ok();
+            hid.send_mouse();
         }
 
         self.prev_state = state;
@@ -54,10 +54,10 @@ impl ImmediateScroll {
 impl FunctionInterface for ImmediateScroll {
     async fn event(&mut self, state: u16) -> super::ReturnCommand {
         if state != 0 && self.prev_state == 0 {
-            let mut hid = self.hid.write().await;
+            let hid = self.hid.read().await;
 
-            hid.mouse.scroll_wheel(&self.amount);
-            hid.send_mouse().ok();
+            hid.scroll_wheel(self.amount).await;
+            hid.send_mouse();
         }
 
         self.prev_state = state;
@@ -83,13 +83,13 @@ impl ConstMove {
 #[async_trait]
 impl FunctionInterface for ConstMove {
     async fn event(&mut self, state: u16) -> super::ReturnCommand {
-        let mut hid = self.hid.write().await;
+        let hid = self.hid.read().await;
 
         if state != 0 {
-            hid.mouse.move_mouse(&self.amount.0, &MouseDir::X);
-            hid.mouse.move_mouse(&self.amount.1, &MouseDir::Y);
+            hid.move_mouse(self.amount.0, MouseDir::X).await;
+            hid.move_mouse(self.amount.1, MouseDir::Y).await;
 
-            hid.send_mouse().ok();
+            hid.send_mouse();
         }
         
         return super::ReturnCommand::None
@@ -116,16 +116,16 @@ impl ConstScroll {
 impl FunctionInterface for ConstScroll {
     async fn event(&mut self, state: u16) -> super::ReturnCommand {
 
-        let mut hid = self.hid.write().await;
+        let hid = self.hid.read().await;
 
         if state != 0 {
             let now = Instant::now();
             if now.duration_since(self.prev_time) > self.period {
                 self.prev_time = now;
 
-                hid.mouse.scroll_wheel(&self.amount);
+                hid.scroll_wheel(self.amount).await;
     
-                hid.send_mouse().ok();
+                hid.send_mouse();
             }
         }
         
@@ -155,7 +155,7 @@ impl Move {
 #[async_trait]
 impl FunctionInterface for Move {
     async fn event(&mut self, state: u16) -> ReturnCommand {
-        let mut hid = self.hid.write().await;
+        let hid = self.hid.read().await;
 
         if state > self.threshold {
             let mut val = (state as f64) / (u16::MAX as f64);
@@ -181,7 +181,7 @@ impl FunctionInterface for Move {
 
             let val = val as i8;
 
-            hid.mouse.move_mouse(&val, &self.dir);
+            hid.move_mouse(val, self.dir.clone()).await;
         }
 
         ReturnCommand::None
@@ -211,7 +211,7 @@ impl Scroll {
 #[async_trait]
 impl FunctionInterface for Scroll {
     async fn event(&mut self, state: u16) -> ReturnCommand {
-        let mut hid = self.hid.write().await;
+        let hid = self.hid.read().await;
 
         let now = Instant::now();
         if state > self.threshold && now.duration_since(self.prev_time) > self.period {
@@ -239,7 +239,7 @@ impl FunctionInterface for Scroll {
 
             let val = val as i8;
 
-            hid.mouse.scroll_wheel(&val);
+            hid.scroll_wheel(val).await;
         }
 
         ReturnCommand::None
@@ -264,14 +264,14 @@ impl LeftClick {
 #[async_trait]
 impl FunctionInterface for LeftClick {
     async fn event(&mut self, state: u16) -> super::ReturnCommand {
-        let mut hid = self.hid.write().await;
+        let hid = self.hid.read().await;
 
         if state != 0 && self.prev_state == 0 {
-            hid.mouse.hold_button(&MouseButton::Left);
-            hid.send_mouse().ok();
+            hid.hold_button(MouseButton::Left).await;
+            hid.send_mouse();
         } else if state == 0 && self.prev_state != 0 {
-            hid.mouse.release_button(&MouseButton::Left);
-            hid.send_mouse().ok();
+            hid.release_button(MouseButton::Left).await;
+            hid.send_mouse();
         }
 
         self.prev_state = state;
@@ -298,14 +298,14 @@ impl RightClick {
 #[async_trait]
 impl FunctionInterface for RightClick {
     async fn event(&mut self, state: u16) -> super::ReturnCommand {
-        let mut hid = self.hid.write().await;
+        let hid = self.hid.read().await;
 
         if state != 0 && self.prev_state == 0 {
-            hid.mouse.hold_button(&MouseButton::Right);
-            hid.send_mouse().ok();
+            hid.hold_button(MouseButton::Right).await;
+            hid.send_mouse();
         } else if state == 0 && self.prev_state != 0 {
-            hid.mouse.release_button(&MouseButton::Right);
-            hid.send_mouse().ok();
+            hid.release_button(MouseButton::Right).await;
+            hid.send_mouse();
         }
 
         self.prev_state = state;
