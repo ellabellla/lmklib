@@ -12,8 +12,9 @@ pub mod mouse;
 pub mod midi;
 pub mod cmd;
 pub mod hid;
+pub mod log;
 
-use self::{keyboard::{Key, BasicString, ComplexString, Special, Shortcut, ModifierKey}, mouse::{ConstMove, LeftClick, RightClick, ConstScroll, Move, Scroll, ImmediateMove, ImmediateScroll}, midi::{Note, MidiController, Channel, ConstPitchBend, PitchBend, Instrument, GMSoundSet, note_param}, cmd::{Bash, Pipe, CommandPool}, hid::{HID, SwitchHid}};
+use self::{keyboard::{Key, BasicString, ComplexString, Special, Shortcut, ModifierKey}, mouse::{ConstMove, LeftClick, RightClick, ConstScroll, Move, Scroll, ImmediateMove, ImmediateScroll}, midi::{Note, MidiController, Channel, ConstPitchBend, PitchBend, Instrument, GMSoundSet, note_param}, cmd::{Bash, Pipe, CommandPool}, hid::{HID, SwitchHid}, log::{Log, LogLevel}};
 
 
 pub enum ReturnCommand {
@@ -63,6 +64,7 @@ pub enum FunctionType {
     Bash(String),
     Pipe(String),
     SwitchHid,
+    Log(LogLevel, String),
 }
 
 impl FunctionType  {
@@ -114,6 +116,7 @@ impl FunctionBuilder {
             FunctionType::Bash(command) => Bash::new(command, self.command_pool.clone()),
             FunctionType::Pipe(command) => Pipe::new(command, self.command_pool.clone()),
             FunctionType::SwitchHid => SwitchHid::new(self.hid.clone()),
+            FunctionType::Log(log_level, msg) => Log::new(log_level, msg),
         }
     }
 }
