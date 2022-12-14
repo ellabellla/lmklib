@@ -3,6 +3,8 @@ use std::{process::exit, thread, time::Duration, path::PathBuf, str::FromStr, fm
 use clap::Parser;
 use driver::{DriverManager};
 use function::{FunctionBuilder};
+use log::{error, LevelFilter};
+use simplelog::{CombinedLogger, TermLogger, Config, TerminalMode, ColorChoice};
 use tokio::sync::RwLock;
 
 use crate::{function::{midi::MidiController, cmd::CommandPool, hid::HID}, driver::SerdeDriverManager};
@@ -19,6 +21,52 @@ struct Args {
     config: Option<String>
 }
 
+pub trait OrLog<T> {
+    fn or_log(self, msg: &str) -> Option<T>;
+}
+pub trait OrLogIgnore<T> {
+    fn or_log_ignore(self, msg: &str) -> Option<T>;
+}
+
+impl<T, E> OrLog<T> for std::result::Result<T, E> 
+where
+    E: Display
+{
+    fn or_log(self, msg: &str) -> Option<T> {
+        match self {
+            Ok(t) => Some(t),
+            Err(e) => {
+                error!("{}, {}", msg, e);
+                None
+            }
+        }
+    }
+}
+
+impl<T, E> OrLogIgnore<T> for std::result::Result<T, E> {
+    fn or_log_ignore(self, msg: &str) -> Option<T> {
+        match self {
+            Ok(t) => Some(t),
+            Err(_) => {
+                error!("{}", msg);
+                None
+            }
+        }
+    }
+}
+
+impl<T> OrLogIgnore<T> for Option<T> {
+    fn or_log_ignore(self, msg: &str) -> Option<T> {
+        match self {
+            Some(t) => Some(t),
+            None => {
+                error!("{}", msg);
+                None
+            }
+        }
+    }
+}
+
 pub trait OrExit<T> {
     fn or_exit(self, msg: &str) -> T;
 }
@@ -31,7 +79,7 @@ where
         match self {
             Ok(t) => t,
             Err(e) => {
-                println!("{}, {}", msg, e);
+                error!("{}, {}", msg, e);
                 exit(1);
             }
         }
@@ -43,7 +91,7 @@ impl<T> OrExit<T> for Option<T> {
         match self {
             Some(t) => t,
             None => {
-                println!("{}", msg);
+                error!("{}", msg);
                 exit(1);
             }
         }
@@ -54,6 +102,14 @@ impl<T> OrExit<T> for Option<T> {
 async fn main() {
     const DRIVER_JSON: &str = "driver.json";
     const LAYOUT_JSON: &str = "layout.json";
+    
+    CombinedLogger::init(
+        vec![
+            TermLogger::new(LevelFilter::Info, Config::default(), TerminalMode::Stdout, ColorChoice::Auto),
+            TermLogger::new(LevelFilter::Error, Config::default(), TerminalMode::Stdout, ColorChoice::Auto),
+            TermLogger::new(LevelFilter::Warn, Config::default(), TerminalMode::Stdout, ColorChoice::Auto),
+        ]
+    ).unwrap();
 
     let args = Args::parse();
 
@@ -110,61 +166,4 @@ async fn main() {
             thread::sleep(Duration::from_millis(30));
         }
     }).await.unwrap();
-
-    // let mut builder = MCP23017DriverBuilder::new("mcp1", 0x20, 3);
-    // let x = vec![Pin::new(14).or_exit("pin"), Pin::new(11).or_exit("pin"), Pin::new(8).or_exit("pin")];
-    // let y = vec![Pin::new(15).or_exit("pin"), Pin::new(13).or_exit("pin"), Pin::new(9).or_exit("pin")];
-    // let matrix = builder.add_matrix(x, y).or_exit("add");
-    // let mut mcp = builder.build().or_ex
-
-    // loop {
-    //     mcp.tick();        
-    //     let state = mcp.poll_range(&matrix).or_exit("state");
-    //     for (i, state) in state.iter().enumerate() {
-    //         print!("{} ", state);
-    //         if i != 0 && (i + 1)  %3 == 0 {
-    //             println!()
-    //         }
-    //     }
-    //     sleep(Duration::from_millis(40));
-    //     print!("\x1B[2J\x1B[1;1H");
-
-    // }
-    //let mut mcp = MCP23017::new(0x20, 3).unwrap();
-
-    // let out_y1 = Pin::new(15).unwrap();
-    // mcp.pin_mode(&out_y1, Mode::Output).unwrap();
-    // mcp.output(&out_y1, State::High).unwrap();
-    
-    // let out_y2 = Pin::new(13).unwrap();
-    // mcp.pin_mode(&out_y2, Mode::Output).unwrap();
-    // mcp.output(&out_y2, State::High).unwrap();
-    
-    // let out_y3 = Pin::new(9).unwrap();
-    // mcp.pin_mode(&out_y3, Mode::Output).unwrap();
-    // mcp.output(&out_y3, State::High).unwrap();
-
-    // let in_x1 = Pin::new(14).unwrap();
-    // mcp.pin_mode(&in_x1, Mode::Input).unwrap();
-    // let in_x2 = Pin::new(11).unwrap();
-    // mcp.pin_mode(&in_x2, Mode::Input).unwrap();
-    // let in_x3 = Pin::new(8).unwrap();
-    // mcp.pin_mode(&in_x3, Mode::Input).unwrap();
-    // const KEYBOARD_ID: u8 = 0;
-
-    // let led_state = LEDStateInterface::new(KEYBOARD_ID)
-    //     .or_exit("Unable to open keyboard hid connection");
-
-    // let mount = Mount::new();
-    // {
-    //     let mut mount = mount.write().await;
-    //     mount.mount("/led", LEDStateInterface::into_configuration(&led_state));
-    // }
-
-    // let fs = FS::mount("KServer ConfigFS", "", mount.clone()).await
-    //     .or_exit("Unable to mount configfs");
-
-    // fs.await
-    //     .unwrap()
-    //     .unwrap();
 }

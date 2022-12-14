@@ -6,6 +6,8 @@ use midir::{MidiOutput};
 use serde::{Serialize, Deserialize};
 use tokio::{sync::{RwLock, mpsc::{UnboundedSender, self}, oneshot}};
 
+use crate::{OrLogIgnore, OrLog};
+
 use super::{Function, FunctionInterface, ReturnCommand, FunctionType};
 
 #[derive(Debug)]
@@ -44,7 +46,7 @@ impl MidiController {
         tokio::task::spawn_blocking(move || {
             let midi_out = match MidiOutput::new("LMK").map_err(|e| MidiError::Init(e)) {
                 Ok(midi_out) => midi_out,
-                Err(e) => {new_tx.send(Err(e)).ok(); return;},
+                Err(e) => {new_tx.send(Err(e)).or_log_ignore("Broken Channel (MIDI Driver)"); return;},
             };
 
             let out_ports = midi_out.ports();
@@ -53,25 +55,25 @@ impl MidiController {
                 for port in &out_ports {
                     let name = match midi_out.port_name(port).map_err(|e| MidiError::PortInfo(e)) {
                         Ok(name) => name,
-                        Err(e) => {new_tx.send(Err(e)).ok(); return;},
+                        Err(e) => {new_tx.send(Err(e)).or_log_ignore("Broken Channel (MIDI Driver)"); return;},
                     };
                     if name.starts_with("f_midi") {
                         break 'find_port port;
                     }
                 }
 
-                new_tx.send(Err(MidiError::NoPort)).ok(); 
+                new_tx.send(Err(MidiError::NoPort)).or_log_ignore("Broken Channel (MIDI Driver)"); 
                 return 
             };
 
             let mut connection = match midi_out.connect(port, "lmk").map_err(|e| MidiError::Connect(e)) {
                 Ok(connection) => connection,
-                Err(e) => {new_tx.send(Err(e)).ok(); return;},
+                Err(e) => {new_tx.send(Err(e)).or_log_ignore("Broken Channel (MIDI Driver)"); return;},
             };
 
-            new_tx.send(Ok(())).ok();
+            new_tx.send(Ok(())).or_log_ignore("Broken Channel (MIDI Driver)");
             while let Some((msg, tx)) =  rx.blocking_recv() {
-                tx.send(connection.send(&msg.to_midi()).map_err(|e| MidiError::Send(e))).ok();
+                tx.send(connection.send(&msg.to_midi()).map_err(|e| MidiError::Send(e))).or_log_ignore("Broken Channel (MIDI Driver)");
 
             }
         });
@@ -85,7 +87,7 @@ impl MidiController {
 
     async fn send_msg(&self, msg: MidiMsg) -> Result<(), MidiError> {
         let (tx, rx) = oneshot::channel();
-        self.tx.send((msg, tx)).ok();
+        self.tx.send((msg, tx)).or_log_ignore("Broken Channel (MIDI Driver)");
         if let Ok(val) = rx.await {
             val
         } else {
@@ -635,9 +637,9 @@ impl FunctionInterface for Note {
     async fn event(&mut self, state: u16) -> super::ReturnCommand {
         let mut conn = self.midi_controller.write().await;
         if state != 0 && self.prev_state == 0 {
-            conn.hold_note(self.channel, self.note, self.velocity).await.ok();
+            conn.hold_note(self.channel, self.note, self.velocity).await.or_log("MIDI error (MIDI Driver)");
         } else if state == 0 && self.prev_state != 0 {
-            conn.release_note(self.channel, self.note, self.velocity).await.ok();
+            conn.release_note(self.channel, self.note, self.velocity).await.or_log("MIDI error (MIDI Driver)");
         }
 
         self.prev_state = state;
@@ -668,10 +670,10 @@ impl FunctionInterface for ConstPitchBend {
     async fn event(&mut self, state: u16) -> super::ReturnCommand {
         let mut conn = self.midi_controller.write().await;
         if state != 0 && self.prev_state == 0 {
-            conn.pitch_bend(self.channel, self.bend).await.ok();
+            conn.pitch_bend(self.channel, self.bend).await.or_log("MIDI error (MIDI Driver)");
         } else if state == 0 && self.prev_state != 0 
             && conn.get_last_bend().map(|b| b == self.bend).unwrap_or(true) {
-            conn.pitch_bend(self.channel, 0).await.ok();
+            conn.pitch_bend(self.channel, 0).await.or_log("MIDI error (MIDI Driver)");
         }
 
         self.prev_state = state;
@@ -728,7 +730,7 @@ impl FunctionInterface for PitchBend {
 
         let bend = val as u16;
         
-        conn.pitch_bend(self.channel, bend).await.ok();
+        conn.pitch_bend(self.channel, bend).await.or_log("MIDI error (MIDI Driver)");
 
         ReturnCommand::None
     }
@@ -757,7 +759,7 @@ impl FunctionInterface for Instrument {
     async fn event(&mut self, state: u16) -> super::ReturnCommand {
         let mut conn = self.midi_controller.write().await;
         if state != 0 && self.prev_state == 0 {
-            conn.change_instrument(self.channel, self.instrument).await.ok();
+            conn.change_instrument(self.channel, self.instrument).await.or_log("MIDI error (MIDI Driver)");
         }
 
         self.prev_state = state;

@@ -20,6 +20,8 @@ dirs = "4.0.0"
 clap = { version = "4.0.29", features = ["derive"] }
 midir = "0.8.0"
 midi-msg = "0.4"
+simplelog = "0.12.0"
+log = "0.4.17"
 
 [dependencies.uinput]
 version = "0.1.3"

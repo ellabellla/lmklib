@@ -7,6 +7,7 @@ use serde::{Serialize, Deserialize};
 use tokio::{sync::{mpsc::{self, UnboundedSender}, oneshot}};
 
 use super::{DriverInterface, DriverType, DriverError};
+use crate::{OrLogIgnore, OrLog};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum InputType {
@@ -237,7 +238,7 @@ impl MCP23017DriverBuilder {
             res?;
         }
 
-        let inputs = inputs.filter_map(|i|i.ok()).collect_vec();
+        let inputs = inputs.filter_map(|i|i.or_log("Input build error (MCP23017)")).collect_vec();
         let mut mcp = MCP23017::new(address, bus).await?;
         mcp.reset().await?;
         
@@ -339,22 +340,22 @@ impl MCP23017 {
         tokio::task::spawn_blocking(move || {
             let mut rx = rx;
             let mut mcp = match mcp23017_rpi_lib::MCP23017::new(address, bus)  {
-                Ok(mcp) => {new_tx.send(Ok(())).ok(); mcp},
-                Err(e) => {new_tx.send(Err(DriverError::new(format!("MCP23017 Error, {}", e)))).ok(); return},
+                Ok(mcp) => {new_tx.send(Ok(())).or_log_ignore("Broken Channel (MCP23017 Driver)"); mcp},
+                Err(e) => {new_tx.send(Err(DriverError::new(format!("MCP23017 Error, {}", e)))).or_log_ignore("Broken Channel (MCP23017 Driver)"); return},
             };
 
             while let Some(command) = rx.blocking_recv() {
                 match command {
-                    MCP23017Command::PullUp(pin, value, tx) => {tx.send(mcp.pull_up(&pin, value)).ok();},
-                    MCP23017Command::PinMode(pin, mode, tx) => {tx.send(mcp.pin_mode(&pin, mode)).ok();},
-                    MCP23017Command::Output(pin, value, tx) => {tx.send(mcp.output(&pin, value)).ok();},
-                    MCP23017Command::Input(pin, tx) => {tx.send(mcp.input(&pin)).ok();},
-                    MCP23017Command::CurrentVal(pin, tx) => {tx.send(mcp.current_val(&pin)).ok();},
-                    MCP23017Command::ConfigSysInt(mirror, intpol, tx) => {tx.send(mcp.config_system_interrupt(mirror, intpol)).ok();},
-                    MCP23017Command::ConfigPinInt(pin, enabled, compare_mode, defval, tx) => {tx.send(mcp.config_pin_interrupt(&pin, enabled, compare_mode, defval)).ok();},
-                    MCP23017Command::ReadInt(port, tx) => {tx.send(mcp.read_interrupt(port)).ok();},
-                    MCP23017Command::ClearInt(tx) => {tx.send(mcp.clear_interrupts()).ok();},
-                    MCP23017Command::Reset(tx) => {tx.send(mcp.reset()).ok();},
+                    MCP23017Command::PullUp(pin, value, tx) => {tx.send(mcp.pull_up(&pin, value)).or_log_ignore("Broken Channel (MCP23017 Driver)");},
+                    MCP23017Command::PinMode(pin, mode, tx) => {tx.send(mcp.pin_mode(&pin, mode)).or_log_ignore("Broken Channel (MCP23017 Driver)");},
+                    MCP23017Command::Output(pin, value, tx) => {tx.send(mcp.output(&pin, value)).or_log_ignore("Broken Channel (MCP23017 Driver)");},
+                    MCP23017Command::Input(pin, tx) => {tx.send(mcp.input(&pin)).or_log_ignore("Broken Channel (MCP23017 Driver)");},
+                    MCP23017Command::CurrentVal(pin, tx) => {tx.send(mcp.current_val(&pin)).or_log_ignore("Broken Channel (MCP23017 Driver)");},
+                    MCP23017Command::ConfigSysInt(mirror, intpol, tx) => {tx.send(mcp.config_system_interrupt(mirror, intpol)).or_log_ignore("Broken Channel (MCP23017 Driver)");},
+                    MCP23017Command::ConfigPinInt(pin, enabled, compare_mode, defval, tx) => {tx.send(mcp.config_pin_interrupt(&pin, enabled, compare_mode, defval)).or_log_ignore("Broken Channel (MCP23017 Driver)");},
+                    MCP23017Command::ReadInt(port, tx) => {tx.send(mcp.read_interrupt(port)).or_log_ignore("Broken Channel (MCP23017 Driver)");},
+                    MCP23017Command::ClearInt(tx) => {tx.send(mcp.clear_interrupts()).or_log_ignore("Broken Channel (MCP23017 Driver)");},
+                    MCP23017Command::Reset(tx) => {tx.send(mcp.reset()).or_log_ignore("Broken Channel (MCP23017 Driver)");},
                 };
             }
         });

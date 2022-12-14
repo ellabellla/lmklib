@@ -3,6 +3,8 @@ use std::{process::{Command, Child}, sync::Arc, io, thread, time::Duration};
 use configfs::async_trait;
 use tokio::{sync::RwLock};
 
+use crate::OrLog;
+
 use super::{Function, FunctionInterface, ReturnCommand, FunctionType};
 
 pub struct CommandPool {
@@ -101,7 +103,7 @@ pub async fn exec(command: &str, command_pool: &Arc<RwLock<CommandPool>>) {
         .arg("-c")
         .arg(command)
         .spawn()
-        .ok() {
+        .or_log("Command error (Command Pool)") {
             command_pool.write().await.add_command(child).await
         }
 }
@@ -111,7 +113,7 @@ pub async fn pipe(command: &str, command_pool: &Arc<RwLock<CommandPool>>) {
         .arg("-c")
         .arg(format!("{} | kout", command))
         .spawn()
-        .ok() {
+        .or_log("Command error (Command Pool)") {
             command_pool.write().await.add_command(child).await
         }
 }

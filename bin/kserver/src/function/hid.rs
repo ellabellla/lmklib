@@ -5,6 +5,8 @@ use tokio::{sync::{RwLock, mpsc::{UnboundedSender, self}, oneshot}};
 use uinput::{event::{self, controller::Mouse, relative::{Position, Wheel}, keyboard::{Key, Misc, KeyPad, InputAssist}}, Device};
 use virt_hid::{key::{self, BasicKey, KeyOrigin, SpecialKey, Modifier}, mouse::{self, MouseDir, MouseButton}};
 
+use crate::{OrLogIgnore, OrLog};
+
 use super::{Function, FunctionInterface, ReturnCommand, FunctionType};
 
 pub struct SwitchHid {
@@ -65,7 +67,7 @@ impl HID {
         tokio::spawn(async move {
             let mut hid = match virt_hid::HID::new(mouse_id, keyboard_id){
                 Ok(hid) => hid,
-                Err(_) => {new_tx.send(Err(uinput::Error::NotFound)).ok(); return;}
+                Err(_) => {new_tx.send(Err(uinput::Error::NotFound)).or_log_ignore("Broken Channel (HID Driver)"); return;}
             };
 
             let mut uinput = match (|| -> Result<Device, uinput::Error>{
@@ -82,9 +84,9 @@ impl HID {
                     .map_err(|_| uinput::Error::NotFound)
             })() {
                 Ok(uinput) => uinput,
-                Err(e) => {new_tx.send(Err(e)).ok(); return;}
+                Err(e) => {new_tx.send(Err(e)).or_log_ignore("Broken Channel (HID Driver)"); return;}
             };
-            new_tx.send(Ok(())).ok();
+            new_tx.send(Ok(())).or_log_ignore("Broken Channel (HID Driver)");
 
             let mut keyboard = key::Keyboard::new(); 
             let mut mouse = mouse::Mouse::new();
@@ -98,7 +100,7 @@ impl HID {
                         let Some(key) = char_to_uinput(key) else {
                             continue;
                         };
-                        uinput.press(&key).ok();
+                        uinput.press(&key).or_log("Uinput error (HID Driver)");
                     },
                     Command::HoldSpecial(special) => if real {
                         keyboard.hold_key(&BasicKey::Special(special));
@@ -106,7 +108,7 @@ impl HID {
                         let Some(key) = special_to_uinput(special) else {
                             continue;
                         };
-                        uinput.press(&key).ok();
+                        uinput.press(&key).or_log("Uinput error (HID Driver)");
                     },
                     Command::HoldModifier(modifier) => if real {
                         keyboard.hold_mod(&modifier);
@@ -114,7 +116,7 @@ impl HID {
                         let Some(key) = mod_to_uinput(modifier) else {
                             continue;
                         };
-                        uinput.press(&key).ok();
+                        uinput.press(&key).or_log("Uinput error (HID Driver)");
                     },
                     Command::ReleaseKey(key) => if real {
                         keyboard.release_key(&BasicKey::Char(key, KeyOrigin::Keyboard));
@@ -122,7 +124,7 @@ impl HID {
                         let Some(key) = char_to_uinput(key) else {
                             continue;
                         };
-                        uinput.release(&key).ok();
+                        uinput.release(&key).or_log("Uinput error (HID Driver)");
                     },
                     Command::ReleaseSpecial(special) => if real {
                         keyboard.release_key(&BasicKey::Special(special));
@@ -130,7 +132,7 @@ impl HID {
                         let Some(key) = special_to_uinput(special) else {
                             continue;
                         };
-                        uinput.release(&key).ok();
+                        uinput.release(&key).or_log("Uinput error (HID Driver)");
                     },
                     Command::ReleaseModifier(modifier) => if real {
                         keyboard.release_mod(&modifier);
@@ -138,23 +140,23 @@ impl HID {
                         let Some(key) = mod_to_uinput(modifier) else {
                             continue;
                         };
-                        uinput.release(&key).ok();
+                        uinput.release(&key).or_log("Uinput error (HID Driver)");
                     },
                     Command::PressBasicStr(str) => if real {
                         keyboard.press_basic_string(&str);
                     } else {
                         for key in str.chars() {
                             if requires_shift(key) {
-                                uinput.press(&event::Keyboard::Key(Key::LeftShift)).ok();
+                                uinput.press(&event::Keyboard::Key(Key::LeftShift)).or_log("Uinput error (HID Driver)");
                             }
             
                             let Some(ukey) = char_to_uinput(key) else {
                                 continue;
                             };
-                            uinput.click(&ukey).ok();
+                            uinput.click(&ukey).or_log("Uinput error (HID Driver)");
             
                             if requires_shift(key) {
-                                uinput.release(&event::Keyboard::Key(Key::LeftShift)).ok();
+                                uinput.release(&event::Keyboard::Key(Key::LeftShift)).or_log("Uinput error (HID Driver)");
                             }
                         }
                     },
@@ -163,47 +165,47 @@ impl HID {
                     } else {
                         for key in str.chars() {
                             if requires_shift(key) {
-                                uinput.press(&event::Keyboard::Key(Key::LeftShift)).ok();
+                                uinput.press(&event::Keyboard::Key(Key::LeftShift)).or_log("Uinput error (HID Driver)");
                             }
             
                             let Some(ukey) = char_to_uinput(key) else {
                                 continue;
                             };
-                            uinput.click(&ukey).ok();
+                            uinput.click(&ukey).or_log("Uinput error (HID Driver)");
             
                             if requires_shift(key) {
-                                uinput.release(&event::Keyboard::Key(Key::LeftShift)).ok();
+                                uinput.release(&event::Keyboard::Key(Key::LeftShift)).or_log("Uinput error (HID Driver)");
                             }
                         }
                     }
                     Command::ScrollWheel(amount) => if real {
                         mouse.scroll_wheel(&amount);
                     } else {
-                        uinput.position(&event::Relative::Wheel(Wheel::Vertical), amount as i32).ok();
+                        uinput.position(&event::Relative::Wheel(Wheel::Vertical), amount as i32).or_log("Uinput error (HID Driver)");
                     },
                     Command::MoveMouse(amount, dir) => if real {
                         mouse.move_mouse(&amount, &dir);
                     } else {
                         let dir = mouse_dir_to_position(dir);
-                        uinput.position(&event::Relative::Position(dir), amount as i32).ok();
+                        uinput.position(&event::Relative::Position(dir), amount as i32).or_log("Uinput error (HID Driver)");
                     },
                     Command::HoldButton(button) => if real {
                         mouse.hold_button(&button);
                     } else {
                         let button = mouse_button_to_mouse(button);
-                        uinput.press(&event::Controller::Mouse(button)).ok();
+                        uinput.press(&event::Controller::Mouse(button)).or_log("Uinput error (HID Driver)");
                     },
                     Command::ReleaseButton(button) => if real {
                         mouse.release_button(&button);
                     } else {
                         let button = mouse_button_to_mouse(button);
-                        uinput.release(&event::Controller::Mouse(button)).ok();
+                        uinput.release(&event::Controller::Mouse(button)).or_log("Uinput error (HID Driver)");
                     },
                     Command::SendKeyboard => if real {
-                        keyboard.send(&mut hid).ok();
+                        keyboard.send(&mut hid).or_log("USB HID error (HID Driver)");
                     },
                     Command::SendMouse => if real {
-                        mouse.send(&mut hid).ok();
+                        mouse.send(&mut hid).or_log("USB HID error (HID Driver)");
                     },
                     Command::Switch => real = !real,
                 }
@@ -220,63 +222,63 @@ impl HID {
     }
 
     pub async fn hold_key(&self, key: char) {
-        self.tx.send(Command::HoldKey(key)).ok();
+        self.tx.send(Command::HoldKey(key)).or_log_ignore("Broken Channel (HID Driver)");
     }
 
     pub async fn release_key(&self, key: char) {
-        self.tx.send(Command::ReleaseKey(key)).ok();
+        self.tx.send(Command::ReleaseKey(key)).or_log_ignore("Broken Channel (HID Driver)");
     }
 
     pub async fn hold_special(&self, special: SpecialKey) {
-        self.tx.send(Command::HoldSpecial(special)).ok();
+        self.tx.send(Command::HoldSpecial(special)).or_log_ignore("Broken Channel (HID Driver)");
     }
 
     pub async fn release_special(&self, special: SpecialKey) {
-        self.tx.send(Command::ReleaseSpecial(special)).ok();
+        self.tx.send(Command::ReleaseSpecial(special)).or_log_ignore("Broken Channel (HID Driver)");
     }
 
     pub async fn hold_mod(&self, modifier: Modifier) {
-        self.tx.send(Command::HoldModifier(modifier)).ok();
+        self.tx.send(Command::HoldModifier(modifier)).or_log_ignore("Broken Channel (HID Driver)");
     }
 
     pub async fn release_mod(&self, modifier: Modifier) {
-        self.tx.send(Command::ReleaseModifier(modifier)).ok();
+        self.tx.send(Command::ReleaseModifier(modifier)).or_log_ignore("Broken Channel (HID Driver)");
     }
 
     pub async fn press_basic_string(&self, str: &str)  {
-        self.tx.send(Command::PressBasicStr(str.to_string())).ok();
+        self.tx.send(Command::PressBasicStr(str.to_string())).or_log_ignore("Broken Channel (HID Driver)");
     }
 
     pub async fn press_string(&self, layout: &str, str: &str)  {
-        self.tx.send(Command::PressStr(layout.to_string(), str.to_string())).ok();
+        self.tx.send(Command::PressStr(layout.to_string(), str.to_string())).or_log_ignore("Broken Channel (HID Driver)");
     }
 
     pub async fn scroll_wheel(&self, amount: i8) {
-        self.tx.send(Command::ScrollWheel(amount)).ok();
+        self.tx.send(Command::ScrollWheel(amount)).or_log_ignore("Broken Channel (HID Driver)");
     }
 
     pub async fn move_mouse(&self, amount: i8, dir: MouseDir) {
-        self.tx.send(Command::MoveMouse(amount, dir)).ok();
+        self.tx.send(Command::MoveMouse(amount, dir)).or_log_ignore("Broken Channel (HID Driver)");
     }
 
     pub async fn hold_button(&self, button: MouseButton) {
-        self.tx.send(Command::HoldButton(button)).ok();
+        self.tx.send(Command::HoldButton(button)).or_log_ignore("Broken Channel (HID Driver)");
     }
     
     pub async fn release_button(&self, button: MouseButton) {
-        self.tx.send(Command::ReleaseButton(button)).ok();
+        self.tx.send(Command::ReleaseButton(button)).or_log_ignore("Broken Channel (HID Driver)");
     }
     
     pub fn send_keyboard(&self) {
-        self.tx.send(Command::SendKeyboard).ok();
+        self.tx.send(Command::SendKeyboard).or_log_ignore("Broken Channel (HID Driver)");
     }
     
     pub fn send_mouse(&self) {
-        self.tx.send(Command::SendMouse).ok();
+        self.tx.send(Command::SendMouse).or_log_ignore("Broken Channel (HID Driver)");
     }
 
     pub fn switch(&self) {
-        self.tx.send(Command::Switch).ok();
+        self.tx.send(Command::Switch).or_log_ignore("Broken Channel (HID Driver)");
     }
 }
 
