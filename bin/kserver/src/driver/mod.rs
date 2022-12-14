@@ -1,8 +1,7 @@
-use std::{ops::Range, collections::HashMap, fmt::Display, sync::Arc};
+use std::{ops::Range, collections::HashMap, fmt::Display};
 
 use configfs::async_trait;
-use serde::{Serialize, Deserialize, de::{self}};
-use tokio::sync::RwLock;
+use serde::{Serialize, Deserialize};
 
 use self::mcp23017::{InputType, MCP23017DriverBuilder};
 
@@ -91,6 +90,7 @@ impl SerdeDriverManager {
         SerdeDriverManager { driver_manager: DriverManager::new(HashMap::new()), serde: None }
     }
 
+    #[allow(dead_code)]
     pub fn load(driver_manager: DriverManager) -> SerdeDriverManager {
         SerdeDriverManager{driver_manager, serde: None}
     }
@@ -98,8 +98,11 @@ impl SerdeDriverManager {
     pub async fn build(self) -> Result<DriverManager, DriverError> {
         if let Some(drivers) = self.serde {
             let mut driver_map = HashMap::new();
-            for driver in drivers.into_iter().map(|driver| driver.build()) {
-                let driver = driver.await.map_err(|e| DriverError::new(format!("{}", e)))?;
+
+            for driver in drivers.into_iter() {
+                let driver = driver.build().await;
+                let driver = driver.map_err(|e| DriverError::new(format!("{}", e)))?;
+
                 if driver_map.insert(driver.name().to_string(), driver).is_some() {
                     return Err(DriverError::new("driver names must be unique".to_string()))
                 }
