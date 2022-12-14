@@ -1,8 +1,9 @@
-use std::{ops::Range, fmt::Display};
+use std::{ops::Range, fmt::Display, sync::Arc};
 
 use serde::{Serialize, Deserialize, de};
 use slab::Slab;
 use itertools::Itertools;
+use tokio::sync::RwLock;
 
 use crate::{function::{Function, ReturnCommand, FunctionType, FunctionBuilder}, driver::DriverManager};
 
@@ -114,17 +115,21 @@ impl LayoutBuilder {
         Ok(())
     }
 
-    pub fn build(self, driver_manager: DriverManager, function_builder: &FunctionBuilder) -> Layout {
+    pub async fn build(self, driver_manager: Arc<RwLock<DriverManager>>, function_builder: &Arc<RwLock<FunctionBuilder>>) -> Layout {
+        let mut layer_stack = Vec::new();
+        for layer in self.layers.into_iter() {
+            let mut built_layer = Vec::new();
+            for entry in layer.into_iter() {
+                built_layer.push(function_builder.read().await.build(entry))
+            }
+            layer_stack.push(built_layer);
+        }
         Layout { 
             width: self.width, 
             height: self.height, 
             addresses: self.addresses, 
             driver_manager: driver_manager, 
-            layer_stack:  self.layers.into_iter()
-            .map(|row| row.into_iter()
-                .map(|func| function_builder.build(func))
-                .collect_vec()
-            ).collect(),
+            layer_stack,
             cur_layer: 0,
         }
     }
@@ -209,7 +214,7 @@ pub struct Layout {
     height: usize,
     addresses: Slab<Address>,
 
-    driver_manager: DriverManager,
+    driver_manager: Arc<RwLock<DriverManager>>,
     
     layer_stack: Vec<Vec<Function>>,
     cur_layer: usize,
@@ -267,21 +272,22 @@ impl Layout {
         }
     }
 
-    pub fn tick(&mut self) {
-        self.driver_manager.tick();
+    pub async fn tick(&mut self) {
+        self.driver_manager.write().await.tick().await;
     }
 
-    pub fn poll(&mut self) {
+    pub async fn poll(&mut self) {
         if self.layer_stack.len() == 0 {
             return;
         }
         
         let mut commands = vec![];
+        let mut driver_manager = self.driver_manager.write().await;
 
         for (_, address) in self.addresses.iter_mut() {
             match address {
                 Address::DriverMatrix { name, input, width, root} => {
-                    let Some(driver) = self.driver_manager.get_mut(name) else {
+                    let Some(driver) = driver_manager.get_mut(name) else {
                         continue;
                     };
 
@@ -295,7 +301,7 @@ impl Layout {
                         for layer in self.layer_stack[self.cur_layer..].iter_mut().rev() {
                             match &mut layer[x + (y * self.width)] {
                                 Some(func) => {
-                                    let res = func.event(*state);
+                                    let res = func.event(*state).await;
                                     if !matches!(res, ReturnCommand::None) {
                                         commands.push(res);
                                     }
@@ -314,7 +320,7 @@ impl Layout {
                     }
                 },
                 Address::DriverAddr { name, input, root} => {
-                    let Some(driver) = self.driver_manager.get(name) else {
+                    let Some(driver) = driver_manager.get(name) else {
                         continue;
                     };
 
@@ -324,7 +330,7 @@ impl Layout {
                     for layer in self.layer_stack[self.cur_layer..].iter_mut().rev() {
                         match &mut layer[*x + (*y * self.width)] {
                             Some(func) => {
-                                let res = func.event(state);
+                                let res = func.event(state).await;
                                 if !matches!(res, ReturnCommand::None) {
                                     commands.push(res);
                                 }
@@ -339,6 +345,7 @@ impl Layout {
             }
         }
 
+        drop(driver_manager);
         for command in commands {
             command.eval(self);
         }
@@ -360,7 +367,7 @@ impl Serialize for Layout {
         let layers: Vec<Vec<Vec<FunctionType>>> = self.layer_stack.iter()
             .map(|layer| {
                 layer.iter()
-                .map(|func| FunctionType::from(func))
+                .map(|func| FunctionType::from_function(func))
                 .collect::<Vec<FunctionType>>()
                 .chunks(self.width)
                 .map(|a| a.to_vec())

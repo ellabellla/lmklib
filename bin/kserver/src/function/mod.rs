@@ -1,6 +1,7 @@
 
 use std::{sync::{Arc}, io};
 
+use configfs::async_trait;
 use serde::{Serialize, Deserialize};
 use tokio::sync::RwLock;
 use virt_hid::{key::{Keyboard, SpecialKey, Modifier, BasicKey}, mouse::{Mouse, MouseDir}};
@@ -20,8 +21,8 @@ pub struct HID {
 }
 
 impl HID {
-    pub fn new(mouse_id: u8, keyboard_id: u8) -> io::Result<HID> {
-        Ok(HID { keyboard: Keyboard::new(), mouse: Mouse::new(), hid: virt_hid::HID::new(mouse_id, keyboard_id)? })
+    pub fn new(mouse_id: u8, keyboard_id: u8) -> io::Result<Arc<RwLock<HID>>> {
+        Ok(Arc::new(RwLock::new(HID { keyboard: Keyboard::new(), mouse: Mouse::new(), hid: virt_hid::HID::new(mouse_id, keyboard_id)? })))
     }
     
     pub fn send_keyboard(&mut self) -> io::Result<()> {
@@ -81,8 +82,8 @@ pub enum FunctionType {
     Pipe(String),
 }
 
-impl From<&Function> for  FunctionType  {
-    fn from(f: &Function) -> Self {
+impl FunctionType  {
+    pub fn from_function(f: &Function) -> Self {
         match f {
             Some(func) => func.ftype(),
             None => FunctionType::None,
@@ -97,8 +98,8 @@ pub struct FunctionBuilder {
 }
 
 impl FunctionBuilder {
-    pub fn new(hid: HID, midi_controller: MidiController, command_pool: CommandPool) -> FunctionBuilder {
-        FunctionBuilder { hid: Arc::new(RwLock::new(hid)), midi_controller: Arc::new(RwLock::new(midi_controller)), command_pool: Arc::new(RwLock::new(command_pool)) }
+    pub fn new(hid: Arc<RwLock<HID>>, midi_controller: Arc<RwLock<MidiController>>, command_pool: Arc<RwLock<CommandPool>>) -> Arc<RwLock<FunctionBuilder>> {
+        Arc::new(RwLock::new(FunctionBuilder { hid, midi_controller, command_pool }))
     }
 
     pub fn build(&self, ftype: FunctionType) -> Function {
@@ -133,8 +134,9 @@ impl FunctionBuilder {
     }
 }
 
+#[async_trait]
 pub trait FunctionInterface {
-    fn event(&mut self, state: u16) -> ReturnCommand;
+    async fn event(&mut self, state: u16) -> ReturnCommand;
     fn ftype(&self) -> FunctionType;
 }   
 
@@ -149,8 +151,9 @@ impl Up {
     }
 }
 
+#[async_trait]
 impl FunctionInterface for Up {
-    fn event(&mut self, _state: u16) -> ReturnCommand {
+    async fn event(&mut self, _state: u16) -> ReturnCommand {
         return ReturnCommand::Up
     }
 
@@ -167,8 +170,9 @@ impl Down {
     }
 }
 
+#[async_trait]
 impl FunctionInterface for Down {
-    fn event(&mut self, _state: u16) -> ReturnCommand {
+    async fn event(&mut self, _state: u16) -> ReturnCommand {
         return ReturnCommand::Down
     }
 
@@ -187,8 +191,9 @@ impl Switch {
     }
 }
 
+#[async_trait]
 impl FunctionInterface for Switch {
-    fn event(&mut self, _state: u16) -> ReturnCommand {
+    async fn event(&mut self, _state: u16) -> ReturnCommand {
         return ReturnCommand::Switch(self.id)
     }
 

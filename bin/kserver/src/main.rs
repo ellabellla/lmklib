@@ -1,10 +1,11 @@
-use std::{process::exit, collections::HashMap, thread, time::Duration, path::PathBuf, str::FromStr, fmt::Display, fs, io::Write};
+use std::{process::exit, thread, time::Duration, path::PathBuf, str::FromStr, fmt::Display, fs, io::Write, sync::Arc};
 
 use clap::Parser;
 use driver::{DriverManager};
 use function::{FunctionBuilder};
+use tokio::sync::RwLock;
 
-use crate::function::{HID, midi::MidiController, cmd::CommandPool};
+use crate::{function::{HID, midi::MidiController, cmd::CommandPool}, driver::SerdeDriverManager};
 
 
 mod ledstate;
@@ -70,7 +71,7 @@ async fn main() {
         
         fs::File::create(config.join(DRIVER_JSON))
             .or_exit("Unable to create default driver config")
-            .write_all(&serde_json::to_string_pretty(&DriverManager::new(HashMap::new()))
+            .write_all(&serde_json::to_string_pretty(&SerdeDriverManager::new())
                 .or_exit("Unable to create default driver config")
                 .as_bytes()
             )
@@ -86,27 +87,26 @@ async fn main() {
     }
     
     let (command_pool, command_pool_join) = CommandPool::new().or_exit("Unable to create command pool");
+    let driver_manager: SerdeDriverManager = serde_json::from_reader(fs::File::open(config.join(DRIVER_JSON))
+        .or_exit("Unable to read driver config"))
+        .or_exit("Unable to parse driver config");
+    let driver_manager: Arc<RwLock<DriverManager>> = Arc::new(RwLock::new(driver_manager.build().await.or_exit("Unable to build driver manager")));
 
-    tokio::task::spawn_blocking(move || {
-        let driver_manager: DriverManager = serde_json::from_reader(fs::File::open(config.join(DRIVER_JSON))
-            .or_exit("Unable to read driver config"))
-            .or_exit("Unable to parse driver config");
+    let hid = HID::new(1, 0).or_exit("Unable to create hid");
+    let midi_controller = MidiController::new().await.or_exit("Unable to create midi controller");
+    let func_builder = FunctionBuilder::new(hid, midi_controller, command_pool);
 
-        let builder: layout::LayoutBuilder = serde_json::from_reader(fs::File::open(config.join(LAYOUT_JSON))
-            .or_exit("Unable to read layout config"))
-            .or_exit("Unable to parse layout config");
+    let builder: layout::LayoutBuilder = serde_json::from_reader(fs::File::open(config.join(LAYOUT_JSON))
+        .or_exit("Unable to read layout config"))
+        .or_exit("Unable to parse layout config");
 
-        
-        let hid = HID::new(1, 0).or_exit("Unable to create hid");
-        let midi_controller = MidiController::new().or_exit("Unable to create midi controller");
-        let func_builder = FunctionBuilder::new(hid, midi_controller, command_pool);
+    let mut layout = builder.build(driver_manager, &func_builder).await;
 
-        let mut layout = builder.build(driver_manager, &func_builder);
-
+    tokio::spawn(async move {
         loop {
-            layout.tick();
-            layout.poll();
-            thread::sleep(Duration::from_millis(2));
+            layout.tick().await;
+            layout.poll().await;
+            thread::sleep(Duration::from_millis(30));
         }
     }).await.unwrap();
 

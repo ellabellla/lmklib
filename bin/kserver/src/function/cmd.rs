@@ -1,5 +1,6 @@
 use std::{process::{Command, Child}, sync::Arc, io, thread, time::Duration};
 
+use configfs::async_trait;
 use tokio::{sync::RwLock, task::JoinHandle};
 
 use super::{Function, FunctionInterface, ReturnCommand, FunctionType};
@@ -9,7 +10,7 @@ pub struct CommandPool {
 }
 
 impl CommandPool {
-    pub fn new() -> io::Result<(CommandPool, JoinHandle<()>)> {
+    pub fn new() -> io::Result<(Arc<RwLock<CommandPool>>, JoinHandle<()>)> {
         let commands = Arc::new(RwLock::new(Vec::<Child>::new()));
 
         let comms = commands.clone();
@@ -31,11 +32,11 @@ impl CommandPool {
                 thread::sleep(Duration::from_millis(100));
             }
         });
-        Ok((CommandPool{commands}, join))
+        Ok((Arc::new(RwLock::new(CommandPool{commands})), join))
     }
 
-    pub fn add_command(&mut self, command: Child) {
-        self.commands.blocking_write().push(command);
+    pub async fn add_command(&mut self, command: Child) {
+        self.commands.write().await.push(command);
     }
 }
 
@@ -51,10 +52,11 @@ impl Bash {
     }
 }
 
+#[async_trait]
 impl FunctionInterface for Bash {
-    fn event(&mut self, state: u16) -> ReturnCommand {
+    async fn event(&mut self, state: u16) -> ReturnCommand {
         if state != 0 && self.prev_state == 0 {
-            exec(&self.command, &self.command_pool);
+            exec(&self.command, &self.command_pool).await;
         }
 
         self.prev_state = state;
@@ -78,10 +80,11 @@ impl Pipe {
     }
 }
 
+#[async_trait]
 impl FunctionInterface for Pipe {
-    fn event(&mut self, state: u16) -> ReturnCommand {
+    async fn event(&mut self, state: u16) -> ReturnCommand {
         if state != 0 && self.prev_state == 0 {
-            pipe(&self.command, &self.command_pool);
+            pipe(&self.command, &self.command_pool).await;
         }
 
         self.prev_state = state;
@@ -93,20 +96,22 @@ impl FunctionInterface for Pipe {
     }
 }
 
-pub fn exec(command: &str, command_pool: &Arc<RwLock<CommandPool>>) {
-    Command::new("bash")
+pub async fn exec(command: &str, command_pool: &Arc<RwLock<CommandPool>>) {
+    if let Some(child) = Command::new("bash")
         .arg("-c")
         .arg(command)
         .spawn()
-        .ok()
-        .map(|child| command_pool.blocking_write().add_command(child));
+        .ok() {
+            command_pool.write().await.add_command(child).await
+        }
 }
 
-pub fn pipe(command: &str, command_pool: &Arc<RwLock<CommandPool>>) {
-        Command::new("bash")
+pub async fn pipe(command: &str, command_pool: &Arc<RwLock<CommandPool>>) {
+    if let Some(child) = Command::new("bash")
         .arg("-c")
         .arg(format!("{} | kout", command))
         .spawn()
-        .ok()
-        .map(|child| command_pool.blocking_write().add_command(child));
+        .ok() {
+            command_pool.write().await.add_command(child).await
+        }
 }

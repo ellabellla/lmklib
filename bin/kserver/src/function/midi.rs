@@ -1,9 +1,10 @@
 use std::{fmt::Display, sync::Arc};
 
+use configfs::async_trait;
 use midi_msg::{MidiMsg, ChannelVoiceMsg};
-use midir::{MidiOutput, MidiOutputConnection};
+use midir::{MidiOutput};
 use serde::{Serialize, Deserialize};
-use tokio::sync::RwLock;
+use tokio::{sync::{RwLock, mpsc::{UnboundedSender, self}, oneshot}, task::JoinHandle};
 
 use super::{Function, FunctionInterface, ReturnCommand, FunctionType};
 
@@ -14,6 +15,7 @@ pub enum MidiError {
     PortInfo(midir::PortInfoError),
     Connect(midir::ConnectError<MidiOutput>),
     Send(midir::SendError),
+    Unknown,
 }
 
 impl Display for MidiError {
@@ -24,36 +26,74 @@ impl Display for MidiError {
             MidiError::PortInfo(e) => f.write_fmt(format_args!("Port info error, {}", e)),
             MidiError::Connect(e) => f.write_fmt(format_args!("Couldn't connect to port, {}", e)),
             MidiError::Send(e) => f.write_fmt(format_args!("Couldn't send message, {}", e)),
+            MidiError::Unknown => f.write_str("An unknown midi error occurred"),
         }
     }
 }
 
 pub struct MidiController {
-    connection: Arc<RwLock<MidiOutputConnection>>,    
+    _join: JoinHandle<()>, 
     last_bend: Option<u16>,
+    tx: UnboundedSender<(MidiMsg, oneshot::Sender<Result<(), MidiError>>)>,
 }
 
 impl MidiController {
-    pub fn new() -> Result<MidiController, MidiError>  {
-        let midi_out = MidiOutput::new("LMK").map_err(|e| MidiError::Init(e))?;
-        let out_ports = midi_out.ports();
+    pub async fn new() -> Result<Arc<RwLock<MidiController>>, MidiError> {
+        let (tx, mut rx) = mpsc::unbounded_channel::<(MidiMsg, oneshot::Sender<Result<(), MidiError>>)>();
+        let (new_tx, new_rx) = oneshot::channel();
+        let join = tokio::task::spawn_blocking(move || {
+            let midi_out = match MidiOutput::new("LMK").map_err(|e| MidiError::Init(e)) {
+                Ok(midi_out) => midi_out,
+                Err(e) => {new_tx.send(Err(e)).ok(); return;},
+            };
 
-        let port = 'find_port: {
-            for port in &out_ports {
-                if midi_out.port_name(port).map_err(|e| MidiError::PortInfo(e))?.starts_with("f_midi") {
-                    break 'find_port port;
+            let out_ports = midi_out.ports();
+
+            let port = 'find_port: {
+                for port in &out_ports {
+                    let name = match midi_out.port_name(port).map_err(|e| MidiError::PortInfo(e)) {
+                        Ok(name) => name,
+                        Err(e) => {new_tx.send(Err(e)).ok(); return;},
+                    };
+                    if name.starts_with("f_midi") {
+                        break 'find_port port;
+                    }
                 }
+
+                new_tx.send(Err(MidiError::NoPort)).ok(); 
+                return 
+            };
+
+            let mut connection = match midi_out.connect(port, "lmk").map_err(|e| MidiError::Connect(e)) {
+                Ok(connection) => connection,
+                Err(e) => {new_tx.send(Err(e)).ok(); return;},
+            };
+
+            new_tx.send(Ok(())).ok();
+            while let Some((msg, tx)) =  rx.blocking_recv() {
+                tx.send(connection.send(&msg.to_midi()).map_err(|e| MidiError::Send(e))).ok();
+
             }
+        });
 
-            return Err(MidiError::NoPort)
-        };
-
-        let connection = midi_out.connect(port, "lmk").map_err(|e| MidiError::Connect(e))?;
-
-        Ok(MidiController{connection: Arc::new(RwLock::new(connection)), last_bend: None})
+        if let Ok(res) = new_rx.await {
+            res.map(|_| Arc::new(RwLock::new(MidiController { _join: join, tx, last_bend: None })))
+        } else {
+            Err(MidiError::Unknown)
+        }
     }
 
-    pub fn hold_note(&mut self, channel: midi_msg::Channel, note: u8, velocity: u8) -> Result<(), MidiError> {
+    async fn send_msg(&self, msg: MidiMsg) -> Result<(), MidiError> {
+        let (tx, rx) = oneshot::channel();
+        self.tx.send((msg, tx)).ok();
+        if let Ok(val) = rx.await {
+            val
+        } else {
+            return Err(MidiError::Unknown);
+        }
+    }
+
+    pub async fn hold_note(&mut self, channel: midi_msg::Channel, note: u8, velocity: u8) -> Result<(), MidiError> {
         let msg = MidiMsg::ChannelVoice { 
             channel: channel, 
             msg: ChannelVoiceMsg::NoteOn {
@@ -62,10 +102,10 @@ impl MidiController {
             } 
         };
 
-        self.connection.blocking_write().send(&msg.to_midi()).map_err(|e| MidiError::Send(e))
+        self.send_msg(msg).await        
     }
 
-    pub fn release_note(&mut self, channel: midi_msg::Channel, note: u8, velocity: u8) -> Result<(), MidiError> {
+    pub async fn release_note(&mut self, channel: midi_msg::Channel, note: u8, velocity: u8) -> Result<(), MidiError> {
         let msg = MidiMsg::ChannelVoice { 
             channel: channel, 
             msg: ChannelVoiceMsg::NoteOff {
@@ -74,10 +114,10 @@ impl MidiController {
             } 
         };
 
-        self.connection.blocking_write().send(&msg.to_midi()).map_err(|e| MidiError::Send(e))
+        self.send_msg(msg).await   
     }
 
-    pub fn pitch_bend(&mut self, channel: midi_msg::Channel, bend: u16) -> Result<(), MidiError> {
+    pub async fn pitch_bend(&mut self, channel: midi_msg::Channel, bend: u16) -> Result<(), MidiError> {
         self.last_bend = Some(bend);
         let msg = MidiMsg::ChannelVoice { 
             channel: channel, 
@@ -86,14 +126,14 @@ impl MidiController {
             }
         };
 
-        self.connection.blocking_write().send(&msg.to_midi()).map_err(|e| MidiError::Send(e))
+        self.send_msg(msg).await   
     }
 
     pub fn get_last_bend(&self) -> Option<u16> {
         self.last_bend
     }
 
-    pub fn change_instrument(&mut self, channel: midi_msg::Channel, instrument: midi_msg::GMSoundSet) -> Result<(), MidiError>  {
+    pub async fn change_instrument(&mut self, channel: midi_msg::Channel, instrument: midi_msg::GMSoundSet) -> Result<(), MidiError>  {
         let msg = MidiMsg::ChannelVoice { 
             channel: channel, 
             msg: ChannelVoiceMsg::ProgramChange { 
@@ -101,12 +141,9 @@ impl MidiController {
             } 
         };
 
-        self.connection.blocking_write().send(&msg.to_midi()).map_err(|e| MidiError::Send(e))
+        self.send_msg(msg).await   
     }
 }
-
-unsafe impl Send for MidiController{}
-unsafe impl Sync for MidiController{}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Channel {
@@ -593,13 +630,14 @@ impl Note {
     } 
 }
 
+#[async_trait]
 impl FunctionInterface for Note {
-    fn event(&mut self, state: u16) -> super::ReturnCommand {
-        let mut conn = self.midi_controller.blocking_write();
+    async fn event(&mut self, state: u16) -> super::ReturnCommand {
+        let mut conn = self.midi_controller.write().await;
         if state != 0 && self.prev_state == 0 {
-            conn.hold_note(self.channel, self.note, self.velocity).ok();
+            conn.hold_note(self.channel, self.note, self.velocity).await.ok();
         } else if state == 0 && self.prev_state != 0 {
-            conn.release_note(self.channel, self.note, self.velocity).ok();
+            conn.release_note(self.channel, self.note, self.velocity).await.ok();
         }
 
         self.prev_state = state;
@@ -625,14 +663,15 @@ impl ConstPitchBend {
     } 
 }
 
+#[async_trait]
 impl FunctionInterface for ConstPitchBend {
-    fn event(&mut self, state: u16) -> super::ReturnCommand {
-        let mut conn = self.midi_controller.blocking_write();
+    async fn event(&mut self, state: u16) -> super::ReturnCommand {
+        let mut conn = self.midi_controller.write().await;
         if state != 0 && self.prev_state == 0 {
-            conn.pitch_bend(self.channel, self.bend).ok();
+            conn.pitch_bend(self.channel, self.bend).await.ok();
         } else if state == 0 && self.prev_state != 0 
             && conn.get_last_bend().map(|b| b == self.bend).unwrap_or(true) {
-            conn.pitch_bend(self.channel, 0).ok();
+            conn.pitch_bend(self.channel, 0).await.ok();
         }
 
         self.prev_state = state;
@@ -658,9 +697,10 @@ impl PitchBend {
     } 
 }
 
+#[async_trait]
 impl FunctionInterface for PitchBend {
-    fn event(&mut self, state: u16) -> super::ReturnCommand {
-        let mut conn = self.midi_controller.blocking_write();
+    async fn event(&mut self, state: u16) -> super::ReturnCommand {
+        let mut conn = self.midi_controller.write().await;
 
         // Apply a pitch bend to all sounding notes. 0-8191 represent negative bends, 8192 is no bend and 8193-16383 are positive bends,
         // with the standard bend rang being +/-2 semitones per GM2
@@ -688,7 +728,7 @@ impl FunctionInterface for PitchBend {
 
         let bend = val as u16;
         
-        conn.pitch_bend(self.channel, bend).ok();
+        conn.pitch_bend(self.channel, bend).await.ok();
 
         ReturnCommand::None
     }
@@ -712,11 +752,12 @@ impl Instrument {
     } 
 }
 
+#[async_trait]
 impl FunctionInterface for Instrument {
-    fn event(&mut self, state: u16) -> super::ReturnCommand {
-        let mut conn = self.midi_controller.blocking_write();
+    async fn event(&mut self, state: u16) -> super::ReturnCommand {
+        let mut conn = self.midi_controller.write().await;
         if state != 0 && self.prev_state == 0 {
-            conn.change_instrument(self.channel, self.instrument).ok();
+            conn.change_instrument(self.channel, self.instrument).await.ok();
         }
 
         self.prev_state = state;

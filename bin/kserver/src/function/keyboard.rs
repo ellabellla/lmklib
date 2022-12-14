@@ -1,5 +1,6 @@
 use std::{sync::{Arc}};
 
+use configfs::async_trait;
 use tokio::sync::RwLock;
 use virt_hid::key::{BasicKey, KeyOrigin, SpecialKey, Modifier};
 
@@ -18,15 +19,16 @@ impl Key {
     }
 }
 
+#[async_trait]
 impl FunctionInterface for Key {
-    fn event(&mut self, state: u16) -> ReturnCommand {
+    async fn event(&mut self, state: u16) -> ReturnCommand {
         if state != 0 && self.prev_state == 0 {
-            let mut hid = self.hid.blocking_write(); 
+            let mut hid = self.hid.write().await; 
 
             hid.keyboard.hold_key(&BasicKey::Char(self.key, KeyOrigin::Keyboard));
             hid.send_keyboard().ok();
         } else if state == 0 && self.prev_state != 0{
-            let mut hid = self.hid.blocking_write();
+            let mut hid = self.hid.write().await;
             
             hid.keyboard.release_key(&BasicKey::Char(self.key, KeyOrigin::Keyboard));
             hid.send_keyboard().ok();
@@ -53,15 +55,16 @@ impl Special {
     }
 }
 
+#[async_trait]
 impl FunctionInterface for Special {
-    fn event(&mut self, state: u16) -> ReturnCommand {
+    async fn event(&mut self, state: u16) -> ReturnCommand {
         if state != 0 && self.prev_state == 0 {
-            let mut hid = self.hid.blocking_write();
+            let mut hid = self.hid.write().await;
 
             hid.keyboard.hold_key(&BasicKey::Special(self.special));
             hid.send_keyboard().ok();
         } else if state == 0 && self.prev_state != 0{
-            let mut hid = self.hid.blocking_write();
+            let mut hid = self.hid.write().await;
             
             hid.keyboard.release_key(&BasicKey::Special(self.special));
             hid.send_keyboard().ok();
@@ -88,15 +91,16 @@ impl ModifierKey {
     }
 }
 
+#[async_trait]
 impl FunctionInterface for ModifierKey {
-    fn event(&mut self, state: u16) -> ReturnCommand {
+    async fn event(&mut self, state: u16) -> ReturnCommand {
         if state != 0 && self.prev_state == 0 {
-            let mut hid = self.hid.blocking_write();
+            let mut hid = self.hid.write().await;
 
             hid.keyboard.hold_mod(&self.modifier);
             hid.send_keyboard().ok();
         } else if state == 0 && self.prev_state != 0 {
-            let mut hid = self.hid.blocking_write();
+            let mut hid = self.hid.write().await;
             
             hid.keyboard.release_mod(&self.modifier);
             hid.send_keyboard().ok();
@@ -123,10 +127,11 @@ impl BasicString {
     }
 }
 
+#[async_trait]
 impl FunctionInterface for BasicString {
-    fn event(&mut self, state: u16) -> ReturnCommand {
+    async fn event(&mut self, state: u16) -> ReturnCommand {
         if state != 0 && self.prev_state == 0 {
-            let mut hid = self.hid.blocking_write();
+            let mut hid = self.hid.write().await;
 
             hid.keyboard.press_basic_string(&self.string);
             hid.send_keyboard().ok();
@@ -154,10 +159,11 @@ impl ComplexString {
     }
 }
 
+#[async_trait]
 impl FunctionInterface for ComplexString {
-    fn event(&mut self, state: u16) -> ReturnCommand {
+    async fn event(&mut self, state: u16) -> ReturnCommand {
         if state != 0 && self.prev_state == 0 {
-            let mut hid = self.hid.blocking_write();
+            let mut hid = self.hid.write().await;
 
             hid.keyboard.press_string(&self.layout, &self.string);
             hid.send_keyboard().ok();
@@ -185,10 +191,11 @@ impl Shortcut {
     }
 }
 
+#[async_trait]
 impl FunctionInterface for Shortcut {
-    fn event(&mut self, state: u16) -> ReturnCommand {
+    async fn event(&mut self, state: u16) -> ReturnCommand {
         if state != 0 && self.prev_state == 0 {
-            let mut hid = self.hid.blocking_write();
+            let mut hid = self.hid.write().await;
 
             for modifier in &self.modifiers {
                 hid.keyboard.hold_mod(modifier);
