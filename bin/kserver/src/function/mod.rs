@@ -34,7 +34,7 @@ impl ReturnCommand {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum FunctionType {
     Key(char),
     ConstMove{x: i8, y: i8},
