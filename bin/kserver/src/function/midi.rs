@@ -4,7 +4,7 @@ use configfs::async_trait;
 use midi_msg::{MidiMsg, ChannelVoiceMsg};
 use midir::{MidiOutput};
 use serde::{Serialize, Deserialize};
-use tokio::{sync::{RwLock, mpsc::{UnboundedSender, self}, oneshot}, task::JoinHandle};
+use tokio::{sync::{RwLock, mpsc::{UnboundedSender, self}, oneshot}};
 
 use super::{Function, FunctionInterface, ReturnCommand, FunctionType};
 
@@ -32,7 +32,6 @@ impl Display for MidiError {
 }
 
 pub struct MidiController {
-    _join: JoinHandle<()>, 
     last_bend: Option<u16>,
     tx: UnboundedSender<(MidiMsg, oneshot::Sender<Result<(), MidiError>>)>,
 }
@@ -41,7 +40,8 @@ impl MidiController {
     pub async fn new() -> Result<Arc<RwLock<MidiController>>, MidiError> {
         let (tx, mut rx) = mpsc::unbounded_channel::<(MidiMsg, oneshot::Sender<Result<(), MidiError>>)>();
         let (new_tx, new_rx) = oneshot::channel();
-        let join = tokio::task::spawn_blocking(move || {
+        
+        tokio::task::spawn_blocking(move || {
             let midi_out = match MidiOutput::new("LMK").map_err(|e| MidiError::Init(e)) {
                 Ok(midi_out) => midi_out,
                 Err(e) => {new_tx.send(Err(e)).ok(); return;},
@@ -77,7 +77,7 @@ impl MidiController {
         });
 
         if let Ok(res) = new_rx.await {
-            res.map(|_| Arc::new(RwLock::new(MidiController { _join: join, tx, last_bend: None })))
+            res.map(|_| Arc::new(RwLock::new(MidiController { tx, last_bend: None })))
         } else {
             Err(MidiError::Unknown)
         }
