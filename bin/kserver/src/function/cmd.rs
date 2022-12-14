@@ -1,23 +1,23 @@
 use std::{process::{Command, Child}, sync::Arc, io, thread, time::Duration};
 
 use configfs::async_trait;
-use tokio::{sync::RwLock, task::JoinHandle};
+use tokio::{sync::RwLock};
 
 use super::{Function, FunctionInterface, ReturnCommand, FunctionType};
 
 pub struct CommandPool {
-    commands: Arc<RwLock<Vec<Child>>>
+    commands: Arc<RwLock<Vec<Child>>>,
 }
 
 impl CommandPool {
-    pub fn new() -> io::Result<(Arc<RwLock<CommandPool>>, JoinHandle<()>)> {
+    pub fn new() -> io::Result<Arc<RwLock<CommandPool>>> {
         let commands = Arc::new(RwLock::new(Vec::<Child>::new()));
 
         let comms = commands.clone();
-        let join = tokio::spawn(async move {
+        tokio::task::spawn_blocking(move || {
             loop {
                 {
-                    let mut commands = comms.write().await;
+                    let mut commands = comms.blocking_write();
                     let mut i = 0;
                     while i < commands.len() {
                         if let Ok(Some(_)) = commands[i].try_wait() {
@@ -32,14 +32,14 @@ impl CommandPool {
                 thread::sleep(Duration::from_millis(100));
             }
         });
-        Ok((Arc::new(RwLock::new(CommandPool{commands})), join))
+
+        Ok(Arc::new(RwLock::new(CommandPool{commands})))
     }
 
     pub async fn add_command(&mut self, command: Child) {
         self.commands.write().await.push(command);
     }
 }
-
 pub struct Bash {
     command: String,
     prev_state: u16,
