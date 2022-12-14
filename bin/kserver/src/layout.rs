@@ -277,6 +277,25 @@ impl Layout {
         self.driver_manager.write().await.tick().await;
     }
 
+    pub fn layout_string(&self) -> String {
+        let mut str = String::new();
+        let last = self.layer_stack[self.cur_layer].len() - 1;
+        for (i, func) in self.layer_stack[self.cur_layer].iter().enumerate() {
+            if let Some(func) = func {
+                str.push_str(&format!("{:?}", func.ftype()));
+            } else {
+                str.push_str("None")
+            }
+
+            if i != 0 && i % self.width == 0 {
+                str.push_str("\n");
+            } else if i != last {
+                str.push_str(", ");
+            }
+        }
+        str
+    }
+
     pub async fn poll(&mut self) {
         if self.layer_stack.len() == 0 {
             return;

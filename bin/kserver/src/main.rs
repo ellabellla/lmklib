@@ -3,7 +3,7 @@ use std::{process::exit, thread, time::Duration, path::PathBuf, str::FromStr, fm
 use clap::Parser;
 use driver::{DriverManager};
 use function::{FunctionBuilder};
-use log::{error, LevelFilter};
+use log::{error, LevelFilter, info};
 use simplelog::{CombinedLogger, TermLogger, Config, TerminalMode, ColorChoice};
 use tokio::sync::RwLock;
 
@@ -158,6 +158,8 @@ async fn main() {
         .or_exit("Unable to parse layout config");
 
     let mut layout = builder.build(driver_manager, &func_builder).await;
+
+    info!("Layout:\n{}", layout.layout_string());
 
     tokio::spawn(async move {
         loop {
