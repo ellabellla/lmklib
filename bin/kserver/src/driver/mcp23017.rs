@@ -4,7 +4,7 @@ use configfs::async_trait;
 use itertools::Itertools;
 use mcp23017_rpi_lib::{Pin, Mode, State};
 use serde::{Serialize, Deserialize};
-use tokio::{sync::{RwLock, mpsc::{self, UnboundedSender}, oneshot}, task::JoinHandle};
+use tokio::{sync::{mpsc::{self, UnboundedSender}, oneshot}};
 
 use super::{DriverInterface, DriverType, DriverError};
 
@@ -162,6 +162,8 @@ impl MCP23017Input for Input {
     }
 }
 
+#[allow(dead_code)]
+
 pub struct MCP23017DriverBuilder {
     used: HashSet<Pin>,
     inputs: Vec<MCPInput>,
@@ -173,10 +175,12 @@ pub struct MCP23017DriverBuilder {
 }
 
 impl MCP23017DriverBuilder {
+    #[allow(dead_code)]
     pub fn new(name: &str, address: u16, bus: u8) -> MCP23017DriverBuilder {
         MCP23017DriverBuilder { used: HashSet::new(), inputs: Vec::new(), output_size: 0, address, bus, name: name.to_string() }
     }
 
+    #[allow(dead_code)]
     pub fn add_matrix(&mut self, x: Vec<Pin>, y: Vec<Pin>) -> Option<Range<usize>> {
         for x in &x {
             if !self.used.insert(x.clone()) {
@@ -196,6 +200,7 @@ impl MCP23017DriverBuilder {
         Some(Range {start: idx, end: idx+size})
     }
 
+    #[allow(dead_code)]
     pub fn add_input(&mut self, pin: Pin, on_state: State, pull_high: bool) -> Option<usize> {
         if !self.used.insert(pin.clone()) {
             return None;
@@ -207,6 +212,7 @@ impl MCP23017DriverBuilder {
         Some(idx)
     }
 
+    #[allow(dead_code)]
     pub async fn build<'a>(self) -> Result<MCP23017Driver, DriverError> {
         let mut mcp = MCP23017::new(self.address, self.bus).await?;
         mcp.reset().await?;
@@ -307,6 +313,7 @@ impl DriverInterface for MCP23017Driver {
     }
 }
 
+#[allow(dead_code)]
 enum  MCP23017Command {
     PullUp(Pin, State, oneshot::Sender<Result<u16, mcp23017_rpi_lib::Error>>),
     PinMode(Pin, Mode, oneshot::Sender<Result<u16, mcp23017_rpi_lib::Error>>),
@@ -321,15 +328,15 @@ enum  MCP23017Command {
 }
 
 struct MCP23017 {
-    tx: RwLock<UnboundedSender<MCP23017Command>>,
-    join: JoinHandle<()>,
+    tx: UnboundedSender<MCP23017Command>,
 }
 
 impl MCP23017 {
     pub async fn new(address: u16, bus: u8) -> Result<MCP23017, DriverError> {
         let (tx, rx) = mpsc::unbounded_channel();
         let (new_tx, new_rx) = oneshot::channel();
-        let join = tokio::task::spawn_blocking(move || {
+
+        tokio::task::spawn_blocking(move || {
             let mut rx = rx;
             let mut mcp = match mcp23017_rpi_lib::MCP23017::new(address, bus)  {
                 Ok(mcp) => {new_tx.send(Ok(())).ok(); mcp},
@@ -355,154 +362,104 @@ impl MCP23017 {
         let Ok(res) = new_rx.await else {
             return Err(DriverError::new("Unable to create MCP23017 Driver".to_string()))
         };
-        res.map(|_| MCP23017 { tx: RwLock::new(tx), join })
+        res.map(|_| MCP23017 { tx })
     }
-    /// Used to set the pullUp resistor setting for a pin.
-    /// Returns the whole register value.
+
+    async fn send(&self, command: MCP23017Command) -> Result<(), DriverError> {
+        self.tx.send(command).map_err(|_|DriverError::new("Unable to call MCP23017".to_string()))
+    }
+
+    async fn receive<T>(&self, rx: oneshot::Receiver<Result<T, mcp23017_rpi_lib::Error>>) -> Result<T, DriverError> {
+        if let Ok(val) = rx.await {
+            val.map_err(|e| DriverError::new(format!("MCP23017 Error, {}", e)))
+        } else {
+            return Err(DriverError::new("Unable to call MCP23017".to_string()));
+        }
+    }
+
     pub  async fn pull_up(&self, pin: &Pin, value: State) -> Result<u16, DriverError> {
-        let com_tx = self.tx.read().await;
-        let (tx, mut rx) = oneshot::channel();
-        let Ok(_) = com_tx.send(MCP23017Command::PullUp(pin.clone(), value, tx)) else {
-            return Err(DriverError::new("Unable to call MCP23017".to_string()));
-        };
-        if let Ok(val) = rx.await {
-            val.map_err(|e| DriverError::new(format!("MCP23017 Error, {}", e)))
-        } else {
-            return Err(DriverError::new("Unable to call MCP23017".to_string()));
-        }
+        let (tx, rx) = oneshot::channel();
+        let command = MCP23017Command::PullUp(pin.clone(), value, tx);
+        self.send(command).await?;
+        self.receive(rx).await
     }
 
-    /// Set pin to either input or output mode.
-    /// Returns the value of the combined IODIRA and IODIRB registers.
     pub async fn pin_mode(&mut self, pin: &Pin, mode: Mode) -> Result<u16, DriverError> {
-        let com_tx = self.tx.write().await;
-        let (tx, mut rx) = oneshot::channel();
-        let Ok(_) = com_tx.send(MCP23017Command::PinMode(pin.clone(), mode, tx))else {
-            return Err(DriverError::new("Unable to call MCP23017".to_string()));
-        };
-        if let Ok(val) = rx.await {
-            val.map_err(|e| DriverError::new(format!("MCP23017 Error, {}", e)))
-        } else {
-            return Err(DriverError::new("Unable to call MCP23017".to_string()));
-        }
+        let (tx, rx) = oneshot::channel();
+        let command = MCP23017Command::PinMode(pin.clone(), mode, tx);
+        
+        self.send(command).await?;
+        self.receive(rx).await
     }
 
-    /// Set an output pin to a specific value.
     pub async fn output(&self, pin: &Pin, value: State) -> Result<u8, DriverError>{
-        let com_tx = self.tx.read().await;
-        let (tx, mut rx) = oneshot::channel();
-        let Ok(_) = com_tx.send(MCP23017Command::Output(pin.clone(), value, tx)) else {
-            return Err(DriverError::new("Unable to call MCP23017".to_string()));
-        };
-        if let Ok(val) = rx.await {
-            val.map_err(|e| DriverError::new(format!("MCP23017 Error, {}", e)))
-        } else {
-            return Err(DriverError::new("Unable to call MCP23017".to_string()));
-        }
+        let (tx, rx) = oneshot::channel();
+        let command = MCP23017Command::Output(pin.clone(), value, tx);
+        
+        self.send(command).await?;
+        self.receive(rx).await
     }
 
-    /// Read the value of a pin.
     pub async fn input(&self, pin: &Pin) -> Result<State, DriverError> {
-        let com_tx = self.tx.read().await;
-        let (tx, mut rx) = oneshot::channel();
-        let Ok(_) = com_tx.send(MCP23017Command::Input(pin.clone(), tx)) else {
-            return Err(DriverError::new("Unable to call MCP23017".to_string()));
-        };
-        if let Ok(val) = rx.await {
-            val.map_err(|e| DriverError::new(format!("MCP23017 Error, {}", e)))
-        } else {
-            return Err(DriverError::new("Unable to call MCP23017".to_string()));
-        }
+        let (tx, rx) = oneshot::channel();
+        let command = MCP23017Command::Input(pin.clone(), tx);
+        
+        self.send(command).await?;
+        self.receive(rx).await
     }
 
 
-    /// Read the value of a pin regardless of it's mode
+    #[allow(dead_code)]
     pub async fn current_val(&self, pin: &Pin) -> Result<State, DriverError> {
-        let com_tx = self.tx.read().await;
-        let (tx, mut rx) = oneshot::channel();
-        let Ok(_) = com_tx.send(MCP23017Command::CurrentVal(pin.clone(), tx)) else {
-            return Err(DriverError::new("Unable to call MCP23017".to_string()));
-        };
-        if let Ok(val) = rx.await {
-            val.map_err(|e| DriverError::new(format!("MCP23017 Error, {}", e)))
-        } else {
-            return Err(DriverError::new("Unable to call MCP23017".to_string()));
-        }
+        let (tx, rx) = oneshot::channel();
+        let command = MCP23017Command::CurrentVal(pin.clone(), tx);
+        
+        self.send(command).await?;
+        self.receive(rx).await
     }
 
-    /// Configure system interrupt settings.
-    /// Mirror - are the int pins mirrored?
-    /// Intpol - polarity of the int pin.
+    #[allow(dead_code)]
     pub async fn config_system_interrupt(&mut self, mirror: mcp23017_rpi_lib::Feature, intpol: State) -> Result<(), DriverError>{
-        let com_tx = self.tx.write().await;
-        let (tx, mut rx) = oneshot::channel();
-        let Ok(_) = com_tx.send(MCP23017Command::ConfigSysInt(mirror, intpol, tx)) else {
-            return Err(DriverError::new("Unable to call MCP23017".to_string()));
-        };
-        if let Ok(val) = rx.await {
-            val.map_err(|e| DriverError::new(format!("MCP23017 Error, {}", e)))
-        } else {
-            return Err(DriverError::new("Unable to call MCP23017".to_string()));
-        }
+        let (tx, rx) = oneshot::channel();
+        let command = MCP23017Command::ConfigSysInt(mirror, intpol, tx);
+        
+        self.send(command).await?;
+        self.receive(rx).await
     }
 
-    /// Configure interrupt setting for a specific pin. set on or off.
+    #[allow(dead_code)]
     pub async fn config_pin_interrupt(&self, pin: &Pin, enabled: mcp23017_rpi_lib::Feature, compare_mode: mcp23017_rpi_lib::Compare, defval: Option<State>) -> Result<(), DriverError>{
-        let com_tx = self.tx.read().await;
-        let (tx, mut rx) = oneshot::channel();
-        let Ok(_) = com_tx.send(MCP23017Command::ConfigPinInt(pin.clone(), enabled, compare_mode, defval, tx)) else {
-            return Err(DriverError::new("Unable to call MCP23017".to_string()));
-        };
-        if let Ok(val) = rx.await {
-            val.map_err(|e| DriverError::new(format!("MCP23017 Error, {}", e)))
-        } else {
-            return Err(DriverError::new("Unable to call MCP23017".to_string()));
-        }
+        let (tx, rx) = oneshot::channel();
+        let command = MCP23017Command::ConfigPinInt(pin.clone(), enabled, compare_mode, defval, tx);
+        
+        self.send(command).await?;
+        self.receive(rx).await
     }
 
     // This function should be called when INTA or INTB is triggered to indicate an interrupt occurred.
-    /// The function determines the pin that caused the interrupt and gets its value.
-    /// The interrupt is cleared.
-    /// Returns pin and the value.
+    #[allow(dead_code)]
     pub async fn read_interrupt(&self, port: mcp23017_rpi_lib::Bank) -> Result<Option<(Pin, State)>, DriverError> {
-        let com_tx = self.tx.read().await;
-        let (tx, mut rx) = oneshot::channel();
-        let Ok(_) = com_tx.send(MCP23017Command::ReadInt(port, tx)) else {
-            return Err(DriverError::new("Unable to call MCP23017".to_string()));
-        };
-        if let Ok(val) = rx.await {
-            val.map_err(|e| DriverError::new(format!("MCP23017 Error, {}", e)))
-        } else {
-            return Err(DriverError::new("Unable to call MCP23017".to_string()));
-        }
+        let (tx, rx) = oneshot::channel();
+        let command = MCP23017Command::ReadInt(port, tx);
+        
+        self.send(command).await?;
+        self.receive(rx).await
     }
 
-    /// Check to see if there is an interrupt pending 3 times in a row (indicating it's stuck) 
-    /// and if needed clear the interrupt without reading values.
+    #[allow(dead_code)]
     pub async fn clear_interrupts(&self) -> Result<(), DriverError> {
-        let com_tx = self.tx.read().await;
-        let (tx, mut rx) = oneshot::channel();
-        let Ok(_) = com_tx.send(MCP23017Command::ClearInt(tx)) else {
-            return Err(DriverError::new("Unable to call MCP23017".to_string()));
-        };
-        if let Ok(val) = rx.await {
-            val.map_err(|e| DriverError::new(format!("MCP23017 Error, {}", e)))
-        } else {
-            return Err(DriverError::new("Unable to call MCP23017".to_string()));
-        }
+        let (tx, rx) = oneshot::channel();
+        let command = MCP23017Command::ClearInt(tx);
+        
+        self.send(command).await?;
+        self.receive(rx).await
     }
 
-    /// Reset all pins and interrupts
     pub async fn reset(&self) -> Result<(), DriverError> {
-        let com_tx = self.tx.read().await;
-        let (tx, mut rx) = oneshot::channel();
-        let Ok(_) = com_tx.send(MCP23017Command::Reset(tx)) else {
-            return Err(DriverError::new("Unable to call MCP23017".to_string()));
-        };
-        if let Ok(val) = rx.await {
-            val.map_err(|e| DriverError::new(format!("MCP23017 Error, {}", e)))
-        } else {
-            return Err(DriverError::new("Unable to call MCP23017".to_string()));
-        }
+        let (tx, rx) = oneshot::channel();
+        let command = MCP23017Command::Reset(tx);
+        
+        self.send(command).await?;
+        self.receive(rx).await
     }
 }
