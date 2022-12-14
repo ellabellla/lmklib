@@ -2,7 +2,6 @@ use std::{ops::Range, fmt::Display, sync::Arc};
 
 use serde::{Serialize, Deserialize, de};
 use slab::Slab;
-use itertools::Itertools;
 use tokio::sync::RwLock;
 
 use crate::{function::{Function, ReturnCommand, FunctionType, FunctionBuilder}, driver::DriverManager};
@@ -248,6 +247,7 @@ impl Layout {
         }
     }
 
+    #[allow(dead_code)]
     pub fn remove_layer(&mut self, index: usize) -> Option<Vec<Function>> {
         if index >= self.layer_stack.len() {
             return None;
@@ -258,6 +258,7 @@ impl Layout {
         Some(layer)
     }
 
+    #[allow(dead_code)]
     pub fn add_layer(&mut self, layer: Vec<Function>, index: usize) -> Result<usize, LayoutError> {
         if layer.len() > self.width * self.height {
             return Err(LayoutError::InvalidSize)
