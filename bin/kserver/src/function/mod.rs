@@ -15,7 +15,7 @@ pub mod hid;
 pub mod log;
 pub mod nng;
 
-use self::{keyboard::{Key, BasicString, ComplexString, Special, Shortcut, ModifierKey}, mouse::{ConstMove, LeftClick, RightClick, ConstScroll, Move, Scroll, ImmediateMove, ImmediateScroll}, midi::{Note, MidiController, Channel, ConstPitchBend, PitchBend, Instrument, GMSoundSet, note_param}, cmd::{Bash, Pipe, CommandPool}, hid::{HID, SwitchHid}, log::{Log, LogLevel}, nng::{DriverData, NanoMsg}};
+use self::{keyboard::{Key, BasicString, ComplexString, Special, Shortcut, ModifierKey}, mouse::{ConstMove, LeftClick, RightClick, ConstScroll, Move, Scroll, ImmediateMove, ImmediateScroll}, midi::{Note, MidiController, Channel, ConstPitchBend, PitchBend, Instrument, GMSoundSet, note_param}, cmd::{Bash, Pipe, CommandPool}, hid::{HID, SwitchHid}, log::{Log, LogLevel}, nng::{DriverData, NanoMsg, NanoMessenger}};
 
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq)]
@@ -23,6 +23,7 @@ pub enum FunctionConfigData {
     CommandPool,
     HID { mouse_id: u8, keyboard_id: u8 },
     MidiController,
+    NanoMsg { addresses: Vec<String>, timeout: i64 },
 }
 
 impl Hash for FunctionConfigData {
@@ -118,7 +119,7 @@ pub enum FunctionType {
     Pipe(String),
     SwitchHid,
     Log(LogLevel, String),
-    NanoMsg { address: String, msg: String, driver_data: Vec<DriverData> },
+    NanoMsg { msg: String, driver_data: Vec<DriverData> },
 }
 
 impl FunctionType  {
@@ -135,11 +136,18 @@ pub struct FunctionBuilder {
     midi_controller: Arc<RwLock<MidiController>>,
     command_pool: Arc<RwLock<CommandPool>>,
     driver_manager: Arc<RwLock<DriverManager>>,
+    nano_messenger: Arc<RwLock<NanoMessenger>>,
 }
 
 impl FunctionBuilder {
-    pub fn new(hid: Arc<RwLock<HID>>, midi_controller: Arc<RwLock<MidiController>>, command_pool: Arc<RwLock<CommandPool>>, driver_manager: Arc<RwLock<DriverManager>>) -> Arc<RwLock<FunctionBuilder>> {
-        Arc::new(RwLock::new(FunctionBuilder { hid, midi_controller, command_pool, driver_manager}))
+    pub fn new(
+        hid: Arc<RwLock<HID>>, 
+        midi_controller: Arc<RwLock<MidiController>>, 
+        command_pool: Arc<RwLock<CommandPool>>, 
+        driver_manager: Arc<RwLock<DriverManager>>,
+        nano_messenger: Arc<RwLock<NanoMessenger>>,
+    ) -> Arc<RwLock<FunctionBuilder>> {
+        Arc::new(RwLock::new(FunctionBuilder { hid, midi_controller, command_pool, driver_manager, nano_messenger}))
     }
 
     pub fn build(&self, ftype: FunctionType) -> Function {
@@ -173,7 +181,7 @@ impl FunctionBuilder {
             FunctionType::Pipe(command) => Pipe::new(command, self.command_pool.clone()),
             FunctionType::SwitchHid => SwitchHid::new(self.hid.clone()),
             FunctionType::Log(log_level, msg) => Log::new(log_level, msg),
-            FunctionType::NanoMsg { address, msg, driver_data } => NanoMsg::new(address, msg, driver_data, self.driver_manager.clone()),
+            FunctionType::NanoMsg { msg, driver_data } => NanoMsg::new(msg, driver_data, self.nano_messenger.clone(), self.driver_manager.clone()),
         }.or_log_ignore(&format!("Unable to build function (Function Builder), {}", debug))
     }
 }

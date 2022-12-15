@@ -7,7 +7,7 @@ use log::{error, LevelFilter, info};
 use simplelog::{CombinedLogger, TermLogger, Config, TerminalMode, ColorChoice};
 use tokio::sync::RwLock;
 
-use crate::{function::{midi::MidiController, cmd::CommandPool, hid::HID, FunctionConfiguration, FunctionConfig}, driver::SerdeDriverManager};
+use crate::{function::{midi::MidiController, cmd::CommandPool, hid::HID, FunctionConfiguration, FunctionConfig, nng::NanoMessenger}, driver::SerdeDriverManager};
 
 
 mod ledstate;
@@ -163,8 +163,9 @@ async fn main() {
 
     let command_pool = CommandPool::from_config(&function_config).await.or_exit("Unable to create command pool");
     let hid = HID::from_config(&function_config).await.or_exit("Unable to create hid");
+    let nano_messanger = NanoMessenger::from_config(&function_config).await.or_exit("Unable to create nano messange");
     let midi_controller = MidiController::from_config(&function_config).await.or_exit("Unable to create midi controller");
-    let func_builder = FunctionBuilder::new(hid, midi_controller, command_pool, driver_manager.clone());
+    let func_builder = FunctionBuilder::new(hid, midi_controller, command_pool, driver_manager.clone(), nano_messanger);
 
     let builder: layout::LayoutBuilder = serde_json::from_reader(fs::File::open(config.join(LAYOUT_JSON))
         .or_exit("Unable to read layout config"))
