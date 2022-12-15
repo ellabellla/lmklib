@@ -46,7 +46,7 @@ pub trait FunctionConfig {
     async fn from_config(function_config: &FunctionConfiguration) -> Result<Self::Output, Self::Error>;
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug)]
 pub struct FunctionConfiguration {
     configs: HashSet<FunctionConfigData>,
 }
@@ -69,7 +69,24 @@ impl FunctionConfiguration {
     }
 }
 
+impl Serialize for FunctionConfiguration {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer 
+    {
+        self.configs.serialize(serializer)
+    }
+}
 
+impl<'de> Deserialize<'de> for FunctionConfiguration {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de> 
+    {
+        let configs = HashSet::<FunctionConfigData>::deserialize(deserializer)?;    
+        Ok(FunctionConfiguration { configs })
+    }
+}
 
 pub enum ReturnCommand {
     Switch(usize),
