@@ -22,6 +22,7 @@ midir = "0.8.0"
 midi-msg = "0.4"
 simplelog = "0.12.0"
 log = "0.4.17"
+nanomsg = {version = "0.7.2", features = ["bundled"]}
 
 [dependencies.uinput]
 version = "0.1.3"

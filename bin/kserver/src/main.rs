@@ -151,7 +151,7 @@ async fn main() {
     
     let hid = HID::new(1, 0).await.or_exit("Unable to create hid");
     let midi_controller = MidiController::new().await.or_exit("Unable to create midi controller");
-    let func_builder = FunctionBuilder::new(hid, midi_controller, command_pool);
+    let func_builder = FunctionBuilder::new(hid, midi_controller, command_pool, driver_manager.clone());
 
     let builder: layout::LayoutBuilder = serde_json::from_reader(fs::File::open(config.join(LAYOUT_JSON))
         .or_exit("Unable to read layout config"))
