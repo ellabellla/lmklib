@@ -287,7 +287,7 @@ impl Layout {
                 str.push_str("None")
             }
 
-            if i != 0 && i % self.width == 0 {
+            if (i + 1) % self.width == 0 {
                 str.push_str("\n");
             } else if i != last {
                 str.push_str(", ");
