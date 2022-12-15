@@ -302,12 +302,12 @@ impl Layout {
         }
         
         let mut commands = vec![];
-        let mut driver_manager = self.driver_manager.write().await;
 
         for (_, address) in self.addresses.iter_mut() {
             match address {
                 Address::DriverMatrix { name, input, width, root} => {
-                    let Some(driver) = driver_manager.get_mut(name) else {
+                    let driver_manager = self.driver_manager.read().await;
+                    let Some(driver) = driver_manager.get(name) else {
                         continue;
                     };
 
@@ -315,6 +315,8 @@ impl Layout {
                         continue;
                     };
                     
+                    drop(driver);
+
                     let (mut x, mut y) = root;
 
                     for state in state.iter() {
@@ -340,6 +342,7 @@ impl Layout {
                     }
                 },
                 Address::DriverAddr { name, input, root} => {
+                    let driver_manager = self.driver_manager.read().await;
                     let Some(driver) = driver_manager.get(name) else {
                         continue;
                     };
@@ -347,6 +350,8 @@ impl Layout {
                     let (x, y) = root;
 
                     let state = driver.poll(*input);
+                    drop(driver);
+
                     for layer in self.layer_stack[self.cur_layer..].iter_mut().rev() {
                         match &mut layer[*x + (*y * self.width)] {
                             Some(func) => {
@@ -365,7 +370,6 @@ impl Layout {
             }
         }
 
-        drop(driver_manager);
         for command in commands {
             command.eval(self);
         }
