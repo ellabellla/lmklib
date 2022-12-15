@@ -5,10 +5,24 @@ use tokio::{sync::RwLock};
 
 use crate::OrLog;
 
-use super::{Function, FunctionInterface, ReturnCommand, FunctionType};
+use super::{Function, FunctionInterface, ReturnCommand, FunctionType, FunctionConfig, FunctionConfigData};
 
 pub struct CommandPool {
     commands: Arc<RwLock<Vec<Child>>>,
+}
+
+#[async_trait]
+impl FunctionConfig for CommandPool {
+    type Output = Arc<RwLock<CommandPool>>;
+    type Error = io::Error;
+
+    fn to_config_data(&self) -> FunctionConfigData {
+        FunctionConfigData::CommandPool
+    }
+
+    async fn from_config(_function_config: &super::FunctionConfiguration) -> Result<Self::Output, Self::Error> {
+        CommandPool::new()
+    }
 }
 
 impl CommandPool {

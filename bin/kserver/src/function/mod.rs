@@ -1,5 +1,5 @@
 
-use std::{sync::{Arc}};
+use std::{sync::{Arc}, collections::HashSet, hash::Hash};
 
 use configfs::async_trait;
 use serde::{Serialize, Deserialize};
@@ -16,6 +16,58 @@ pub mod log;
 pub mod nng;
 
 use self::{keyboard::{Key, BasicString, ComplexString, Special, Shortcut, ModifierKey}, mouse::{ConstMove, LeftClick, RightClick, ConstScroll, Move, Scroll, ImmediateMove, ImmediateScroll}, midi::{Note, MidiController, Channel, ConstPitchBend, PitchBend, Instrument, GMSoundSet, note_param}, cmd::{Bash, Pipe, CommandPool}, hid::{HID, SwitchHid}, log::{Log, LogLevel}, nng::{DriverData, NanoMsg}};
+
+
+#[derive(Debug, Clone, Serialize, Deserialize, Eq)]
+pub enum FunctionConfigData {
+    CommandPool,
+    HID { mouse_id: u8, keyboard_id: u8 },
+    MidiController,
+}
+
+impl Hash for FunctionConfigData {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        core::mem::discriminant(self).hash(state);
+    }
+}
+
+impl PartialEq for FunctionConfigData {
+    fn eq(&self, other: &Self) -> bool {
+        core::mem::discriminant(self) == core::mem::discriminant(other)
+    }
+}
+
+#[async_trait]
+pub trait FunctionConfig {
+    type Output;
+    type Error;
+    fn to_config_data(&self) -> FunctionConfigData;
+    async fn from_config(function_config: &FunctionConfiguration) -> Result<Self::Output, Self::Error>;
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FunctionConfiguration {
+    configs: HashSet<FunctionConfigData>,
+}
+
+impl FunctionConfiguration {
+    pub fn new() -> FunctionConfiguration {
+        FunctionConfiguration { configs: HashSet::new() }
+    }
+
+    #[allow(dead_code)]
+    pub fn insert(&mut self, config: FunctionConfigData) -> bool {
+        self.configs.insert(config)
+    }
+
+    pub fn get<M>(&self, matches: M) -> Option<&FunctionConfigData> 
+    where 
+        M: FnMut(&&FunctionConfigData) -> bool
+    {
+        self.configs.iter().find(matches)
+    }
+}
+
 
 
 pub enum ReturnCommand {

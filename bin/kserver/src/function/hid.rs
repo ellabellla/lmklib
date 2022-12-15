@@ -1,4 +1,4 @@
-use std::{sync::Arc};
+use std::{sync::Arc, io, fmt::Display};
 
 use configfs::async_trait;
 use tokio::{sync::{RwLock, mpsc::{UnboundedSender, self}, oneshot}};
@@ -7,7 +7,26 @@ use virt_hid::{key::{self, BasicKey, KeyOrigin, SpecialKey, Modifier}, mouse::{s
 
 use crate::{OrLogIgnore, OrLog};
 
-use super::{Function, FunctionInterface, ReturnCommand, FunctionType};
+use super::{Function, FunctionInterface, ReturnCommand, FunctionType, FunctionConfig, FunctionConfigData};
+
+#[derive(Debug)]
+pub enum HIDError {
+    UInput(uinput::Error),
+    IO(io::Error),
+    NoConfig,
+    ChannelError,
+}
+
+impl Display for HIDError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            HIDError::UInput(e) => f.write_fmt(format_args!("UInput error, {}", e)),
+            HIDError::IO(e) => f.write_fmt(format_args!("IO error, {}", e)),
+            HIDError::NoConfig => f.write_str("No configuration was supplied"),
+            HIDError::ChannelError => f.write_str("Channel Error"),
+        }
+    }
+}
 
 pub struct SwitchHid {
     prev_state: u16,
@@ -57,31 +76,52 @@ enum Command {
 
 pub struct HID {
     tx: UnboundedSender<Command>,
+    mouse_id: u8, 
+    keyboard_id: u8
+}
+
+#[async_trait]
+impl FunctionConfig for HID {
+    type Output = Arc<RwLock<HID>>;
+
+    type Error = HIDError;
+
+    fn to_config_data(&self) -> super::FunctionConfigData {
+        FunctionConfigData::HID{mouse_id: self.mouse_id, keyboard_id: self.keyboard_id}
+    }
+
+    async fn from_config(function_config: &super::FunctionConfiguration) -> Result<Self::Output, Self::Error> {
+        let Some(FunctionConfigData::HID { mouse_id, keyboard_id }) = function_config
+            .get(|config| matches!(config, FunctionConfigData::HID { mouse_id: _, keyboard_id: _ })) else {
+                return Err(HIDError::NoConfig)
+        };
+        HID::new(*mouse_id, *keyboard_id).await
+    }
 }
 
 impl HID {
-    pub async fn new(mouse_id: u8, keyboard_id: u8) -> Result<Arc<RwLock<HID>>, uinput::Error> {
+    pub async fn new(mouse_id: u8, keyboard_id: u8) -> Result<Arc<RwLock<HID>>, HIDError> {
         let (tx, mut rx) = mpsc::unbounded_channel();        
         let (new_tx, new_rx) = oneshot::channel();    
 
         tokio::spawn(async move {
             let mut hid = match virt_hid::HID::new(mouse_id, keyboard_id){
                 Ok(hid) => hid,
-                Err(_) => {new_tx.send(Err(uinput::Error::NotFound)).or_log_ignore("Broken Channel (HID Driver)"); return;}
+                Err(e) => {new_tx.send(Err(HIDError::IO(e))).or_log_ignore("Broken Channel (HID Driver)"); return;}
             };
 
-            let mut uinput = match (|| -> Result<Device, uinput::Error>{
-                uinput::default()?
-                    .name("lmk")?
-                    .event(event::Keyboard::All).map_err(|_| uinput::Error::NotFound)?
-                    .event(event::Controller::Mouse(Mouse::Left)).map_err(|_| uinput::Error::NotFound)?
-                    .event(event::Controller::Mouse(Mouse::Right)).map_err(|_| uinput::Error::NotFound)?
-                    .event(event::Controller::Mouse(Mouse::Middle)).map_err(|_| uinput::Error::NotFound)?
-                    .event(event::Relative::Position(Position::X)).map_err(|_| uinput::Error::NotFound)?
-                    .event(event::Relative::Position(Position::Y)).map_err(|_| uinput::Error::NotFound)?
-                    .event(event::Relative::Wheel(Wheel::Vertical)).map_err(|_| uinput::Error::NotFound)?
+            let mut uinput = match (|| -> Result<Device, HIDError>{
+                uinput::default().map_err(|e| HIDError::UInput(e))?
+                    .name("lmk").map_err(|e| HIDError::UInput(e))?
+                    .event(event::Keyboard::All).map_err(|e| HIDError::UInput(e))?
+                    .event(event::Controller::Mouse(Mouse::Left)).map_err(|e| HIDError::UInput(e))?
+                    .event(event::Controller::Mouse(Mouse::Right)).map_err(|e| HIDError::UInput(e))?
+                    .event(event::Controller::Mouse(Mouse::Middle)).map_err(|e| HIDError::UInput(e))?
+                    .event(event::Relative::Position(Position::X)).map_err(|e| HIDError::UInput(e))?
+                    .event(event::Relative::Position(Position::Y)).map_err(|e| HIDError::UInput(e))?
+                    .event(event::Relative::Wheel(Wheel::Vertical)).map_err(|e| HIDError::UInput(e))?
                     .create()
-                    .map_err(|_| uinput::Error::NotFound)
+                    .map_err(|e| HIDError::UInput(e))
             })() {
                 Ok(uinput) => uinput,
                 Err(e) => {new_tx.send(Err(e)).or_log_ignore("Broken Channel (HID Driver)"); return;}
@@ -214,10 +254,9 @@ impl HID {
 
         
             
-        if let Ok(res) = new_rx.await {
-            res.map(|_| Arc::new(RwLock::new(HID { tx })))
-        } else {
-            Err(uinput::Error::NotFound)
+        match new_rx.await {
+            Ok(res) => res.map(|_| Arc::new(RwLock::new(HID { tx, mouse_id, keyboard_id }))),
+            Err(_) => Err(HIDError::ChannelError)
         }
     }
 

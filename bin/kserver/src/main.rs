@@ -7,7 +7,7 @@ use log::{error, LevelFilter, info};
 use simplelog::{CombinedLogger, TermLogger, Config, TerminalMode, ColorChoice};
 use tokio::sync::RwLock;
 
-use crate::{function::{midi::MidiController, cmd::CommandPool, hid::HID}, driver::SerdeDriverManager};
+use crate::{function::{midi::MidiController, cmd::CommandPool, hid::HID, FunctionConfiguration, FunctionConfig}, driver::SerdeDriverManager};
 
 
 mod ledstate;
@@ -100,8 +100,9 @@ impl<T> OrExit<T> for Option<T> {
 
 #[tokio::main]
 async fn main() {
-    const DRIVER_JSON: &str = "driver.json";
+    const BACKEND_JSON: &str = "backend.json";
     const LAYOUT_JSON: &str = "layout.json";
+    const FRONTEND_JSON: &str = "frontend.json";
     
     CombinedLogger::init(
         vec![
@@ -125,13 +126,13 @@ async fn main() {
         fs::create_dir_all(&config)
             .or_exit("Unable to create config folder");
         
-        fs::File::create(config.join(DRIVER_JSON))
-            .or_exit("Unable to create default driver config")
+        fs::File::create(config.join(BACKEND_JSON))
+            .or_exit("Unable to create default backend config")
             .write_all(&serde_json::to_string_pretty(&SerdeDriverManager::new())
-                .or_exit("Unable to create default driver config")
+                .or_exit("Unable to create default backend config")
                 .as_bytes()
             )
-            .or_exit("Unable to create default driver config");
+            .or_exit("Unable to create default backend config");
 
         fs::File::create(config.join(LAYOUT_JSON))
             .or_exit("Unable to create default layout config")
@@ -140,17 +141,29 @@ async fn main() {
                 .as_bytes()
             )
             .or_exit("Unable to create default layout config");
+        
+        fs::File::create(config.join(FRONTEND_JSON))
+            .or_exit("Unable to create default frontend config")
+            .write_all(&serde_json::to_string_pretty(&FunctionConfiguration::new())
+                .or_exit("Unable to create default frontend config")
+                .as_bytes()
+            )
+            .or_exit("Unable to create default frontend config");
     }
 
-    let command_pool = CommandPool::new().or_exit("Unable to create command pool");
 
-    let driver_manager: SerdeDriverManager = serde_json::from_reader(fs::File::open(config.join(DRIVER_JSON))
-        .or_exit("Unable to read driver config"))
-        .or_exit("Unable to parse driver config");
+    let driver_manager: SerdeDriverManager = serde_json::from_reader(fs::File::open(config.join(BACKEND_JSON))
+        .or_exit("Unable to read backend config"))
+        .or_exit("Unable to parse backend config");
     let driver_manager: Arc<RwLock<DriverManager>> = Arc::new(RwLock::new(driver_manager.build().await.or_exit("Unable to build driver manager")));
     
-    let hid = HID::new(1, 0).await.or_exit("Unable to create hid");
-    let midi_controller = MidiController::new().await.or_exit("Unable to create midi controller");
+    let function_config: FunctionConfiguration = serde_json::from_reader(fs::File::open(config.join(FRONTEND_JSON))
+        .or_exit("Unable to read frontend config"))
+        .or_exit("Unable to parse frontend config");
+
+    let command_pool = CommandPool::from_config(&function_config).await.or_exit("Unable to create command pool");
+    let hid = HID::from_config(&function_config).await.or_exit("Unable to create hid");
+    let midi_controller = MidiController::from_config(&function_config).await.or_exit("Unable to create midi controller");
     let func_builder = FunctionBuilder::new(hid, midi_controller, command_pool, driver_manager.clone());
 
     let builder: layout::LayoutBuilder = serde_json::from_reader(fs::File::open(config.join(LAYOUT_JSON))

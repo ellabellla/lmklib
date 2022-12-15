@@ -8,7 +8,7 @@ use tokio::{sync::{RwLock, mpsc::{UnboundedSender, self}, oneshot}};
 
 use crate::{OrLogIgnore, OrLog};
 
-use super::{Function, FunctionInterface, ReturnCommand, FunctionType};
+use super::{Function, FunctionInterface, ReturnCommand, FunctionType, FunctionConfig, FunctionConfigData, FunctionConfiguration};
 
 #[derive(Debug)]
 pub enum MidiError {
@@ -36,6 +36,20 @@ impl Display for MidiError {
 pub struct MidiController {
     last_bend: Option<u16>,
     tx: UnboundedSender<(MidiMsg, oneshot::Sender<Result<(), MidiError>>)>,
+}
+
+#[async_trait]
+impl FunctionConfig for MidiController {
+    type Output = Arc<RwLock<MidiController>>;
+    type Error = MidiError;
+
+    fn to_config_data(&self) -> FunctionConfigData {
+        FunctionConfigData::MidiController
+    }
+    
+    async fn from_config(_function_config: &FunctionConfiguration) -> Result<Self::Output, Self::Error> {
+        MidiController::new().await
+    }
 }
 
 impl MidiController {
