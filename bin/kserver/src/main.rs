@@ -107,8 +107,6 @@ async fn main() {
     CombinedLogger::init(
         vec![
             TermLogger::new(LevelFilter::Info, Config::default(), TerminalMode::Stdout, ColorChoice::Auto),
-            TermLogger::new(LevelFilter::Error, Config::default(), TerminalMode::Stdout, ColorChoice::Auto),
-            TermLogger::new(LevelFilter::Warn, Config::default(), TerminalMode::Stdout, ColorChoice::Auto),
         ]
     ).unwrap();
 
