@@ -69,10 +69,6 @@ impl DriverManager {
         self.drivers.get(name)
     }
 
-    pub fn get_mut(&mut self, name: &str) -> Option<&mut Driver> {
-        self.drivers.get_mut(name)
-    }
-
     pub async fn tick(&mut self) {
         for driver in self.drivers.values_mut() {
             driver.tick().await;
