@@ -30,7 +30,7 @@ fn main() {
         },
     };
 
-    let mut hid = match HID::new("/lmk/hid/mouse", "/lmk/hid/keyboard", "lmk/hid/led") {
+    let mut hid = match HID::new("/lmk/hid/mouse", "/lmk/hid/keyboard", "/lmk/hid/led") {
         Ok(hid) => hid,
         Err(_) => {
             println!("Error, Couldn't connect to HID.");
