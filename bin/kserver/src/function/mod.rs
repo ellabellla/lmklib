@@ -21,7 +21,7 @@ use self::{keyboard::{Key, BasicString, ComplexString, Special, Shortcut, Modifi
 #[derive(Debug, Clone, Serialize, Deserialize, Eq)]
 pub enum FunctionConfigData {
     CommandPool,
-    HID { mouse_id: u8, keyboard_id: u8 },
+    HID { mouse: String, keyboard: String, led: String },
     MidiController,
     NanoMsg { addresses: Vec<String>, timeout: i64 },
 }

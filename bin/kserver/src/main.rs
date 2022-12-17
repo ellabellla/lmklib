@@ -9,8 +9,6 @@ use tokio::sync::RwLock;
 
 use crate::{function::{midi::MidiController, cmd::CommandPool, hid::HID, FunctionConfiguration, FunctionConfig, nng::NanoMessenger}, driver::SerdeDriverManager};
 
-
-mod ledstate;
 mod driver;
 mod layout;
 mod function;

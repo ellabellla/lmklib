@@ -30,37 +30,44 @@ mod hid {
     pub struct HID {
         mouse_hid: File,
         keyboard_hid: File,
+        led_state: File,
     }
     
     impl HID {
         /// Create new HID interface
-        pub fn new(mouse_id: u8, keyboard_id: u8) -> io::Result<HID>{
+        pub fn new(mouse: &str, keyboard: &str, led: &str) -> io::Result<HID>{
             Ok(HID {
                 mouse_hid: OpenOptions::new()
-                    .read(true)
+                    .read(false)
                     .write(true)
-                    .open(format!("/dev/hidg{}", mouse_id))?, 
+                    .open(mouse)?, 
                 keyboard_hid: OpenOptions::new()
-                    .read(true)
+                    .read(false)
                     .write(true)
-                    .open(format!("/dev/hidg{}", keyboard_id))?,
+                    .open(keyboard)?,
+                led_state: OpenOptions::new()
+                    .read(true)
+                    .write(false)
+                    .open(led)?,
             })
         }
 
         
         /// Receive raw LED states packet from HID interface with a timeout. [crate::key::LEDStatePacket] provides an abstraction for raw state packets.
         pub fn receive_states_packet(&mut self, timeout: Duration) -> io::Result<Option<u8>>{
-            read_timeout(&mut self.keyboard_hid, timeout)
+            read_timeout(&mut self.led_state, timeout)
         }
 
         /// Send raw key pack to HID interface. [crate::key::Keyboard] and [crate::key::KeyPacket] provides an abstractions for raw key packets.
         pub fn send_key_packet(&mut self, data: &[u8]) -> io::Result<()> {
-            self.keyboard_hid.write_all(data)
+            self.keyboard_hid.write_all(data)?;
+            self.keyboard_hid.sync_all()
         }
     
         /// Send raw mouse packet to HID interface. [crate::mouse::Mouse] provides an abstractions for raw mouse packets.
         pub fn send_mouse_packet(&mut self, data: &[u8]) -> io::Result<()> {
-            self.mouse_hid.write_all(data)
+            self.mouse_hid.write_all(data)?;
+            self.keyboard_hid.sync_all()
         }
     }
     
@@ -82,7 +89,7 @@ mod hid {
     
     impl HID {
         /// Create new HID interface
-        pub fn new(_mouse_id: u8, _keyboard_id: u8) -> io::Result<HID>{
+        pub fn new(_mouse: &str, _keyboard: &str) -> io::Result<HID>{
             Ok(HID {
                 mouse_file: NamedTempFile::new()?,
                 keyboard_file: NamedTempFile::new()?,

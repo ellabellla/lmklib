@@ -76,8 +76,9 @@ enum Command {
 
 pub struct HID {
     tx: UnboundedSender<Command>,
-    mouse_id: u8, 
-    keyboard_id: u8
+    led: String, 
+    mouse: String, 
+    keyboard: String
 }
 
 #[async_trait]
@@ -87,25 +88,28 @@ impl FunctionConfig for HID {
     type Error = HIDError;
 
     fn to_config_data(&self) -> super::FunctionConfigData {
-        FunctionConfigData::HID{mouse_id: self.mouse_id, keyboard_id: self.keyboard_id}
+        FunctionConfigData::HID{mouse: self.mouse.clone(), keyboard: self.keyboard.clone(), led: self.led.clone()}
     }
 
     async fn from_config(function_config: &super::FunctionConfiguration) -> Result<Self::Output, Self::Error> {
-        let Some(FunctionConfigData::HID { mouse_id, keyboard_id }) = function_config
-            .get(|config| matches!(config, FunctionConfigData::HID { mouse_id: _, keyboard_id: _ })) else {
+        let Some(FunctionConfigData::HID { mouse, keyboard, led }) = function_config
+            .get(|config| matches!(config, FunctionConfigData::HID { mouse: _, keyboard: _, led: _})) else {
                 return Err(HIDError::NoConfig)
         };
-        HID::new(*mouse_id, *keyboard_id).await
+        HID::new(mouse.clone(), keyboard.clone(), led.clone()).await
     }
 }
 
 impl HID {
-    pub async fn new(mouse_id: u8, keyboard_id: u8) -> Result<Arc<RwLock<HID>>, HIDError> {
+    pub async fn new(mouse: String, keyboard: String, led: String) -> Result<Arc<RwLock<HID>>, HIDError> {
         let (tx, mut rx) = mpsc::unbounded_channel();        
         let (new_tx, new_rx) = oneshot::channel();    
 
+        let mse = mouse.clone();
+        let kbd = keyboard.clone();
+        let ld = led.clone();
         tokio::spawn(async move {
-            let mut hid = match virt_hid::HID::new(mouse_id, keyboard_id){
+            let mut hid = match virt_hid::HID::new(&mse, &kbd, &ld){
                 Ok(hid) => hid,
                 Err(e) => {new_tx.send(Err(HIDError::IO(e))).or_log_ignore("Broken Channel (HID Driver)"); return;}
             };
@@ -255,7 +259,7 @@ impl HID {
         
             
         match new_rx.await {
-            Ok(res) => res.map(|_| Arc::new(RwLock::new(HID { tx, mouse_id, keyboard_id }))),
+            Ok(res) => res.map(|_| Arc::new(RwLock::new(HID { tx, mouse, keyboard, led }))),
             Err(_) => Err(HIDError::ChannelError)
         }
     }

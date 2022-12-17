@@ -40,7 +40,7 @@ fn main() {
         },
     };
 
-    let mut hid = match HID::new(1, 0) {
+    let mut hid = match HID::new("/lmk/hid/mouse", "/lmk/hid/keyboard", "/lmk/hid/led") {
         Ok(hid) => hid,
         Err(_) => {
             if !args.no_errors {
