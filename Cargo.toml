@@ -6,6 +6,7 @@ members = [
     "bin/kout",
     "bin/quack",
     "bin/bork",
+    "bin/hid-interface",
     "external/keyboard-layouts",
     "external/fschema/fschema",
     "external/configfs",
