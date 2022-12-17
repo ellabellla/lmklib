@@ -364,7 +364,7 @@ impl Keyboard {
       {
          println!("press {:?} {:?}", c, key_origin);
       }
-      let mut packet = KeyPacket::from_char(&c, key_origin)?;
+      let mut packet = self.create_release_packet();
       packet.push_char(c, key_origin);
       self.add_buffer(&packet);
       self.packets.push(packet);
