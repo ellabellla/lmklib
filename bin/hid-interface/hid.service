@@ -1,0 +1,11 @@
+[Unit]
+Description=Hid Interface
+
+[Service]
+Type=exec
+ExecStart=hid-interface /lmk/hid
+ExecStop=umount /lmk/hid
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
