@@ -1,2 +1,2 @@
 # KServer
-A server that interfaces with the Raspberry Pi's GPIO and sends mouse and key events based on hardware input to either the Pi or host. Whilst providing an interface to other programs to modify key and mouse settings, record activity, keyboard layouts, macros, and get LED state data.
+A server that interfaces with the Raspberry Pi's GPIO and sends mouse and key events based on hardware input to either the Pi or host.

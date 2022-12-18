@@ -4,7 +4,7 @@ A software suite for using a Raspberry Pi Zero as a smart mechanical keyboard. U
 ## The Suite
 | Name | Readme | Description |
 |------|--------|-------------|
-|KServer|[link](bin/kserver/)|A server that interfaces with the Raspberry Pi's GPIO and sends mouse and key events based on hardware input to either the Pi or host. Whilst providing an interface to other programs to modify key and mouse settings, record activity, keyboard layouts, macros, and get LED state data.|
+|KServer|[link](bin/kserver/)|A server that interfaces with the Raspberry Pi's GPIO and sends mouse and key events based on hardware input to either the Pi or host.|
 |Gadget-Service|[link](bin/gadget-service/)|A Systemd service and installer that sets up a raspberry pi as a usb-gadget on boot.|
 |Virt-HID|[link](lib/virt-hid/)|A hid interface library.|
 |Kout|[link](bin/kout/)|A command line program to convert piped in text or files to key strokes.|
