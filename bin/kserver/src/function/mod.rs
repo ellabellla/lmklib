@@ -23,7 +23,7 @@ pub enum FunctionConfigData {
     CommandPool,
     HID { mouse: String, keyboard: String, led: String },
     MidiController,
-    NanoMsg { addresses: Vec<String>, timeout: i64 },
+    NanoMsg { pub_addr: String, sub_addr: String, timeout: i64 },
 }
 
 impl Hash for FunctionConfigData {
@@ -136,7 +136,7 @@ pub enum FunctionType {
     Pipe(String),
     SwitchHid,
     Log(LogLevel, String),
-    NanoMsg { msg: String, driver_data: Vec<DriverData> },
+    NanoMsg { topic: u8, format: String, driver_data: Vec<DriverData> },
 }
 
 impl FunctionType  {
@@ -198,7 +198,7 @@ impl FunctionBuilder {
             FunctionType::Pipe(command) => Pipe::new(command, self.command_pool.clone()),
             FunctionType::SwitchHid => SwitchHid::new(self.hid.clone()),
             FunctionType::Log(log_level, msg) => Log::new(log_level, msg),
-            FunctionType::NanoMsg { msg, driver_data } => NanoMsg::new(msg, driver_data, self.nano_messenger.clone(), self.driver_manager.clone()),
+            FunctionType::NanoMsg { topic, format: msg, driver_data } => NanoMsg::new(topic, msg, driver_data, self.nano_messenger.clone(), self.driver_manager.clone()),
         }.or_log_ignore(&format!("Unable to build function (Function Builder), {}", debug))
     }
 }

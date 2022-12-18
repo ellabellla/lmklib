@@ -1,13 +1,34 @@
-use std::{sync::Arc, io::{Write}, fmt::Display};
+use std::{sync::Arc, io::{Write}, fmt::Display, thread, time::Duration, str::MatchIndices};
 
 use configfs::async_trait;
-use nanomsg::{Socket, Protocol};
+use dynfmt::{Format, ArgumentSpec};
+use nanomsg::{Socket, Protocol, Endpoint};
 use serde::{Serialize, Deserialize};
 use tokio::sync::{RwLock, mpsc::{UnboundedSender, self}, oneshot};
 
 use crate::{driver::DriverManager, OrLogIgnore, OrLog};
 
 use super::{Function, FunctionInterface, ReturnCommand, FunctionType, FunctionConfig, FunctionConfigData};
+
+struct HashFormat;
+
+impl<'f> Format<'f> for HashFormat {
+    type Iter = HashIter<'f>;
+
+    fn iter_args(&self, format: &'f str) -> Result<Self::Iter, dynfmt::Error<'f>> {
+        Ok(HashIter(format.match_indices('#')))
+    }
+}
+
+struct HashIter<'f>(MatchIndices<'f, char>);
+
+impl<'f> Iterator for HashIter<'f> {
+    type Item = Result<ArgumentSpec<'f>, dynfmt::Error<'f>>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0.next().map(|(index, _)| Ok(ArgumentSpec::new(index, index + 1)))
+    }
+}
 
 #[derive(Debug)]
 pub enum NanoMsgError {
@@ -35,7 +56,8 @@ pub struct DriverData {
 
 pub struct NanoMessenger{
     tx: UnboundedSender<Vec<u8>>,
-    addresses: Vec<String>, 
+    pub_addr: String, 
+    sub_addr: String, 
     timeout: isize,
 }
 
@@ -46,38 +68,71 @@ impl FunctionConfig for NanoMessenger {
     type Error = NanoMsgError;
 
     fn to_config_data(&self) -> super::FunctionConfigData {
-        FunctionConfigData::NanoMsg{addresses: self.addresses.clone(), timeout: self.timeout as i64}
+        FunctionConfigData::NanoMsg{pub_addr: self.pub_addr.clone(), sub_addr: self.sub_addr.clone(), timeout: self.timeout as i64}
     }
 
     async fn from_config(function_config: &super::FunctionConfiguration) -> Result<Self::Output, Self::Error> {
-        let Some(FunctionConfigData::NanoMsg{addresses, timeout}) = function_config
-            .get(|config| matches!(config, FunctionConfigData::NanoMsg{addresses:_, timeout:_})) else {
+        let Some(FunctionConfigData::NanoMsg{pub_addr, sub_addr, timeout}) = function_config
+            .get(|config| matches!(config, FunctionConfigData::NanoMsg{pub_addr:_, sub_addr:_, timeout:_})) else {
                 return Err(NanoMsgError::NoConfig)
         };
-        NanoMessenger::new(addresses.clone(), timeout.clone() as isize).await
+        NanoMessenger::new(pub_addr.clone(), sub_addr.clone(), timeout.clone() as isize).await
     }
 }
 
 impl NanoMessenger {
-    pub async fn new(addresses: Vec<String>, timeout: isize) -> Result<Arc<RwLock<NanoMessenger>>, NanoMsgError> {
+    fn device_connection(addr: &str, protocal: Protocol) -> nanomsg::Result<(Socket, Endpoint)> {
+        let mut socket = Socket::new_for_device(protocal)?;
+        if matches!(protocal, Protocol::Sub) {
+            socket.subscribe(&vec![])?;
+        }
+        let endpoint = socket.bind(addr)?;
+        Ok((socket, endpoint))
+    }
+
+    fn connect(addr: &str, protocal: Protocol) -> nanomsg::Result<(Socket, Endpoint)> {
+        let mut socket = Socket::new(protocal)?;
+        let endpoint = socket.connect(addr)?;
+        Ok((socket, endpoint))
+    }
+
+    pub async fn new(pub_addr: String, sub_addr: String, timeout: isize) -> Result<Arc<RwLock<NanoMessenger>>, NanoMsgError> {
         let (tx, mut rx) = mpsc::unbounded_channel::<Vec<u8>>();
         let (new_tx, new_rx) = oneshot::channel::<Result<(), nanomsg::Error>>();
 
-        let add = addresses.clone();
+        let paddr = pub_addr.clone();
+        let saddr = sub_addr.clone();
         let time = timeout.clone();
         tokio::task::spawn_blocking(move || {
-            let mut socket = match Socket::new(Protocol::Pair) {
+            let (pub_soc, mut pub_end) = match NanoMessenger::device_connection(&pub_addr, Protocol::Sub) {
                 Ok(socket) => socket,
-                Err(e) => {new_tx.send(Err(e)).or_log_ignore("Channel error (Nano Messenger"); return;}
+                Err(e) => {new_tx.send(Err(e)).or_log_ignore("Channel error (Nano Messenger)"); return;}
             };
-            let mut endpoints = Vec::with_capacity(addresses.len());
-            for address in addresses.iter() {
-                endpoints.push(match socket.connect(address) {
-                    Ok(socket) => socket,
-                    Err(e) => {new_tx.send(Err(e)).or_log_ignore("Channel error (Nano Messenger"); return;}
-                })
+            let (sub_soc, mut sub_end) = match NanoMessenger::device_connection(&sub_addr, Protocol::Pub) {
+                Ok(socket) => socket,
+                Err(e) => {new_tx.send(Err(e)).or_log_ignore("Channel error (Nano Messenger)"); return;}
+            }; 
+
+            let (device_tx, mut device_rx) = oneshot::channel();
+            let device = tokio::task::spawn_blocking(move || {
+                if let Err(e) = Socket::device(&pub_soc, &sub_soc) {
+                    device_tx.send(e).or_log_ignore("Channel error (Nano Messenger)");
+                }
+            });
+
+            thread::sleep(Duration::from_millis(10));
+
+            if let Ok(error) = device_rx.try_recv() {
+                new_tx.send(Err(error)).or_log_ignore("Channel error (Nano Messenger)"); 
+                return;
             }
-            new_tx.send(Ok(())).or_log_ignore("Channel error (Nano Messenger");
+
+            let (mut socket, mut endpoint) = match NanoMessenger::connect(&pub_addr, Protocol::Pub) {
+                Ok(socket) => socket,
+                Err(e) => {new_tx.send(Err(e)).or_log_ignore("Channel error (Nano Messenger)"); return;}
+            };
+
+            new_tx.send(Ok(())).or_log_ignore("Channel error (Nano Messenger)");
 
             while let Some(bytes) = rx.blocking_recv() {
                 socket.set_send_timeout(timeout).or_log("Send NanoMsg error (NanoMsg Function)");
@@ -85,13 +140,14 @@ impl NanoMessenger {
                 socket.flush().or_log("Send NanoMsg error (NanoMsg Function)");            
             }
 
-            for mut endpoint in endpoints {
-                endpoint.shutdown().or_log("Send NanoMsg error (NanoMsg Function)");
-            }
+            device.abort();
+            sub_end.shutdown().or_log("Send NanoMsg error (NanoMsg Function)");
+            pub_end.shutdown().or_log("Send NanoMsg error (NanoMsg Function)");
+            endpoint.shutdown().or_log("Send NanoMsg error (NanoMsg Function)");
         });
 
         if let Ok(res) = new_rx.await {
-            res.map(|_| Arc::new(RwLock::new(NanoMessenger{tx, addresses: add, timeout: time})))
+            res.map(|_| Arc::new(RwLock::new(NanoMessenger{tx, pub_addr: paddr, sub_addr: saddr, timeout: time})))
                 .map_err(|e| NanoMsgError::Controller(e))
         } else {
             Err(NanoMsgError::ChannelError)
@@ -105,7 +161,8 @@ impl NanoMessenger {
 
 
 pub struct NanoMsg {
-    msg: String,
+    topic: u8,
+    format: String,
     driver_data: Vec<DriverData>,
     prev_state: u16,
     nano_messenger: Arc<RwLock<NanoMessenger>>,
@@ -113,8 +170,8 @@ pub struct NanoMsg {
 }
 
 impl NanoMsg {
-    pub fn new(msg: String, driver_data: Vec<DriverData>, nano_messenger: Arc<RwLock<NanoMessenger>>, driver_manager: Arc<RwLock<DriverManager>>) -> Function {
-        Some(Box::new(NanoMsg{msg, driver_data, prev_state: 0, nano_messenger, driver_manager}))
+    pub fn new(topic: u8, format: String, driver_data: Vec<DriverData>, nano_messenger: Arc<RwLock<NanoMessenger>>, driver_manager: Arc<RwLock<DriverManager>>) -> Function {
+        Some(Box::new(NanoMsg{topic, format, driver_data, prev_state: 0, nano_messenger, driver_manager}))
     }
 }
 
@@ -128,17 +185,20 @@ impl FunctionInterface for NanoMsg {
                 if let Some(driver) = self.driver_manager.read().await
                     .get(&driver_data.name)
                     .or_log_ignore(&format!("Unable to find driver {} (NanoMsg Function)", driver_data.name)) {
+                        let mut states = Vec::with_capacity(driver_data.idx.len());
                         for idx in &driver_data.idx {
-                            data.push(driver.poll(*idx));
+                            states.push(driver.poll(*idx));
                         }
+                        data.push(states)
                 }
             }
-            let data = if data.len() == 0 {
-                format!("{}", self.msg).as_bytes().to_vec()
+            let data = HashFormat.format(&self.format, data)
+                .or_log("Formatting error (NanoMsg Function)");
+            if let Some(data) =  data {
+                self.nano_messenger.read().await.send(vec![self.topic].into_iter().chain(data.as_bytes().to_vec()).collect());
             } else {
-                format!("{}: {:?}", self.msg, data).as_bytes().to_vec()
-            };
-            self.nano_messenger.read().await.send(data);
+                data.or_log_ignore("Formatting error (NanoMsg Function)");
+            }
         }
 
         self.prev_state = state;
@@ -146,6 +206,6 @@ impl FunctionInterface for NanoMsg {
     }
 
     fn ftype(&self) -> FunctionType {
-        FunctionType::NanoMsg{msg: self.msg.clone(), driver_data: self.driver_data.clone() }
+        FunctionType::NanoMsg{topic: self.topic.clone(), format: self.format.clone(), driver_data: self.driver_data.clone() }
     }
 }
