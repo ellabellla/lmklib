@@ -1,7 +1,7 @@
 [workspace]
 members = [
     "lib/virt-hid",
-    "bin/kserver",
+    "bin/key-server",
     "bin/gadget-service",
     "bin/kout",
     "bin/quack",
