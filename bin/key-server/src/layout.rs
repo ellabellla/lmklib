@@ -119,7 +119,7 @@ impl LayoutBuilder {
         for layer in self.layers.into_iter() {
             let mut built_layer = Vec::new();
             for entry in layer.into_iter() {
-                built_layer.push(function_builder.read().await.build(entry))
+                built_layer.push(function_builder.read().await.build(entry).await)
             }
             layer_stack.push(built_layer);
         }

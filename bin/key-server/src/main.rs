@@ -7,11 +7,12 @@ use log::{error, LevelFilter, info};
 use simplelog::{CombinedLogger, TermLogger, Config, TerminalMode, ColorChoice};
 use tokio::sync::RwLock;
 
-use crate::{function::{midi::MidiController, cmd::CommandPool, hid::HID, FunctionConfiguration, FunctionConfig, nng::NanoMessenger}, driver::SerdeDriverManager};
+use crate::{function::{midi::MidiController, cmd::CommandPool, hid::HID, FunctionConfiguration, FunctionConfig, nng::NanoMessenger}, driver::SerdeDriverManager, modules::ModuleManager};
 
 mod driver;
 mod layout;
 mod function;
+mod modules;
 
 #[derive(Parser)]
 struct Args {
@@ -101,6 +102,7 @@ async fn main() {
     const BACKEND_JSON: &str = "backend.json";
     const LAYOUT_JSON: &str = "layout.json";
     const FRONTEND_JSON: &str = "frontend.json";
+    const MODULES: &str = "modules";
     
     CombinedLogger::init(
         vec![
@@ -115,7 +117,7 @@ async fn main() {
             PathBuf::from_str(&path)
             .or_exit("Invalid config path")
         })
-        .or_else(|| dirs::config_dir().map(|p| p.join("kserver")))
+        .or_else(|| dirs::config_dir().map(|p| p.join("key-server")))
         .or_exit("Unable to locate config directory");
     
     if !config.exists() {
@@ -145,13 +147,17 @@ async fn main() {
                 .as_bytes()
             )
             .or_exit("Unable to create default frontend config");
+        
+        fs::create_dir(config.join(MODULES))
+            .or_exit("Unable to create modules folder");
     }
 
+    let module_manager = ModuleManager::new(config.join(MODULES)).or_exit("Unable to create module manager");
 
     let driver_manager: SerdeDriverManager = serde_json::from_reader(fs::File::open(config.join(BACKEND_JSON))
         .or_exit("Unable to read backend config"))
         .or_exit("Unable to parse backend config");
-    let driver_manager: Arc<RwLock<DriverManager>> = Arc::new(RwLock::new(driver_manager.build().await.or_exit("Unable to build driver manager")));
+    let driver_manager: Arc<RwLock<DriverManager>> = Arc::new(RwLock::new(driver_manager.build(module_manager.clone()).await.or_exit("Unable to build driver manager")));
     
     let function_config: FunctionConfiguration = serde_json::from_reader(fs::File::open(config.join(FRONTEND_JSON))
         .or_exit("Unable to read frontend config"))
@@ -161,7 +167,7 @@ async fn main() {
     let hid = HID::from_config(&function_config).await.or_exit("Unable to create hid");
     let nano_messanger = NanoMessenger::from_config(&function_config).await.or_exit("Unable to create nano messange");
     let midi_controller = MidiController::from_config(&function_config).await.or_exit("Unable to create midi controller");
-    let func_builder = FunctionBuilder::new(hid, midi_controller, command_pool, driver_manager.clone(), nano_messanger);
+    let func_builder = FunctionBuilder::new(hid, midi_controller, command_pool, driver_manager.clone(), nano_messanger, module_manager.clone());
 
     let builder: layout::LayoutBuilder = serde_json::from_reader(fs::File::open(config.join(LAYOUT_JSON))
         .or_exit("Unable to read layout config"))

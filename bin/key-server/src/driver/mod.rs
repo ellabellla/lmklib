@@ -1,7 +1,10 @@
-use std::{ops::Range, collections::HashMap, fmt::Display};
+use std::{ops::Range, collections::HashMap, fmt::Display, sync::Arc};
 
 use configfs::async_trait;
+use key_module::Data;
 use serde::{Serialize, Deserialize};
+
+use crate::modules::{ExternalDriver, ModuleManager};
 
 use self::mcp23017::{InputType, MCP23017DriverBuilder};
 
@@ -33,13 +36,15 @@ pub enum DriverType {
         address: u16,
         bus: Option<u8>,
         inputs: Vec<InputType>
-    }
+    },
+    External{ module: String, driver: Data }
 }
 
 impl DriverType {
-    async fn build(self) -> Result<Driver, DriverError> {
+    async fn build(self, module_manager: Arc<ModuleManager>) -> Result<Driver, DriverError> {
         match self {
             DriverType::MCP23017 { name, address, bus, inputs } => Ok(Box::new(MCP23017DriverBuilder::from_data(name, address, bus, inputs).await?)),
+            DriverType::External { module, driver } => ExternalDriver::new(module, driver, module_manager).await,
         }
     }
 }
@@ -91,12 +96,12 @@ impl SerdeDriverManager {
         SerdeDriverManager{driver_manager, serde: None}
     }
 
-    pub async fn build(self) -> Result<DriverManager, DriverError> {
+    pub async fn build(self, module_manager: Arc<ModuleManager>) -> Result<DriverManager, DriverError> {
         if let Some(drivers) = self.serde {
             let mut driver_map = HashMap::new();
 
             for driver in drivers.into_iter() {
-                let driver = driver.build().await;
+                let driver = driver.build(module_manager.clone()).await;
                 let driver = driver.map_err(|e| DriverError::new(format!("{}", e)))?;
 
                 if driver_map.insert(driver.name().to_string(), driver).is_some() {

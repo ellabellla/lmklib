@@ -2,10 +2,11 @@
 use std::{sync::{Arc}, collections::HashSet, hash::Hash};
 
 use configfs::async_trait;
+use key_module::Data;
 use serde::{Serialize, Deserialize};
 use tokio::sync::RwLock;
 use virt_hid::{key::{SpecialKey, Modifier, BasicKey}, mouse::{MouseDir}};
-use crate::{layout::{Layout}, OrLogIgnore, driver::DriverManager};
+use crate::{layout::{Layout}, OrLogIgnore, driver::DriverManager, modules::{ModuleManager, ExternalFunction}};
 
 pub mod keyboard;
 pub mod mouse;
@@ -137,6 +138,7 @@ pub enum FunctionType {
     SwitchHid,
     Log(LogLevel, String),
     NanoMsg { topic: u8, format: String, driver_data: Vec<DriverData> },
+    External{ module: String, func: Data }
 }
 
 impl FunctionType  {
@@ -154,6 +156,7 @@ pub struct FunctionBuilder {
     command_pool: Arc<RwLock<CommandPool>>,
     driver_manager: Arc<RwLock<DriverManager>>,
     nano_messenger: Arc<RwLock<NanoMessenger>>,
+    module_manager: Arc<ModuleManager>,
 }
 
 impl FunctionBuilder {
@@ -163,11 +166,12 @@ impl FunctionBuilder {
         command_pool: Arc<RwLock<CommandPool>>, 
         driver_manager: Arc<RwLock<DriverManager>>,
         nano_messenger: Arc<RwLock<NanoMessenger>>,
+        module_manager: Arc<ModuleManager>,
     ) -> Arc<RwLock<FunctionBuilder>> {
-        Arc::new(RwLock::new(FunctionBuilder { hid, midi_controller, command_pool, driver_manager, nano_messenger}))
+        Arc::new(RwLock::new(FunctionBuilder { hid, midi_controller, command_pool, driver_manager, nano_messenger, module_manager}))
     }
 
-    pub fn build(&self, ftype: FunctionType) -> Function {
+    pub async fn build(&self, ftype: FunctionType) -> Function {
         let debug = format!("{:?}", ftype);
         match ftype {
             FunctionType::Key(key) => Key::new(key, self.hid.clone()),
@@ -199,6 +203,7 @@ impl FunctionBuilder {
             FunctionType::SwitchHid => SwitchHid::new(self.hid.clone()),
             FunctionType::Log(log_level, msg) => Log::new(log_level, msg),
             FunctionType::NanoMsg { topic, format: msg, driver_data } => NanoMsg::new(topic, msg, driver_data, self.nano_messenger.clone(), self.driver_manager.clone()),
+            FunctionType::External { module, func } => ExternalFunction::new(module, self.module_manager.clone(), func).await,
         }.or_log_ignore(&format!("Unable to build function (Function Builder), {}", debug))
     }
 }
