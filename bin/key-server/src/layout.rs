@@ -93,6 +93,7 @@ impl LayoutBuilder {
                 if self.layout[i] != self.none {
                     return Err(LayoutError::InUse);
                 }
+                i += 1;
             }
             i -= width;
             i += self.width;
