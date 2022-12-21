@@ -1,2 +1,36 @@
-cross build --bin $2 --release --target=arm-unknown-linux-gnueabihf && \
-scp target/arm-unknown-linux-gnueabihf/release/$2 $1:/home/ella/lmklib-rel/$2
+download=false
+offline=false
+ARGS=() ### this array holds any positional arguments, i.e., arguments not started with dash
+
+while [ $# -gt 0 ]; do
+    while getopts df name; do
+        case $name in
+            d) download=true;;
+            f) fetch=true;;
+        esac
+    done
+    [ $? -eq 0 ] || exit 1
+    [ $OPTIND -gt $# ] && break   # we reach end of parameters
+
+    shift $[$OPTIND - 1] # free processed options so far
+    OPTIND=1             # we must reset OPTIND
+    ARGS[${#ARGS[*]}]=$1 # save first non-option argument (a.k.a. positional argument)
+    shift                # remove saved arg
+done
+
+REMOTE=${ARGS[0]}
+CRATE=${ARGS[1]}
+
+if [[ "$download" == "true" ]]; then
+    mkdir -p .cargo/
+    cargo vendor > .cargo/config
+fi
+
+if [[ "$fetch" == "true" ]]; then
+    cargo fetch
+fi
+
+docker create --name lmk -v lmk-target:/app/target -v ${PWD}:/app -v ${HOME}/.cargo/registry:/root/.cargo/registry -it lmklib/build:latest bash -c "/root/.cargo/bin/cargo build --release --offline --bin ${CRATE}"
+docker cp lmk:/app/target/release/$CRATE /tmp/$CRATE
+docker rm -f lmk
+scp /tmp/$CRATE $REMOTE:/home/ella/lmklib-rel/$2

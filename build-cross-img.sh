@@ -1,1 +1,1 @@
-docker build --tag lmklib/build - < cross.dockerfile
+docker buildx build --rm --tag lmklib/build .
