@@ -3,7 +3,7 @@ set -e
 
 download=false
 offline=false
-ARGS=() ### this array holds any positional arguments, i.e., arguments not started with dash
+ARGS=()
 
 while [ $# -gt 0 ]; do
     while getopts df name; do
@@ -33,7 +33,10 @@ if [[ "$fetch" == "true" ]]; then
     cargo fetch
 fi
 
-docker create --name lmk -v lmk-target:/app/target -v ${PWD}:/app -v ${HOME}/.cargo/registry:/root/.cargo/registry -it lmklib/build:latest bash -c "/root/.cargo/bin/cargo build --release --offline --bin ${CRATE}" > /dev/null
+docker rm -f lmk > /dev/null 2>&1
+docker create --name lmk --platform linux/arm/v7 \
+    -v lmk-target:/app/target -v ${PWD}:/app -v ${HOME}/.cargo/registry:/root/.cargo/registry \
+    -it lmklib/build:latest bash -c "/root/.cargo/bin/cargo build --release --offline --bin ${CRATE}" > /dev/null
 docker start lmk > /dev/null
 docker container attach lmk
 docker cp lmk:/app/target/release/$CRATE /tmp/$CRATE > /dev/null
