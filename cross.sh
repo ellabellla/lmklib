@@ -3,13 +3,15 @@ set -e
 
 download=false
 offline=false
+whole=false
 ARGS=()
 
 while [ $# -gt 0 ]; do
-    while getopts df name; do
+    while getopts dfw name; do
         case $name in
             d) download=true;;
             f) fetch=true;;
+            w) whole=true;;
         esac
     done
     [ $? -eq 0 ] || exit 1
@@ -33,13 +35,21 @@ if [[ "$fetch" == "true" ]]; then
     cargo fetch
 fi
 
+
 docker rm -f lmk > /dev/null 2>&1
 docker create --name lmk --platform linux/arm/v7 \
     -v lmk-target:/app/target -v ${PWD}:/app -v ${HOME}/.cargo/registry:/root/.cargo/registry \
-    -it lmklib/build:latest bash -c "/root/.cargo/bin/cargo build --release --offline --bin ${CRATE}" > /dev/null
+    -it lmklib/build:latest bash > /dev/null
 docker start lmk > /dev/null
-docker container attach lmk
-docker cp lmk:/app/target/release/$CRATE /tmp/$CRATE > /dev/null
+if [[ "$whole" == "true" ]]; then 
+    docker exec -it lmk /root/.cargo/bin/cargo build --release --offline
+    docker exec -it lmk bash -c "cd target && tar --exclude=\"release/*/*\" --exclude=\"release/*/\" -czvf release.tar.gz release/"
+    docker cp lmk:/app/target/release.tar.gz /tmp > /dev/null
+    CRATE=release.tar.gz
+else
+    docker exec -it lmk /root/.cargo/bin/cargo build --release --offline --bin ${CRATE} 
+    docker cp lmk:/app/target/release/$CRATE /tmp/$CRATE > /dev/null
+fi
 docker stop lmk > /dev/null
 docker rm -f lmk > /dev/null
-scp /tmp/$CRATE $REMOTE:/home/ella/lmklib-rel/$2
+scp /tmp/$CRATE $REMOTE:/home/ella/lmklib-rel/$CRATE
