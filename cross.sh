@@ -1,3 +1,6 @@
+
+set -e
+
 download=false
 offline=false
 ARGS=() ### this array holds any positional arguments, i.e., arguments not started with dash
@@ -30,7 +33,10 @@ if [[ "$fetch" == "true" ]]; then
     cargo fetch
 fi
 
-docker create --name lmk -v lmk-target:/app/target -v ${PWD}:/app -v ${HOME}/.cargo/registry:/root/.cargo/registry -it lmklib/build:latest bash -c "/root/.cargo/bin/cargo build --release --offline --bin ${CRATE}"
-docker cp lmk:/app/target/release/$CRATE /tmp/$CRATE
-docker rm -f lmk
+docker create --name lmk -v lmk-target:/app/target -v ${PWD}:/app -v ${HOME}/.cargo/registry:/root/.cargo/registry -it lmklib/build:latest bash -c "/root/.cargo/bin/cargo build --release --offline --bin ${CRATE}" > /dev/null
+docker start lmk > /dev/null
+docker container attach lmk
+docker cp lmk:/app/target/release/$CRATE /tmp/$CRATE > /dev/null
+docker stop lmk > /dev/null
+docker rm -f lmk > /dev/null
 scp /tmp/$CRATE $REMOTE:/home/ella/lmklib-rel/$2
