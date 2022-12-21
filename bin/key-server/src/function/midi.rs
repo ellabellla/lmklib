@@ -1177,8 +1177,8 @@ pub mod note_param {
             }
         }
 
-        pub fn from_note(note: u8) -> Note {
             /// From midi note
+        pub fn from_note(note: u8) -> Note {
             match note {
                 127 => Note::G9,
                 126 => Note::FS9,
