@@ -17,4 +17,3 @@ VOLUME ["/root/.cargo/registry"]
 VOLUME [ "/app" ]
 VOLUME [ "/app/target" ]
 
-RUN echo '\n[source.crates-io]\nreplace-with = "vendored-sources"\n[source.vendored-sources]\ndirectory = "vendor"' > /root/.cargo/Cargo.toml
