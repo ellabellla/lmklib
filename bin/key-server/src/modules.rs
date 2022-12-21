@@ -141,11 +141,6 @@ enum DriverCommand {
     Poll(u64, Sender<Result<Vec<u16>, String>>),
 }
 
-pub struct ModuleManager {
-    function_modules: HashMap<String, UnboundedSender<FuncCommand>>,
-    driver_modules: HashMap<String, UnboundedSender<DriverCommand>>,
-}
-
 #[derive(FromPyObject)]
 struct Pyo3Result<T, E> {
     #[pyo3(item)]
@@ -193,6 +188,20 @@ impl<T, E> DerefMut for WrapResult<T, E> {
     }
 }
 
+pub struct ModuleManager {
+    function_modules: HashMap<String, UnboundedSender<FuncCommand>>,
+    driver_modules: HashMap<String, UnboundedSender<DriverCommand>>,
+}
+
+const META_FILE: &'static str = "meta.json";
+const ABI_MODULE_FILE: &'static str = "module.so";
+const PY_MODULE_FILE: &'static str = "module.py";
+
+const PY_LOAD_DATA: &'static str = "load_data";
+const PY_EVENT: &'static str = "event";
+const PY_NAME: &'static str = "name";
+const PY_POLL: &'static str = "poll";
+
 impl ModuleManager {
     pub fn new(plugin_dir: PathBuf) -> Result<Arc<ModuleManager>, ModError> {
         let contents = fs::read_dir(plugin_dir).map_err(|e| ModError::IO(e))?;
@@ -207,7 +216,7 @@ impl ModuleManager {
     }
 
     fn load_module(&mut self, module_path: PathBuf) -> Result<(), ModError> {
-        let meta = module_path.join("meta.json");
+        let meta = module_path.join(META_FILE);
         let module: Module = serde_json::from_reader(fs::File::open(meta)
             .map_err(|e| ModError::IO(e))?)
             .map_err(|e| ModError::Parse(e))?;
@@ -231,7 +240,7 @@ impl ModuleManager {
     }
 
     fn init_abi_function(module_path: PathBuf) -> Result<UnboundedSender<FuncCommand>, ModError> {
-        let interface = function::load_module(&module_path.join("module.so"))
+        let interface = function::load_module(&module_path.join(ABI_MODULE_FILE))
             .map_err(|e| ModError::LoadLibrary(e.to_string()))?;
 
         let (tx, mut rx) = mpsc::unbounded_channel();
@@ -258,7 +267,7 @@ impl ModuleManager {
     }
 
     fn init_py_function(module_path: PathBuf) -> Result<UnboundedSender<FuncCommand>, ModError> {
-        let path = module_path.join("module.py");
+        let path = module_path.join(PY_MODULE_FILE);
         let path_str = path.to_string_lossy().to_string();
         let code = fs::read_to_string(&path)
             .map_err(|e|ModError::LoadLibrary(e.to_string()))?;
@@ -273,7 +282,7 @@ impl ModuleManager {
                     match command {
                         FuncCommand::LoadData(data, tx) => {
                             let res = || -> Result<_, PyErr> { 
-                                Ok(interface.getattr(py, "load_data")?
+                                Ok(interface.getattr(py, PY_LOAD_DATA)?
                                 .call1(py, (data.name.into_string(), data.data.into_string()))?
                                 .extract::<WrapResult<_, _>>(py)?.0)
                             };
@@ -284,7 +293,7 @@ impl ModuleManager {
                         },
                         FuncCommand::Event(id, state, tx) => {
                             let res = || -> Result<_, PyErr> { 
-                                Ok(interface.getattr(py, "event")?
+                                Ok(interface.getattr(py, PY_EVENT)?
                                 .call1(py, (id, state))?
                                 .extract::<Option<_>>(py)?)
                             };
@@ -314,7 +323,7 @@ impl ModuleManager {
     }
 
     fn init_abi_driver(module_path: PathBuf) -> Result<UnboundedSender<DriverCommand>, ModError> {
-        let interface = driver::load_module(&module_path.join("module.so"))
+        let interface = driver::load_module(&module_path.join(ABI_MODULE_FILE))
             .map_err(|e| ModError::LoadLibrary(e.to_string()))?;
 
         let (tx, mut rx) = mpsc::unbounded_channel();
@@ -349,7 +358,7 @@ impl ModuleManager {
     }
 
     fn init_py_driver(module_path: PathBuf) -> Result<UnboundedSender<DriverCommand>, ModError> {
-        let path = module_path.join("module.py");
+        let path = module_path.join(PY_MODULE_FILE);
         let path_str = path.to_string_lossy().to_string();
         let code = fs::read_to_string(&path)
             .map_err(|e|ModError::LoadLibrary(e.to_string()))?;
@@ -364,7 +373,7 @@ impl ModuleManager {
                     match command {
                         DriverCommand::LoadData(data, tx) => {
                             let res = || -> Result<_, PyErr> { 
-                                Ok(interface.getattr(py, "load_data")?
+                                Ok(interface.getattr(py, PY_LOAD_DATA)?
                                 .call1(py, (data.name.into_string(), data.data.into_string()))?
                                 .extract::<WrapResult<_, _>>(py)?.0)
                             };
@@ -375,7 +384,7 @@ impl ModuleManager {
                         },
                         DriverCommand::Name(id, tx) => {
                             let res = || -> Result<_, PyErr> { 
-                                Ok(interface.getattr(py, "name")?
+                                Ok(interface.getattr(py, PY_NAME)?
                                 .call1(py, (id as i64,))?
                                 .extract::<WrapResult<_, _>>(py)?.0)
                             };
@@ -386,7 +395,7 @@ impl ModuleManager {
                         },
                         DriverCommand::Poll(id, tx) => {
                             let res = || -> Result<_, PyErr> { 
-                                Ok(interface.getattr(py, "poll")?
+                                Ok(interface.getattr(py, PY_POLL)?
                                 .call1(py, (id as i64,))?
                                 .extract::<WrapResult<_, _>>(py)?.0)
                             };
