@@ -7,6 +7,7 @@ use crate::OrLog;
 
 use super::{Function, FunctionInterface, ReturnCommand, FunctionType, FunctionConfig, FunctionConfigData};
 
+/// Command Pool, reaps spawn children
 pub struct CommandPool {
     commands: Arc<RwLock<Vec<Child>>>,
 }
@@ -26,6 +27,7 @@ impl FunctionConfig for CommandPool {
 }
 
 impl CommandPool {
+    // New
     pub fn new() -> io::Result<Arc<RwLock<CommandPool>>> {
         let commands = Arc::new(RwLock::new(Vec::<Child>::new()));
 
@@ -52,10 +54,13 @@ impl CommandPool {
         Ok(Arc::new(RwLock::new(CommandPool{commands})))
     }
 
+    /// Add command to pool
     pub async fn add_command(&mut self, command: Child) {
         self.commands.write().await.push(command);
     }
 }
+
+/// Bash Function, runs bash command
 pub struct Bash {
     command: String,
     prev_state: u16,
@@ -63,6 +68,7 @@ pub struct Bash {
 }
 
 impl Bash {
+    /// New
     pub fn new(command: String, command_pool: Arc<RwLock<CommandPool>>) -> Function {
         Some(Box::new(Bash{command, prev_state: 0, command_pool}))
     }
@@ -84,6 +90,7 @@ impl FunctionInterface for Bash {
     }
 }
 
+/// Pipe Function, pipes bash command into kout
 pub struct Pipe {
     command: String,
     prev_state: u16,
@@ -91,6 +98,7 @@ pub struct Pipe {
 }
 
 impl Pipe {
+    /// New
     pub fn new(command: String, command_pool: Arc<RwLock<CommandPool>>) -> Function {
         Some(Box::new(Pipe{command, prev_state: 0, command_pool}))
     }
@@ -112,6 +120,7 @@ impl FunctionInterface for Pipe {
     }
 }
 
+/// Exec bash command
 pub async fn exec(command: &str, command_pool: &Arc<RwLock<CommandPool>>) {
     if let Some(child) = Command::new("bash")
         .arg("-c")
@@ -122,6 +131,7 @@ pub async fn exec(command: &str, command_pool: &Arc<RwLock<CommandPool>>) {
         }
 }
 
+/// Exec bash command and pipe into kout (command will be formatted "{} | kout")
 pub async fn pipe(command: &str, command_pool: &Arc<RwLock<CommandPool>>) {
     if let Some(child) = Command::new("bash")
         .arg("-c")

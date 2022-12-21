@@ -10,10 +10,15 @@ use crate::{OrLogIgnore, OrLog};
 use super::{Function, FunctionInterface, ReturnCommand, FunctionType, FunctionConfig, FunctionConfigData};
 
 #[derive(Debug)]
+/// HID Error
 pub enum HIDError {
+    /// UInput error
     UInput(uinput::Error),
+    /// IO error
     IO(io::Error),
+    /// No configuration for HID
     NoConfig,
+    /// Message passing error
     ChannelError,
 }
 
@@ -28,12 +33,14 @@ impl Display for HIDError {
     }
 }
 
+/// Switch hid mode (uinput, usb hid)
 pub struct SwitchHid {
     prev_state: u16,
     hid: Arc<RwLock<HID>>,
 }
 
 impl SwitchHid {
+    /// new
     pub fn new(hid: Arc<RwLock<HID>>) -> Function {
         Some(Box::new(SwitchHid{prev_state: 0, hid}))
     }
@@ -56,6 +63,7 @@ impl FunctionInterface for SwitchHid {
 }
 
 #[derive(Debug)]
+/// Hid command for wrapped usb hid and uinput controller
 enum Command {
     HoldKey(char),
     HoldSpecial(SpecialKey),
@@ -74,6 +82,7 @@ enum Command {
     Switch,
 }
 
+/// HID controller
 pub struct HID {
     tx: UnboundedSender<Command>,
     led: String, 
@@ -101,6 +110,7 @@ impl FunctionConfig for HID {
 }
 
 impl HID {
+    /// New, requires path to usb hid interfaces
     pub async fn new(mouse: String, keyboard: String, led: String) -> Result<Arc<RwLock<HID>>, HIDError> {
         let (tx, mut rx) = mpsc::unbounded_channel();        
         let (new_tx, new_rx) = oneshot::channel();    
@@ -264,67 +274,83 @@ impl HID {
         }
     }
 
+    /// Hold key
     pub async fn hold_key(&self, key: char) {
         self.tx.send(Command::HoldKey(key)).or_log_ignore("Broken Channel (HID Driver)");
     }
 
+    /// Release key
     pub async fn release_key(&self, key: char) {
         self.tx.send(Command::ReleaseKey(key)).or_log_ignore("Broken Channel (HID Driver)");
     }
 
+    /// Hold special
     pub async fn hold_special(&self, special: SpecialKey) {
         self.tx.send(Command::HoldSpecial(special)).or_log_ignore("Broken Channel (HID Driver)");
     }
 
+    /// Release special
     pub async fn release_special(&self, special: SpecialKey) {
         self.tx.send(Command::ReleaseSpecial(special)).or_log_ignore("Broken Channel (HID Driver)");
     }
 
+    /// Hold mod
     pub async fn hold_mod(&self, modifier: Modifier) {
         self.tx.send(Command::HoldModifier(modifier)).or_log_ignore("Broken Channel (HID Driver)");
     }
 
+    /// Release mod
     pub async fn release_mod(&self, modifier: Modifier) {
         self.tx.send(Command::ReleaseModifier(modifier)).or_log_ignore("Broken Channel (HID Driver)");
     }
 
+    /// Type string (with default keyboard layout)
     pub async fn press_basic_string(&self, str: &str)  {
         self.tx.send(Command::PressBasicStr(str.to_string())).or_log_ignore("Broken Channel (HID Driver)");
     }
 
+    /// Press string resolving keys with a keyboard layout (uinput ignores the layout)
     pub async fn press_string(&self, layout: &str, str: &str)  {
         self.tx.send(Command::PressStr(layout.to_string(), str.to_string())).or_log_ignore("Broken Channel (HID Driver)");
     }
 
+    /// Scroll wheel
     pub async fn scroll_wheel(&self, amount: i8) {
         self.tx.send(Command::ScrollWheel(amount)).or_log_ignore("Broken Channel (HID Driver)");
     }
 
+    /// Move mouse
     pub async fn move_mouse(&self, amount: i8, dir: MouseDir) {
         self.tx.send(Command::MoveMouse(amount, dir)).or_log_ignore("Broken Channel (HID Driver)");
     }
 
+    /// Hold button
     pub async fn hold_button(&self, button: MouseButton) {
         self.tx.send(Command::HoldButton(button)).or_log_ignore("Broken Channel (HID Driver)");
     }
     
+    /// Release button
     pub async fn release_button(&self, button: MouseButton) {
         self.tx.send(Command::ReleaseButton(button)).or_log_ignore("Broken Channel (HID Driver)");
     }
     
+    /// Send key strokes to interface (does nothing for uinput)
     pub fn send_keyboard(&self) {
         self.tx.send(Command::SendKeyboard).or_log_ignore("Broken Channel (HID Driver)");
     }
     
+    /// Send mouse packets to interface (does nothing for uinput)
     pub fn send_mouse(&self) {
         self.tx.send(Command::SendMouse).or_log_ignore("Broken Channel (HID Driver)");
     }
 
+    /// Switch hid controllers (uinput or usb hid)
     pub fn switch(&self) {
         self.tx.send(Command::Switch).or_log_ignore("Broken Channel (HID Driver)");
     }
 }
 
+/// Usb mouse to uinput
 fn mouse_button_to_mouse(button: MouseButton) -> Mouse {
     match button {
         MouseButton::Left => Mouse::Left,
@@ -333,6 +359,7 @@ fn mouse_button_to_mouse(button: MouseButton) -> Mouse {
     }
 }
 
+/// Usb mouse to uinput
 fn mouse_dir_to_position(dir: MouseDir) -> Position {
     match dir {
         MouseDir::X => Position::X,
@@ -340,6 +367,7 @@ fn mouse_dir_to_position(dir: MouseDir) -> Position {
     }
 }
 
+/// True if character requires shift to press
 fn requires_shift(key: char) -> bool {
     match key {
         '!' | '@' | '#' | '$' | '%' | '^' | '&' | '*' | '(' | ')' | '_' | '+' | '{' | '}' | '|' | ':' | '"' | '<' | '>' | '?' | '~' => true, 
@@ -347,6 +375,7 @@ fn requires_shift(key: char) -> bool {
     }
 }
 
+/// Usb keyboard to uinput
 fn mod_to_uinput(modifier: Modifier) -> Option<event::Keyboard> {
     Some(match modifier {
         Modifier::LeftControl => event::Keyboard::Key(Key::LeftControl),
@@ -360,6 +389,7 @@ fn mod_to_uinput(modifier: Modifier) -> Option<event::Keyboard> {
     })
 }
 
+/// Usb keyboard to uinput
 fn special_to_uinput(special: SpecialKey) -> Option<event::Keyboard> {
     Some(match special {
         SpecialKey::ReturnEnter => event::Keyboard::Key(Key::Enter),
@@ -508,6 +538,7 @@ fn special_to_uinput(special: SpecialKey) -> Option<event::Keyboard> {
     })
 } 
 
+/// Usb keyboard to uinput
 fn char_to_uinput(key: char) -> Option<event::Keyboard> {
     Some(match key.to_ascii_lowercase() {
 		'1' | '!' => event::Keyboard::Key(Key::_1),

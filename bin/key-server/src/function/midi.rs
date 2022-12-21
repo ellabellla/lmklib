@@ -11,13 +11,20 @@ use crate::{OrLogIgnore, OrLog};
 use super::{Function, FunctionInterface, ReturnCommand, FunctionType, FunctionConfig, FunctionConfigData, FunctionConfiguration};
 
 #[derive(Debug)]
+/// Midi error
 pub enum MidiError {
+    /// Couldn't find port
     NoPort,
+    /// Midi init error
     Init(midir::InitError),
+    /// Error getting port info
     PortInfo(midir::PortInfoError),
+    /// Cant connect to midi port
     Connect(midir::ConnectError<MidiOutput>),
+    /// Can send midi packet
     Send(midir::SendError),
-    Unknown,
+    /// Message passing error
+    Channel,
 }
 
 impl Display for MidiError {
@@ -28,11 +35,12 @@ impl Display for MidiError {
             MidiError::PortInfo(e) => f.write_fmt(format_args!("Port info error, {}", e)),
             MidiError::Connect(e) => f.write_fmt(format_args!("Couldn't connect to port, {}", e)),
             MidiError::Send(e) => f.write_fmt(format_args!("Couldn't send message, {}", e)),
-            MidiError::Unknown => f.write_str("An unknown midi error occurred"),
+            MidiError::Channel => f.write_str("A channel error occurred"),
         }
     }
 }
 
+/// Midi controller
 pub struct MidiController {
     last_bend: Option<u16>,
     tx: UnboundedSender<(MidiMsg, oneshot::Sender<Result<(), MidiError>>)>,
@@ -53,6 +61,7 @@ impl FunctionConfig for MidiController {
 }
 
 impl MidiController {
+    /// New
     pub async fn new() -> Result<Arc<RwLock<MidiController>>, MidiError> {
         let (tx, mut rx) = mpsc::unbounded_channel::<(MidiMsg, oneshot::Sender<Result<(), MidiError>>)>();
         let (new_tx, new_rx) = oneshot::channel();
@@ -95,20 +104,22 @@ impl MidiController {
         if let Ok(res) = new_rx.await {
             res.map(|_| Arc::new(RwLock::new(MidiController { tx, last_bend: None })))
         } else {
-            Err(MidiError::Unknown)
+            Err(MidiError::Channel)
         }
     }
 
+    /// Send midi message
     async fn send_msg(&self, msg: MidiMsg) -> Result<(), MidiError> {
         let (tx, rx) = oneshot::channel();
         self.tx.send((msg, tx)).or_log_ignore("Broken Channel (MIDI Driver)");
         if let Ok(val) = rx.await {
             val
         } else {
-            return Err(MidiError::Unknown);
+            return Err(MidiError::Channel);
         }
     }
 
+    /// Hold note
     pub async fn hold_note(&mut self, channel: midi_msg::Channel, note: u8, velocity: u8) -> Result<(), MidiError> {
         let msg = MidiMsg::ChannelVoice { 
             channel: channel, 
@@ -121,6 +132,7 @@ impl MidiController {
         self.send_msg(msg).await        
     }
 
+    /// Release note
     pub async fn release_note(&mut self, channel: midi_msg::Channel, note: u8, velocity: u8) -> Result<(), MidiError> {
         let msg = MidiMsg::ChannelVoice { 
             channel: channel, 
@@ -133,6 +145,7 @@ impl MidiController {
         self.send_msg(msg).await   
     }
 
+    /// Pitch bend
     pub async fn pitch_bend(&mut self, channel: midi_msg::Channel, bend: u16) -> Result<(), MidiError> {
         self.last_bend = Some(bend);
         let msg = MidiMsg::ChannelVoice { 
@@ -145,10 +158,12 @@ impl MidiController {
         self.send_msg(msg).await   
     }
 
+    /// Get last amount pitch bended
     pub fn get_last_bend(&self) -> Option<u16> {
         self.last_bend
     }
 
+    /// Change instrument
     pub async fn change_instrument(&mut self, channel: midi_msg::Channel, instrument: midi_msg::GMSoundSet) -> Result<(), MidiError>  {
         let msg = MidiMsg::ChannelVoice { 
             channel: channel, 
@@ -162,6 +177,7 @@ impl MidiController {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Midi channel
 pub enum Channel {
     Ch1,
     Ch2,
@@ -228,6 +244,7 @@ impl From<midi_msg::Channel> for Channel {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Instrument
 pub enum GMSoundSet {
     AcousticGrandPiano,
     BrightAcousticPiano,
@@ -629,6 +646,7 @@ impl From<midi_msg::GMSoundSet> for GMSoundSet {
     }
 }
 
+/// Note function, play a note
 pub struct Note {
     channel: midi_msg::Channel,
     note: u8,
@@ -638,6 +656,7 @@ pub struct Note {
 }
 
 impl Note {
+    /// New
     pub fn new(channel: Channel, note: note_param::Note, velocity: u8, midi_controller: Arc<RwLock<MidiController>>) -> Function {
         let note = note.to_note();
         // The velocity the note should be played at, 0-127
@@ -665,6 +684,7 @@ impl FunctionInterface for Note {
     }
 }
 
+/// Const Pitch Bend, bend pitch by a constant amount when pressed
 pub struct ConstPitchBend {
     channel: midi_msg::Channel,
     bend: u16,
@@ -673,6 +693,7 @@ pub struct ConstPitchBend {
 }
 
 impl ConstPitchBend {
+    /// New
     pub fn new(channel: Channel, bend: u16, midi_controller: Arc<RwLock<MidiController>>) -> Function {
         let bend = if bend > 16383 {16383} else {bend};
         Some(Box::new(ConstPitchBend{channel: channel.into(), bend, prev_state: 0, midi_controller}))
@@ -699,6 +720,7 @@ impl FunctionInterface for ConstPitchBend {
     }
 }
 
+/// Pitch Bend function, bend pitch based on state
 pub struct PitchBend {
     channel: midi_msg::Channel,
     invert: bool,
@@ -708,6 +730,7 @@ pub struct PitchBend {
 }
 
 impl PitchBend {
+    /// New 
     pub fn new(channel: Channel, invert: bool, threshold: u16, scale: f64, midi_controller: Arc<RwLock<MidiController>>) -> Function {
         Some(Box::new(PitchBend{channel: channel.into(), invert, threshold, scale, midi_controller}))
     } 
@@ -755,6 +778,7 @@ impl FunctionInterface for PitchBend {
 }
 
 
+/// Instrument function, set instrument
 pub struct Instrument {
     channel: midi_msg::Channel,
     instrument: midi_msg::GMSoundSet,
@@ -790,6 +814,7 @@ pub mod note_param {
     use serde::{Serialize, Deserialize};
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
+    /// Serializable note, used in config
     pub enum Note {
         G9,
         FS9,
@@ -970,6 +995,7 @@ pub mod note_param {
     }
 
     impl Note {
+        /// Convert to midi note
         pub fn to_note(&self) -> u8 {
             match self {
                 Note::G9 => 127,
@@ -1152,6 +1178,7 @@ pub mod note_param {
         }
 
         pub fn from_note(note: u8) -> Note {
+            /// From midi note
             match note {
                 127 => Note::G9,
                 126 => Note::FS9,

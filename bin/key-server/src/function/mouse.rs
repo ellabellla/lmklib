@@ -6,6 +6,7 @@ use virt_hid::mouse::{MouseDir, MouseButton};
 
 use super::{FunctionInterface, HID, ReturnCommand, FunctionType, Function};
 
+/// Immediate Move function, move the mouse a set amount on press
 pub struct ImmediateMove {
     amount: (i8, i8),
     prev_state: u16,
@@ -38,6 +39,8 @@ impl FunctionInterface for ImmediateMove {
         return FunctionType::ImmediateMove{ x: self.amount.0, y: self.amount.1}
     }
 }
+
+/// Immediate Scroll function, scroll the mouse a set amount on press
 pub struct ImmediateScroll {
     amount: i8,
     prev_state: u16,
@@ -45,6 +48,7 @@ pub struct ImmediateScroll {
 }
 
 impl ImmediateScroll {
+    // New
     pub fn new(amount: i8, hid: Arc<RwLock<HID>>) -> Function {
         Some(Box::new(ImmediateScroll{amount, prev_state: 0, hid}))
     }
@@ -69,12 +73,14 @@ impl FunctionInterface for ImmediateScroll {
     }
 }
 
+/// Const Move function, move the mouse a set amount whilst pressed
 pub struct ConstMove {
     amount: (i8, i8),
     hid: Arc<RwLock<HID>>
 }
 
 impl ConstMove {
+    /// New
     pub fn new(x: i8, y: i8, hid: Arc<RwLock<HID>>) -> Function {
         Some(Box::new(ConstMove{amount: (x, y), hid}))
     }
@@ -99,6 +105,8 @@ impl FunctionInterface for ConstMove {
         return FunctionType::ConstMove{ x: self.amount.0, y: self.amount.1}
     }
 }
+
+/// Const Scroll function, scroll the mouse a set amount whilst pressed
 pub struct ConstScroll {
     amount: i8,
     period: Duration,
@@ -107,6 +115,7 @@ pub struct ConstScroll {
 }
 
 impl ConstScroll {
+    /// New
     pub fn new(amount: i8, period: u64, hid: Arc<RwLock<HID>>) -> Function {
         Some(Box::new(ConstScroll{amount, period: Duration::from_millis(period), hid, prev_time: Instant::now()}))
     }
@@ -138,6 +147,7 @@ impl FunctionInterface for ConstScroll {
 }
 
 
+/// Move function, move the mouse in a direction based on the state
 pub struct Move {
     dir: MouseDir,
     invert: bool,
@@ -147,6 +157,7 @@ pub struct Move {
 }
 
 impl Move {
+    /// New
     pub fn new(dir: MouseDir, invert: bool, threshold: u16, scale: f64, hid: Arc<RwLock<HID>>) -> Function {
         Some(Box::new(Move{dir, invert, threshold, scale, hid}))
     }
@@ -193,6 +204,7 @@ impl FunctionInterface for Move {
 }
 
 
+/// Scroll function, move the scroll in a direction based on the state
 pub struct Scroll {
     period: Duration,
     invert: bool,
@@ -203,6 +215,7 @@ pub struct Scroll {
 }
 
 impl Scroll {
+    /// New
     pub fn new(period: u64, invert: bool, threshold: u16, scale: f64, hid: Arc<RwLock<HID>>) -> Function {
         Some(Box::new(Scroll{period: Duration::from_millis(period), invert, threshold, scale, prev_time: Instant::now(), hid}))
     }
@@ -250,12 +263,14 @@ impl FunctionInterface for Scroll {
     }
 }
 
+/// Left Click function
 pub struct LeftClick {
     hid: Arc<RwLock<HID>>,
     prev_state: u16,
 }
 
 impl LeftClick {
+    /// New
     pub fn new(hid: Arc<RwLock<HID>>) -> Function {
         Some(Box::new(LeftClick{hid, prev_state: 0}))
     }
@@ -284,12 +299,14 @@ impl FunctionInterface for LeftClick {
     }
 }
 
+/// Right click function
 pub struct RightClick {
     hid: Arc<RwLock<HID>>,
     prev_state: u16,
 }
 
 impl RightClick {
+    /// New
     pub fn new(hid: Arc<RwLock<HID>>) -> Function {
         Some(Box::new(RightClick{hid, prev_state: 0}))
     }

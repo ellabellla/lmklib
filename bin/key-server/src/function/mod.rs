@@ -8,18 +8,26 @@ use tokio::sync::RwLock;
 use virt_hid::{key::{SpecialKey, Modifier, BasicKey}, mouse::{MouseDir}};
 use crate::{layout::{Layout}, OrLogIgnore, driver::DriverManager, modules::{ModuleManager, ExternalFunction}};
 
+/// Keyboard functions
 pub mod keyboard;
+/// Mouse functions
 pub mod mouse;
+/// Midi functions
 pub mod midi;
+/// Command functions
 pub mod cmd;
+/// HID function controller
 pub mod hid;
+/// Log functions
 pub mod log;
+/// NanoMsg functions
 pub mod nng;
 
 use self::{keyboard::{Key, BasicString, ComplexString, Special, Shortcut, ModifierKey}, mouse::{ConstMove, LeftClick, RightClick, ConstScroll, Move, Scroll, ImmediateMove, ImmediateScroll}, midi::{Note, MidiController, Channel, ConstPitchBend, PitchBend, Instrument, GMSoundSet, note_param}, cmd::{Bash, Pipe, CommandPool}, hid::{HID, SwitchHid}, log::{Log, LogLevel}, nng::{DriverData, NanoMsg, NanoMessenger}};
 
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq)]
+/// Function controller configuration data types, used for serialization
 pub enum FunctionConfigData {
     CommandPool,
     HID { mouse: String, keyboard: String, led: String },
@@ -40,6 +48,7 @@ impl PartialEq for FunctionConfigData {
 }
 
 #[async_trait]
+/// Function config interface, used to serialize function controller data
 pub trait FunctionConfig {
     type Output;
     type Error;
@@ -48,20 +57,24 @@ pub trait FunctionConfig {
 }
 
 #[derive(Debug)]
+/// Function configuration, managers function controller configs
 pub struct FunctionConfiguration {
     configs: HashSet<FunctionConfigData>,
 }
 
 impl FunctionConfiguration {
+    /// New
     pub fn new() -> FunctionConfiguration {
         FunctionConfiguration { configs: HashSet::new() }
     }
 
     #[allow(dead_code)]
+    /// Insert configuration
     pub fn insert(&mut self, config: FunctionConfigData) -> bool {
         self.configs.insert(config)
     }
 
+    /// Get first configuration where matches returns true 
     pub fn get<M>(&self, matches: M) -> Option<&FunctionConfigData> 
     where 
         M: FnMut(&&FunctionConfigData) -> bool
@@ -89,14 +102,20 @@ impl<'de> Deserialize<'de> for FunctionConfiguration {
     }
 }
 
+/// Function return type
 pub enum ReturnCommand {
+    /// Switch layout
     Switch(usize),
+    /// Up layout
     Up,
+    /// Down layout
     Down,
+    /// Return
     None,
 }
 
 impl ReturnCommand {
+    /// Evaluation return
     pub fn eval(&self, layout: &mut Layout) {
         match self {
             ReturnCommand::Switch(index) => {layout.switch_layer(*index);},
@@ -108,6 +127,7 @@ impl ReturnCommand {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Function type, used for serializing functions
 pub enum FunctionType {
     Key(char),
     ConstMove{x: i8, y: i8},
@@ -142,6 +162,7 @@ pub enum FunctionType {
 }
 
 impl FunctionType  {
+    /// Get type from function
     pub fn from_function(f: &Function) -> Self {
         match f {
             Some(func) => func.ftype(),
@@ -150,6 +171,7 @@ impl FunctionType  {
     }
 }
 
+/// Function builder
 pub struct FunctionBuilder {
     hid: Arc<RwLock<HID>>,
     midi_controller: Arc<RwLock<MidiController>>,
@@ -160,6 +182,7 @@ pub struct FunctionBuilder {
 }
 
 impl FunctionBuilder {
+    /// New
     pub fn new(
         hid: Arc<RwLock<HID>>, 
         midi_controller: Arc<RwLock<MidiController>>, 
@@ -171,6 +194,8 @@ impl FunctionBuilder {
         Arc::new(RwLock::new(FunctionBuilder { hid, midi_controller, command_pool, driver_manager, nano_messenger, module_manager}))
     }
 
+
+    /// Build function
     pub async fn build(&self, ftype: FunctionType) -> Function {
         let debug = format!("{:?}", ftype);
         match ftype {
@@ -209,17 +234,22 @@ impl FunctionBuilder {
 }
 
 #[async_trait]
+/// Function Interface
 pub trait FunctionInterface {
+    /// State poll event
     async fn event(&mut self, state: u16) -> ReturnCommand;
+    /// Function Type
     fn ftype(&self) -> FunctionType;
 }   
 
-
+/// Function Object
 pub type Function = Option<Box<dyn FunctionInterface + Send + Sync>>;
 
+/// Up function
 pub struct Up;
 
 impl Up {
+    /// New
     pub fn new() -> Function {
         Some(Box::new(Up))
     }
@@ -236,9 +266,11 @@ impl FunctionInterface for Up {
     }
 }
 
+/// Down function
 pub struct Down;
 
 impl Down {
+    /// New
     pub fn new() -> Function {
         Some(Box::new(Down))
     }
@@ -255,11 +287,13 @@ impl FunctionInterface for Down {
     }
 }
 
+/// Switch function
 pub struct Switch {
     id: usize
 }
 
 impl Switch {
+    /// New
     pub fn new(id: usize) -> Function {
         Some(Box::new(Switch{id}))
     }

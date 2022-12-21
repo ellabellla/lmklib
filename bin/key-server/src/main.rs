@@ -9,24 +9,37 @@ use tokio::sync::RwLock;
 
 use crate::{function::{midi::MidiController, cmd::CommandPool, hid::HID, FunctionConfiguration, FunctionConfig, nng::NanoMessenger}, driver::SerdeDriverManager, modules::ModuleManager};
 
+/// Driver module
 mod driver;
+/// Layout module
 mod layout;
+/// Function module
 mod function;
+/// Plugin modules
 mod modules;
 
 #[derive(Parser)]
+/// Cli Args
 struct Args {
     #[arg(short, long)]
+    /// Path to config directory
     config: Option<String>
 }
 
+/// Turns a result into a option containing the ok value. 
+/// If the result is an error it will log a message followed by the error message as an error.
 pub trait OrLog<T> {
     fn or_log(self, msg: &str) -> Option<T>;
 }
+
+/// Accepts a result or option. If a result it is turned into a option containing the ok value. 
+/// If the option is none or the result is err then it will log the message as an error.
 pub trait OrLogIgnore<T> {
     fn or_log_ignore(self, msg: &str) -> Option<T>;
 }
 
+
+/// Implementation for Result
 impl<T, E> OrLog<T> for std::result::Result<T, E> 
 where
     E: Display
@@ -42,6 +55,7 @@ where
     }
 }
 
+/// Implementation for Result
 impl<T, E> OrLogIgnore<T> for std::result::Result<T, E> {
     fn or_log_ignore(self, msg: &str) -> Option<T> {
         match self {
@@ -54,6 +68,7 @@ impl<T, E> OrLogIgnore<T> for std::result::Result<T, E> {
     }
 }
 
+/// Implementation for Option
 impl<T> OrLogIgnore<T> for Option<T> {
     fn or_log_ignore(self, msg: &str) -> Option<T> {
         match self {
@@ -66,10 +81,14 @@ impl<T> OrLogIgnore<T> for Option<T> {
     }
 }
 
+/// Accepts a result or option. If a result it is turned into a option containing the ok value. 
+/// If the option is none or the result is err then it will log the message as an error, 
+/// followed by the error message (for result), and exit the program with and exit status of 1.
 pub trait OrExit<T> {
     fn or_exit(self, msg: &str) -> T;
 }
 
+/// Implementation for Result
 impl<T, E> OrExit<T> for std::result::Result<T, E> 
 where
     E: Display
@@ -85,6 +104,7 @@ where
     }
 }
 
+/// Implementation for Option
 impl<T> OrExit<T> for Option<T> {
     fn or_exit(self, msg: &str) -> T {
         match self {
@@ -99,17 +119,20 @@ impl<T> OrExit<T> for Option<T> {
 
 #[tokio::main]
 async fn main() {
+    /// Config files and folders
     const BACKEND_JSON: &str = "backend.json";
     const LAYOUT_JSON: &str = "layout.json";
     const FRONTEND_JSON: &str = "frontend.json";
     const MODULES: &str = "modules";
     
+    // init logger
     CombinedLogger::init(
         vec![
             TermLogger::new(LevelFilter::Info, Config::default(), TerminalMode::Stdout, ColorChoice::Auto),
         ]
     ).unwrap();
 
+    // Load configuration
     let args = Args::parse();
 
     let config = args.config
@@ -152,6 +175,7 @@ async fn main() {
             .or_exit("Unable to create modules folder");
     }
 
+    // init key-server
     let module_manager = ModuleManager::new(config.join(MODULES)).or_exit("Unable to create module manager");
 
     let driver_manager: SerdeDriverManager = serde_json::from_reader(fs::File::open(config.join(BACKEND_JSON))
@@ -177,6 +201,7 @@ async fn main() {
 
     info!("Layout:\n{}", layout.layout_string());
 
+    // event loop
     tokio::spawn(async move {
         loop {
             layout.tick().await;

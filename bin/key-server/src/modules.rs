@@ -9,31 +9,48 @@ use tokio::sync::{mpsc::{self, UnboundedSender}, oneshot::{self, Sender, Receive
 use crate::{OrLogIgnore, function::{FunctionInterface, ReturnCommand, FunctionType, Function}, OrLog, driver::{DriverInterface, DriverType, Driver, DriverError}};
 
 #[derive(Debug, Serialize, Deserialize)]
+/// Interface type
 enum InterfaceType {
+    /// Function interface
     Function,
+    /// Driver interface
     Driver,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+/// Module type
 enum ModuleType {
+    /// abi_stable rust module
     ABIStable,
+    /// python module
     Python,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+/// Module meta data
 struct Module {
+    /// Name of module
     name: String,
+    /// Interface type
     interface: InterfaceType,
+    /// Module type
     module_type: ModuleType,
 }
 
 #[derive(Debug)]
+/// Module Error
 pub enum ModError {
+    /// IO
     IO(io::Error),
-    LoadLibrary(String),
+    /// Error loading module
+    LoadModule(String),
+    /// Meta parse error
     Parse(serde_json::Error),
+    /// No module found
     NoSuchModule,
-    Library(String),
+    /// Internal module error
+    Module(String),
+    /// Message passing error
     Channel(String),
 }
 
@@ -41,15 +58,16 @@ impl Display for ModError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ModError::IO(e) => f.write_fmt(format_args!("IO error, {}", e)),
-            ModError::LoadLibrary(e) => f.write_fmt(format_args!("Library loading error, {}", e)),
+            ModError::LoadModule(e) => f.write_fmt(format_args!("Module loading error, {}", e)),
             ModError::Parse(e) => f.write_fmt(format_args!("Parse error, {}", e)),
             ModError::NoSuchModule => f.write_str("No such module"),
-            ModError::Library(e) => f.write_fmt(format_args!("Library error, {}", e)),
+            ModError::Module(e) => f.write_fmt(format_args!("Module error, {}", e)),
             ModError::Channel(e) => f.write_fmt(format_args!("Channel error, {}", e)),
         }
     }
 }
 
+/// Internal "External Function" Interface
 pub struct ExternalFunction {
     module_name: String,
     id: u64,
@@ -58,6 +76,7 @@ pub struct ExternalFunction {
 }
 
 impl ExternalFunction {
+    /// New
     pub async fn new(module_name: String, module_manager: Arc<ModuleManager>, func: Data) -> Function {
         let id = module_manager.load_function(&module_name, func.clone()).await.or_log("Load function error (External Function)")?;
         Some(Box::new(ExternalFunction{module_name, id, func, module_manager}))
@@ -75,6 +94,7 @@ impl FunctionInterface for ExternalFunction {
     }
 }  
 
+/// Internal "External Driver" Interface
 pub struct ExternalDriver {
     module_name: String,
     name: String,
@@ -85,6 +105,7 @@ pub struct ExternalDriver {
 }
 
 impl ExternalDriver {
+    /// New
     pub async fn new(module_name: String, driver: Data, module_manager: Arc<ModuleManager>) -> Result<Driver, DriverError> {
         let id = module_manager.load_driver(&module_name, driver.clone()).await
             .map_err(|e| DriverError::new(format!("{}", e)))?;
@@ -129,19 +150,27 @@ impl DriverInterface for ExternalDriver {
 }
 
 #[derive(Debug)]
+/// Function Module commands
 enum FuncCommand {
+    /// Load and init new driver from data
     LoadData(Data, Sender<Result<u64, String>>),
+    /// State poll event
     Event(u64, u16, Sender<Result<(), String>>),
 }
 
 #[derive(Debug)]
+/// Driver Module commands
 enum DriverCommand {
+    /// Load and init new driver from data
     LoadData(Data, Sender<Result<u64, String>>),
+    /// Get name of driver
     Name(u64, Sender<Result<String, String>>),
+    /// Poll the state of the driver
     Poll(u64, Sender<Result<Vec<u16>, String>>),
 }
 
 #[derive(FromPyObject)]
+/// Rust representation of explicit Python result object
 struct Pyo3Result<T, E> {
     #[pyo3(item)]
     ok: Option<T>,
@@ -149,6 +178,7 @@ struct Pyo3Result<T, E> {
     err: Option<E>,
 }
 
+/// Rust representation of lose Python result. Stores the data as a result that can be used.
 struct WrapResult<T, E>(Result<T, E>);
 
 impl<'source, T, E> FromPyObject<'source> for WrapResult<T, E> 
@@ -188,21 +218,36 @@ impl<T, E> DerefMut for WrapResult<T, E> {
     }
 }
 
+impl<T, E> Into<Result<T, E>> for WrapResult<T, E> {
+    fn into(self) -> Result<T, E> {
+        self.0
+    }
+}
+
+/// Module Manager
 pub struct ModuleManager {
     function_modules: HashMap<String, UnboundedSender<FuncCommand>>,
     driver_modules: HashMap<String, UnboundedSender<DriverCommand>>,
 }
 
+/// Module meta file name
 const META_FILE: &'static str = "meta.json";
+/// ABI Module file name
 const ABI_MODULE_FILE: &'static str = "module.so";
+/// Python module file name
 const PY_MODULE_FILE: &'static str = "module.py";
 
+/// Python load data function name
 const PY_LOAD_DATA: &'static str = "load_data";
+/// Python load data function name
 const PY_EVENT: &'static str = "event";
+/// Python name function name
 const PY_NAME: &'static str = "name";
+/// Python poll function name
 const PY_POLL: &'static str = "poll";
 
 impl ModuleManager {
+    /// New
     pub fn new(plugin_dir: PathBuf) -> Result<Arc<ModuleManager>, ModError> {
         let contents = fs::read_dir(plugin_dir).map_err(|e| ModError::IO(e))?;
         let mut modules = ModuleManager{function_modules: HashMap::new(), driver_modules: HashMap::new()};
@@ -215,6 +260,7 @@ impl ModuleManager {
         Ok(Arc::new(modules))
     }
 
+    /// Load module
     fn load_module(&mut self, module_path: PathBuf) -> Result<(), ModError> {
         let meta = module_path.join(META_FILE);
         let module: Module = serde_json::from_reader(fs::File::open(meta)
@@ -229,6 +275,7 @@ impl ModuleManager {
         Ok(())
     }
 
+    /// Load function module
     fn load_function_module(&mut self, module_path: PathBuf, module: Module) -> Result<(), ModError> {
         let tx = match module.module_type {
             ModuleType::ABIStable => ModuleManager::init_abi_function(module_path)?,
@@ -239,9 +286,10 @@ impl ModuleManager {
         Ok(())
     }
 
+    /// Init abi function
     fn init_abi_function(module_path: PathBuf) -> Result<UnboundedSender<FuncCommand>, ModError> {
         let interface = function::load_module(&module_path.join(ABI_MODULE_FILE))
-            .map_err(|e| ModError::LoadLibrary(e.to_string()))?;
+            .map_err(|e| ModError::LoadModule(e.to_string()))?;
 
         let (tx, mut rx) = mpsc::unbounded_channel();
         tokio::task::spawn_blocking(move || {
@@ -266,14 +314,15 @@ impl ModuleManager {
         Ok(tx)
     }
 
+    /// Init python function
     fn init_py_function(module_path: PathBuf) -> Result<UnboundedSender<FuncCommand>, ModError> {
         let path = module_path.join(PY_MODULE_FILE);
         let path_str = path.to_string_lossy().to_string();
         let code = fs::read_to_string(&path)
-            .map_err(|e|ModError::LoadLibrary(e.to_string()))?;
+            .map_err(|e|ModError::LoadModule(e.to_string()))?;
         let interface = Python::with_gil(|py| -> PyResult<Py<PyAny>> {
             Ok(PyModule::from_code(py, &code, &path_str, &path_str)?.into())
-        }).map_err(|e| ModError::LoadLibrary(e.to_string()))?;
+        }).map_err(|e| ModError::LoadModule(e.to_string()))?;
 
         let (tx, mut rx) = mpsc::unbounded_channel();
         tokio::task::spawn_blocking(move || {
@@ -305,13 +354,14 @@ impl ModuleManager {
                         }
                     };
                     Ok(py.None())
-                }).map_err(|e| ModError::LoadLibrary(e.to_string()))
+                }).map_err(|e| ModError::LoadModule(e.to_string()))
                     .or_log("Python error (Module Manager)");
             }
         });
         Ok(tx)
     }
 
+    /// Load driver module
     fn load_driver_module(&mut self, module_path: PathBuf, module: Module) -> Result<(), ModError> {
         let tx = match module.module_type {
             ModuleType::ABIStable => ModuleManager::init_abi_driver(module_path)?,
@@ -322,9 +372,10 @@ impl ModuleManager {
         Ok(())
     }
 
+    /// Init abi driver
     fn init_abi_driver(module_path: PathBuf) -> Result<UnboundedSender<DriverCommand>, ModError> {
         let interface = driver::load_module(&module_path.join(ABI_MODULE_FILE))
-            .map_err(|e| ModError::LoadLibrary(e.to_string()))?;
+            .map_err(|e| ModError::LoadModule(e.to_string()))?;
 
         let (tx, mut rx) = mpsc::unbounded_channel();
         tokio::task::spawn_blocking(move || {
@@ -357,14 +408,15 @@ impl ModuleManager {
         Ok(tx)
     }
 
+    /// Init python driver
     fn init_py_driver(module_path: PathBuf) -> Result<UnboundedSender<DriverCommand>, ModError> {
         let path = module_path.join(PY_MODULE_FILE);
         let path_str = path.to_string_lossy().to_string();
         let code = fs::read_to_string(&path)
-            .map_err(|e|ModError::LoadLibrary(e.to_string()))?;
+            .map_err(|e|ModError::LoadModule(e.to_string()))?;
         let interface = Python::with_gil(|py| -> PyResult<Py<PyAny>> {
             Ok(PyModule::from_code(py, &code, &path_str, &path_str)?.into())
-        }).map_err(|e| ModError::LoadLibrary(e.to_string()))?;
+        }).map_err(|e| ModError::LoadModule(e.to_string()))?;
 
         let (tx, mut rx) = mpsc::unbounded_channel();
         tokio::task::spawn_blocking(move || {
@@ -406,28 +458,32 @@ impl ModuleManager {
                         }
                     };
                     Ok(py.None())
-                }).map_err(|e| ModError::LoadLibrary(e.to_string()))
+                }).map_err(|e| ModError::LoadModule(e.to_string()))
                     .or_log("Python error (Module Manager)");
             }
         });
         Ok(tx)
     }
 
+    /// Find function module by name
     fn find_function_module(&self, module_name: &str) -> Result<&UnboundedSender<FuncCommand>, ModError> {
         self.function_modules.get(module_name).ok_or_else(|| ModError::NoSuchModule)
     }
 
+    /// Find driver module by name
     fn find_driver_module(&self, module_name: &str) -> Result<&UnboundedSender<DriverCommand>, ModError> {
         self.driver_modules.get(module_name).ok_or_else(|| ModError::NoSuchModule)
     }
 
+    /// Receive command respond from channel
     async fn receive<T>(rx: Receiver<Result<T, String>>) -> Result<T, ModError>{
         match rx.await {
-            Ok(res) => res.map_err(|e| ModError::Library(e.into())),
+            Ok(res) => res.map_err(|e| ModError::Module(e.into())),
             Err(e) => Err(ModError::Channel(e.to_string())),
         }
     } 
 
+    /// Load function from data. Calls load_data
     pub async fn load_function(&self, module_name: &str, data: Data) -> Result<u64, ModError> {
         let module = self.find_function_module(module_name)?;
         let (tx, rx) = oneshot::channel();
@@ -435,6 +491,7 @@ impl ModuleManager {
         ModuleManager::receive(rx).await
     }
 
+    /// Trigger function event. Calls event
     pub async fn function_event(&self, module_name: &str, id: u64, state: u16) -> Result<(), ModError> {
         let module = self.find_function_module(module_name)?;
         let (tx, rx) = oneshot::channel();
@@ -442,6 +499,7 @@ impl ModuleManager {
         ModuleManager::receive(rx).await
     }
 
+    /// Load driver from data. Calls load_data
     pub async fn load_driver(&self, module_name: &str, data: Data) -> Result<u64, ModError> {
         let module = self.find_driver_module(module_name)?;
         let (tx, rx) = oneshot::channel();
@@ -449,6 +507,7 @@ impl ModuleManager {
         ModuleManager::receive(rx).await
     }
 
+    /// Get a drivers name. Calls name
     pub async fn driver_name(&self, module_name: &str, id: u64) -> Result<String, ModError> {
         let module = self.find_driver_module(module_name)?;
         let (tx, rx) = oneshot::channel();
@@ -456,12 +515,11 @@ impl ModuleManager {
         ModuleManager::receive(rx).await
     }
 
+    /// Poll a driver. Calls poll
     pub async fn driver_poll(&self, module_name: &str, id: u64) -> Result<Vec<u16>, ModError> {
         let module = self.find_driver_module(module_name)?;
         let (tx, rx) = oneshot::channel();
         module.send(DriverCommand::Poll(id, tx)).map_err(|e| ModError::Channel(e.to_string()))?;
         ModuleManager::receive(rx).await
     }
-
-
 }

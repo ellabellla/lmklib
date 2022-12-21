@@ -8,9 +8,11 @@ use crate::modules::{ExternalDriver, ModuleManager};
 
 use self::mcp23017::{InputType, MCP23017DriverBuilder};
 
+/// MCP23017 driver
 pub mod mcp23017;
 
 #[derive(Debug)]
+/// Driver error
 pub struct DriverError {
     msg: String
 }
@@ -30,17 +32,21 @@ impl Display for DriverError {
 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Driver Type, used to serialize driver configs
 pub enum DriverType {
+    /// Basic MCP23017 driver
     MCP23017{
         name: String,
         address: u16,
         bus: Option<u8>,
         inputs: Vec<InputType>
     },
+    /// External driver
     External{ module: String, driver: Data }
 }
 
 impl DriverType {
+    /// Build driver from type
     async fn build(self, module_manager: Arc<ModuleManager>) -> Result<Driver, DriverError> {
         match self {
             DriverType::MCP23017 { name, address, bus, inputs } => Ok(Box::new(MCP23017DriverBuilder::from_data(name, address, bus, inputs).await?)),
@@ -50,30 +56,42 @@ impl DriverType {
 }
 
 #[async_trait]
+/// Driver interface
 pub trait DriverInterface {
+    /// Get the drivers name, used to bind the driver states to a layout
     fn name(&self) -> &str;
+    /// State iterator
     fn iter(&self) -> std::slice::Iter<u16>;
+    /// Poll a state
     fn poll(&self, idx: usize) -> u16;
+    /// Poll a range of states
     fn poll_range(&self, range: &Range<usize>) -> Option<&[u16]>;
+    /// Tick the driver. Used to update the driver state.
     async fn tick(&mut self);
+    /// Driver Type
     fn to_driver_type(&self) -> DriverType; 
 }
 
+/// Driver Object
 pub type Driver = Box<dyn DriverInterface+ Send + Sync>;
 
+/// Driver Manager
 pub struct DriverManager {
     drivers: HashMap<String, Driver>,
 }
 
 impl DriverManager {
+    /// New
     pub fn new(drivers: HashMap<String, Driver>) -> DriverManager {
         DriverManager { drivers }
     }
 
+    /// Get a driver by name
     pub fn get(&self, name: &str) -> Option<&Driver> {
         self.drivers.get(name)
     }
 
+    /// Tick drivers
     pub async fn tick(&mut self) {
         for driver in self.drivers.values_mut() {
             driver.tick().await;
@@ -81,21 +99,25 @@ impl DriverManager {
     }
 }
 
+/// Serializable Driver Manager
 pub struct SerdeDriverManager {
     driver_manager: DriverManager,
     serde: Option<Vec<DriverType>>,
 }
 
 impl SerdeDriverManager {
+    /// New
     pub fn new() -> SerdeDriverManager {
         SerdeDriverManager { driver_manager: DriverManager::new(HashMap::new()), serde: None }
     }
 
     #[allow(dead_code)]
+    /// Create from a driver Manager
     pub fn load(driver_manager: DriverManager) -> SerdeDriverManager {
         SerdeDriverManager{driver_manager, serde: None}
     }
 
+    /// Build a Driver Manager
     pub async fn build(self, module_manager: Arc<ModuleManager>) -> Result<DriverManager, DriverError> {
         if let Some(drivers) = self.serde {
             let mut driver_map = HashMap::new();

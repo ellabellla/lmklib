@@ -10,11 +10,14 @@ use super::{DriverInterface, DriverType, DriverError};
 use crate::{OrLogIgnore, OrLog};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Input type, used to serialize inputs
 pub enum InputType {
+    /// Matrix pin configuration
     Matrix {
         x: Vec<u8>,
         y: Vec<u8>
     },
+    /// Single pin
     Input {
         pin: u8,
         on_state: bool,
@@ -23,6 +26,7 @@ pub enum InputType {
 }
 
 impl InputType {
+    /// Build an input
     fn build(self) -> Result<MCPInput, DriverError> {
         match self {
             InputType::Matrix { x, y } => Ok(Box::new(Matrix::new(x, y)?)),
@@ -31,17 +35,26 @@ impl InputType {
     }
 }
 
+
+/// Input Object
 type MCPInput = Box<dyn MCP23017Input + Send + Sync>;
 
 #[async_trait]
+/// Input interface
 trait MCP23017Input {
+    /// Setup
     async fn setup(&self, mcp: &mut MCP23017) -> Result<(), DriverError>;
+    /// Read inputs
     async fn read(&self, mcp: &MCP23017) -> Result<Vec<u16>, DriverError>;
+    /// List of pins
     fn pins(&self) -> Vec<Pin>;
+    /// Number of pins
     fn len(&self) -> usize;
+    /// Input Type
     fn to_input_type(&self) -> InputType; 
 }
 
+/// Convert bool to int
 fn bool_int(bool: bool) -> u16 {
     if bool {
         1
@@ -50,12 +63,18 @@ fn bool_int(bool: bool) -> u16 {
     }
 }
 
+/// Matrix input
+/// 
+/// Creates a matrix of pins where the x pins are inputs and the y pins are outputs.
+/// Each y pin is set high then the x pins are scanned and, high inputs are taken 
+/// as on and low are off for that point in the matrix.
 struct Matrix {
     x: Vec<Pin>,
     y: Vec<Pin>,
 }
 
 impl Matrix {
+    /// New
     pub fn new(x: Vec<u8>, y: Vec<u8>) -> Result<Matrix, DriverError> {
         let x = x.iter()
             .map(|pin| Pin::new(*pin));
@@ -122,6 +141,9 @@ impl MCP23017Input for Matrix {
     } 
 }
 
+/// Input 
+/// 
+/// A single pin is set to input and polled for it's state.
 struct Input {
     pin: Pin,
     on_state: bool,
@@ -129,6 +151,7 @@ struct Input {
 }
 
 impl Input {
+    /// New, on_state will invert High to Low when true, pull high will pull the input high when true.
     pub fn new(pin: u8, on_state: bool, pull_high: bool) -> Result<Input, DriverError> {
         let pin = Pin::new(pin).ok_or_else(|| DriverError::new("expected a pin number between 0 and 15".to_string()))?;
         Ok(Input { pin, on_state, pull_high })
@@ -164,7 +187,7 @@ impl MCP23017Input for Input {
 }
 
 #[allow(dead_code)]
-
+/// MCP23017 driver builder
 pub struct MCP23017DriverBuilder {
     used: HashSet<Pin>,
     inputs: Vec<MCPInput>,
@@ -177,11 +200,13 @@ pub struct MCP23017DriverBuilder {
 
 impl MCP23017DriverBuilder {
     #[allow(dead_code)]
+    /// New, drives chip at the address at the given bus.
     pub fn new(name: &str, address: u16, bus: u8) -> MCP23017DriverBuilder {
         MCP23017DriverBuilder { used: HashSet::new(), inputs: Vec::new(), output_size: 0, address, bus, name: name.to_string() }
     }
 
     #[allow(dead_code)]
+    /// Add matrix input
     pub fn add_matrix(&mut self, x: Vec<Pin>, y: Vec<Pin>) -> Option<Range<usize>> {
         for x in &x {
             if !self.used.insert(x.clone()) {
@@ -202,6 +227,7 @@ impl MCP23017DriverBuilder {
     }
 
     #[allow(dead_code)]
+    /// Add input
     pub fn add_input(&mut self, pin: Pin, on_state: State, pull_high: bool) -> Option<usize> {
         if !self.used.insert(pin.clone()) {
             return None;
@@ -214,6 +240,7 @@ impl MCP23017DriverBuilder {
     }
 
     #[allow(dead_code)]
+    /// Build the driver
     pub async fn build<'a>(self) -> Result<MCP23017Driver, DriverError> {
         let mut mcp = MCP23017::new(self.address, self.bus).await?;
         mcp.reset().await?;
@@ -230,6 +257,7 @@ impl MCP23017DriverBuilder {
         })
     }
 
+    /// Load driver settings from data
     pub async fn from_data(name: String, address: u16, bus: Option<u8>, inputs: Vec<InputType>) -> Result<MCP23017Driver, DriverError> {
         let bus = bus.unwrap_or(1);
         let mut output_size = 0;
@@ -264,6 +292,7 @@ impl MCP23017DriverBuilder {
     }
 }
 
+/// MCP23017 Driver
 pub struct MCP23017Driver {
     name: String,
     address: u16,
@@ -315,6 +344,7 @@ impl DriverInterface for MCP23017Driver {
 }
 
 #[allow(dead_code)]
+/// MCP23017 Command, used to send messages to the wrapped i2c controller
 enum  MCP23017Command {
     PullUp(Pin, State, oneshot::Sender<Result<u16, mcp23017_rpi_lib::Error>>),
     PinMode(Pin, Mode, oneshot::Sender<Result<u16, mcp23017_rpi_lib::Error>>),
@@ -328,11 +358,13 @@ enum  MCP23017Command {
     Reset(oneshot::Sender<Result<(), mcp23017_rpi_lib::Error>>),
 }
 
+/// Wrapped MCP23017 i2c connection 
 struct MCP23017 {
     tx: UnboundedSender<MCP23017Command>,
 }
 
 impl MCP23017 {
+    /// New
     pub async fn new(address: u16, bus: u8) -> Result<MCP23017, DriverError> {
         let (tx, rx) = mpsc::unbounded_channel();
         let (new_tx, new_rx) = oneshot::channel();
@@ -366,10 +398,12 @@ impl MCP23017 {
         res.map(|_| MCP23017 { tx })
     }
 
+    /// Send command
     async fn send(&self, command: MCP23017Command) -> Result<(), DriverError> {
         self.tx.send(command).map_err(|_|DriverError::new("Unable to call MCP23017".to_string()))
     }
 
+    /// Receive command
     async fn receive<T>(&self, rx: oneshot::Receiver<Result<T, mcp23017_rpi_lib::Error>>) -> Result<T, DriverError> {
         if let Ok(val) = rx.await {
             val.map_err(|e| DriverError::new(format!("MCP23017 Error, {}", e)))
@@ -378,6 +412,7 @@ impl MCP23017 {
         }
     }
 
+    /// Pull pin high
     pub  async fn pull_up(&self, pin: &Pin, value: State) -> Result<u16, DriverError> {
         let (tx, rx) = oneshot::channel();
         let command = MCP23017Command::PullUp(pin.clone(), value, tx);
@@ -385,6 +420,7 @@ impl MCP23017 {
         self.receive(rx).await
     }
 
+    /// Set pin mode
     pub async fn pin_mode(&mut self, pin: &Pin, mode: Mode) -> Result<u16, DriverError> {
         let (tx, rx) = oneshot::channel();
         let command = MCP23017Command::PinMode(pin.clone(), mode, tx);
@@ -393,6 +429,7 @@ impl MCP23017 {
         self.receive(rx).await
     }
 
+    /// Set pin output
     pub async fn output(&self, pin: &Pin, value: State) -> Result<u8, DriverError>{
         let (tx, rx) = oneshot::channel();
         let command = MCP23017Command::Output(pin.clone(), value, tx);
@@ -401,6 +438,7 @@ impl MCP23017 {
         self.receive(rx).await
     }
 
+    /// Get pin input
     pub async fn input(&self, pin: &Pin) -> Result<State, DriverError> {
         let (tx, rx) = oneshot::channel();
         let command = MCP23017Command::Input(pin.clone(), tx);
@@ -411,6 +449,7 @@ impl MCP23017 {
 
 
     #[allow(dead_code)]
+    /// Get the current value of a pin
     pub async fn current_val(&self, pin: &Pin) -> Result<State, DriverError> {
         let (tx, rx) = oneshot::channel();
         let command = MCP23017Command::CurrentVal(pin.clone(), tx);
@@ -420,6 +459,9 @@ impl MCP23017 {
     }
 
     #[allow(dead_code)]
+    /// Configure system interrupt settings.
+    /// Mirror - are the int pins mirrored?
+    /// Intpol - polarity of the int pin.
     pub async fn config_system_interrupt(&mut self, mirror: mcp23017_rpi_lib::Feature, intpol: State) -> Result<(), DriverError>{
         let (tx, rx) = oneshot::channel();
         let command = MCP23017Command::ConfigSysInt(mirror, intpol, tx);
@@ -429,6 +471,7 @@ impl MCP23017 {
     }
 
     #[allow(dead_code)]
+    /// Configure interrupt setting for a specific pin. set on or off.
     pub async fn config_pin_interrupt(&self, pin: &Pin, enabled: mcp23017_rpi_lib::Feature, compare_mode: mcp23017_rpi_lib::Compare, defval: Option<State>) -> Result<(), DriverError>{
         let (tx, rx) = oneshot::channel();
         let command = MCP23017Command::ConfigPinInt(pin.clone(), enabled, compare_mode, defval, tx);
@@ -437,8 +480,11 @@ impl MCP23017 {
         self.receive(rx).await
     }
 
-    // This function should be called when INTA or INTB is triggered to indicate an interrupt occurred.
     #[allow(dead_code)]
+    // This function should be called when INTA or INTB is triggered to indicate an interrupt occurred.
+    /// The function determines the pin that caused the interrupt and gets its value.
+    /// The interrupt is cleared.
+    /// Returns pin and the value.
     pub async fn read_interrupt(&self, port: mcp23017_rpi_lib::Bank) -> Result<Option<(Pin, State)>, DriverError> {
         let (tx, rx) = oneshot::channel();
         let command = MCP23017Command::ReadInt(port, tx);
@@ -448,6 +494,8 @@ impl MCP23017 {
     }
 
     #[allow(dead_code)]
+    /// Check to see if there is an interrupt pending 3 times in a row (indicating it's stuck) 
+    /// and if needed clear the interrupt without reading values.
     pub async fn clear_interrupts(&self) -> Result<(), DriverError> {
         let (tx, rx) = oneshot::channel();
         let command = MCP23017Command::ClearInt(tx);
@@ -456,6 +504,7 @@ impl MCP23017 {
         self.receive(rx).await
     }
 
+    /// Reset all pins and interrupts
     pub async fn reset(&self) -> Result<(), DriverError> {
         let (tx, rx) = oneshot::channel();
         let command = MCP23017Command::Reset(tx);
