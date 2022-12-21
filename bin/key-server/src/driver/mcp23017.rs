@@ -10,48 +10,55 @@ use super::{DriverInterface, DriverType, DriverError};
 use crate::{OrLogIgnore, OrLog};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-/// Input type, used to serialize inputs
-pub enum InputType {
+/// Pin type, used to serialize pin configurations
+pub enum PinType {
     /// Matrix pin configuration
     Matrix {
         x: Vec<u8>,
         y: Vec<u8>
     },
-    /// Single pin
+    /// Single pin input
     Input {
         pin: u8,
         on_state: bool,
         pull_high: bool,
+    },
+    /// Single pin output
+    Output {
+        pin: u8,
     }
 }
 
-impl InputType {
+impl PinType {
     /// Build an input
-    fn build(self) -> Result<MCPInput, DriverError> {
+    fn build(self) -> Result<PinConfig, DriverError> {
         match self {
-            InputType::Matrix { x, y } => Ok(Box::new(Matrix::new(x, y)?)),
-            InputType::Input { pin, on_state, pull_high } => Ok(Box::new(Input::new(pin, on_state, pull_high)?)),
+            PinType::Matrix { x, y } => Ok(Box::new(Matrix::new(x, y)?)),
+            PinType::Input { pin, on_state, pull_high } => Ok(Box::new(Input::new(pin, on_state, pull_high)?)),
+            PinType::Output { pin } => Ok(Box::new(Output::new(pin)?)),
         }
     }
 }
 
 
-/// Input Object
-type MCPInput = Box<dyn MCP23017Input + Send + Sync>;
+/// Pin Configuration Object
+type PinConfig = Box<dyn PinConfiguration + Send + Sync>;
 
 #[async_trait]
-/// Input interface
-trait MCP23017Input {
+/// Pin Configuration interface
+trait PinConfiguration {
     /// Setup
     async fn setup(&self, mcp: &mut MCP23017) -> Result<(), DriverError>;
     /// Read inputs
     async fn read(&self, mcp: &MCP23017) -> Result<Vec<u16>, DriverError>;
+    /// Set output
+    async fn set(&mut self, mcp: &MCP23017, idx: usize, state: u16) -> Result<(), DriverError>;
     /// List of pins
     fn pins(&self) -> Vec<Pin>;
     /// Number of pins
     fn len(&self) -> usize;
     /// Input Type
-    fn to_input_type(&self) -> InputType; 
+    fn to_pin_type(&self) -> PinType; 
 }
 
 /// Convert bool to int
@@ -96,7 +103,7 @@ impl Matrix {
 }
 
 #[async_trait]
-impl MCP23017Input for Matrix {
+impl PinConfiguration for Matrix {
     async fn setup(&self, mcp: &mut MCP23017) -> Result<(), DriverError>{
         for x in &self.x {
             mcp.pin_mode(x, Mode::Input).await?;
@@ -122,6 +129,10 @@ impl MCP23017Input for Matrix {
         Ok(out)
     }
 
+    async fn set(&mut self, _mcp: &MCP23017, _idx: usize, _state: u16) -> Result<(), DriverError> {
+        Err(DriverError::new("Input is not settable".to_string()))
+    }
+
     fn pins(&self) -> Vec<Pin> {
         let mut pins = Vec::with_capacity(self.x.len() + self.y.len());
         pins.extend(self.x.clone());
@@ -133,8 +144,8 @@ impl MCP23017Input for Matrix {
         self.x.len() * self.y.len()
     }
 
-    fn to_input_type(&self) -> InputType {
-        InputType::Matrix{
+    fn to_pin_type(&self) -> PinType {
+        PinType::Matrix{
             x: self.x.iter().map(|x| u8::from(x)).collect::<Vec<u8>>(),
             y: self.y.iter().map(|x| u8::from(x)).collect::<Vec<u8>>()
         }
@@ -159,7 +170,7 @@ impl Input {
 }
 
 #[async_trait]
-impl MCP23017Input for Input {
+impl PinConfiguration for Input {
     async fn setup(&self, mcp: &mut MCP23017) -> Result<(), DriverError> {
         mcp.pin_mode(&self.pin, Mode::Input).await?;
         if self.pull_high {
@@ -173,6 +184,10 @@ impl MCP23017Input for Input {
         Ok(vec![bool_int(state == self.on_state)])
     }
 
+    async fn set(&mut self, _mcp: &MCP23017, _idx: usize, _state: u16) -> Result<(), DriverError> {
+        Err(DriverError::new("Input is not settable".to_string()))
+    }
+
     fn pins(&self) -> Vec<Pin> {
         vec![self.pin.clone()]
     }
@@ -181,16 +196,60 @@ impl MCP23017Input for Input {
         1
     }
 
-    fn to_input_type(&self) -> InputType {
-        InputType::Input{pin: u8::from(&self.pin), on_state: self.on_state, pull_high: self.pull_high}
+    fn to_pin_type(&self) -> PinType {
+        PinType::Input{pin: u8::from(&self.pin), on_state: self.on_state, pull_high: self.pull_high}
     }
 }
+
+struct Output {
+    pin: Pin,
+    state: bool,
+}
+
+impl Output {
+    pub fn new(pin: u8) -> Result<Output, DriverError> {
+        let pin = Pin::new(pin).ok_or_else(|| DriverError::new("expected a pin number between 0 and 15".to_string()))?;
+        Ok(Output { pin, state: false })
+    }
+}
+
+#[async_trait]
+impl PinConfiguration for Output {
+    async fn setup(&self, mcp: &mut MCP23017) -> Result<(), DriverError> {
+        mcp.pin_mode(&self.pin, Mode::Output).await?;
+        mcp.output(&self.pin, State::from(self.state)).await?;
+        Ok(())
+    }
+
+    async fn read(&self, _mcp: &MCP23017) -> Result<Vec<u16>, DriverError> {
+        Ok(vec![bool_int(self.state)])
+    }
+
+    async fn set(&mut self, mcp: &MCP23017, _idx: usize, state: u16) -> Result<(), DriverError> {
+        self.state = state != 0;
+        mcp.output(&self.pin, State::from(self.state)).await.map(|_| ())
+    }
+
+    fn pins(&self) -> Vec<Pin> {
+        vec![self.pin.clone()]
+    }
+
+    fn len(&self) -> usize {
+        1
+    }
+
+    fn to_pin_type(&self) -> PinType {
+        PinType::Output { pin: u8::from(&self.pin) }
+    }
+}
+
+
 
 #[allow(dead_code)]
 /// MCP23017 driver builder
 pub struct MCP23017DriverBuilder {
     used: HashSet<Pin>,
-    inputs: Vec<MCPInput>,
+    pins: Vec<PinConfig>,
 
     output_size: usize,
     name: String,
@@ -202,7 +261,7 @@ impl MCP23017DriverBuilder {
     #[allow(dead_code)]
     /// New, drives chip at the address at the given bus.
     pub fn new(name: &str, address: u16, bus: u8) -> MCP23017DriverBuilder {
-        MCP23017DriverBuilder { used: HashSet::new(), inputs: Vec::new(), output_size: 0, address, bus, name: name.to_string() }
+        MCP23017DriverBuilder { used: HashSet::new(), pins: Vec::new(), output_size: 0, address, bus, name: name.to_string() }
     }
 
     #[allow(dead_code)]
@@ -220,9 +279,9 @@ impl MCP23017DriverBuilder {
         }
 
         let size = x.len() * y.len();
-        let idx = self.inputs.len();
+        let idx = self.pins.len();
         self.output_size += size;
-        self.inputs.push(Box::new(Matrix{x, y}));
+        self.pins.push(Box::new(Matrix{x, y}));
         Some(Range {start: idx, end: idx+size})
     }
 
@@ -233,9 +292,22 @@ impl MCP23017DriverBuilder {
             return None;
         }
 
-        let idx = self.inputs.len();
+        let idx = self.pins.len();
         self.output_size += 1;
-        self.inputs.push(Box::new(Input{pin, on_state: on_state.into(), pull_high}));
+        self.pins.push(Box::new(Input{pin, on_state: on_state.into(), pull_high}));
+        Some(idx)
+    }
+
+    #[allow(dead_code)]
+    /// Add input
+    pub fn add_output(&mut self, pin: Pin) -> Option<usize> {
+        if !self.used.insert(pin.clone()) {
+            return None;
+        }
+
+        let idx = self.pins.len();
+        self.output_size += 1;
+        self.pins.push(Box::new(Output{pin, state: false}));
         Some(idx)
     }
 
@@ -244,50 +316,52 @@ impl MCP23017DriverBuilder {
     pub async fn build<'a>(self) -> Result<MCP23017Driver, DriverError> {
         let mut mcp = MCP23017::new(self.address, self.bus).await?;
         mcp.reset().await?;
-        for input in self.inputs.iter() {
+        for input in self.pins.iter() {
             input.setup(&mut mcp).await?;
         }
         Ok(MCP23017Driver { 
             name: self.name,
             address: self.address,
             bus: self.bus,
-            inputs: self.inputs, 
+            pins: self.pins, 
             state: Vec::with_capacity(self.output_size),
             mcp: mcp,
+            pin_map: Vec::new()
         })
     }
 
     /// Load driver settings from data
-    pub async fn from_data(name: String, address: u16, bus: Option<u8>, inputs: Vec<InputType>) -> Result<MCP23017Driver, DriverError> {
+    pub async fn from_data(name: String, address: u16, bus: Option<u8>, pins: Vec<PinType>) -> Result<MCP23017Driver, DriverError> {
         let bus = bus.unwrap_or(1);
         let mut output_size = 0;
-        let inputs = inputs.into_iter().map(|input| input.build());
+        let inputs = pins.into_iter().map(|input| input.build());
         if let Some(res) = inputs.clone().find(|i | i.is_err()) {
             res?;
         }
 
-        let inputs = inputs.filter_map(|i|i.or_log("Input build error (MCP23017)")).collect_vec();
+        let pins = inputs.filter_map(|i|i.or_log("Input build error (MCP23017)")).collect_vec();
         let mut mcp = MCP23017::new(address, bus).await?;
         mcp.reset().await?;
         
         let mut used = HashSet::new();
-        for input in inputs.iter() {
-            for pin in input.pins() {
+        for pin in pins.iter() {
+            for pin in pin.pins() {
                 if !used.insert(pin.clone()) {
                     return Err(DriverError::new(format!("Pin {} cannot be reused", pin)))
                 }
             }
-            input.setup(&mut mcp).await?;
-            output_size += input.len();
+            pin.setup(&mut mcp).await?;
+            output_size += pin.len();
         }
 
         Ok(MCP23017Driver { 
             name: name,
             address: address,
             bus: bus,
-            inputs: inputs, 
+            pins, 
             state: Vec::with_capacity(output_size),
             mcp: mcp,
+            pin_map: Vec::new()
         })
     }
 }
@@ -297,9 +371,10 @@ pub struct MCP23017Driver {
     name: String,
     address: u16,
     bus: u8,
-    inputs: Vec<MCPInput>,
+    pins: Vec<PinConfig>,
     state: Vec<u16>,
     mcp: MCP23017,
+    pin_map: Vec<Range<usize>>,
 }
 
 #[async_trait]
@@ -320,17 +395,33 @@ impl DriverInterface for MCP23017Driver {
         self.state.get(range.clone())
     }
 
+    async fn set(&mut self, idx: usize, state: u16) {
+        let mut count = 0;
+        for (i, range) in self.pin_map.iter().enumerate() {
+            if range.contains(&idx) {
+                let mcp = &self.mcp;
+                self.pins[i].set(mcp, idx - count, state).await.or_log("Pin set error (MCP23017 Driver)");
+                return;
+            }
+            count += range.len();
+        }
+    }
+
     async fn tick(&mut self) {
         let mut state: Vec<u16> = Vec::with_capacity(self.state.len());
-        for input in &self.inputs {
+        let mut map: Vec<Range<usize>> = Vec::with_capacity(self.pins.len());
+
+        for input in &self.pins {
             let mcp = &self.mcp;
             let Ok(input_state) = input.read(mcp).await else {
                 return;
             };
-            state.extend(input_state);
-
+            let range = Range{start: state.len(), end: state.len() + input_state.len()};
+            state.extend(input_state.into_iter());
+            map.push(range);
         }
         self.state = state;
+        self.pin_map = map;
     }
 
     fn to_driver_type(&self) -> DriverType {
@@ -338,7 +429,7 @@ impl DriverInterface for MCP23017Driver {
             name: self.name.to_string(), 
             address: self.address, 
             bus: Some(self.bus), 
-            inputs: self.inputs.iter().map(|driver| driver.to_input_type()).collect()
+            inputs: self.pins.iter().map(|driver| driver.to_pin_type()).collect()
         }
     }
 }

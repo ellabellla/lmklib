@@ -7,6 +7,7 @@ use tokio::sync::RwLock;
 use crate::{function::{Function, ReturnCommand, FunctionType, FunctionBuilder}, driver::DriverManager};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Driver state address. Used to index a state/s of a driver
 enum Address {
     DriverMatrix {
         name: String,
@@ -23,9 +24,13 @@ enum Address {
 }
 
 #[derive(Debug)]
+/// Layout error
 pub enum LayoutError {
+    /// Tried to bind an address outside the bounds of a layout
     OutsideBounds,
+    /// Tried to bind an address to an area of layout already bound
     InUse,
+    /// Address Matrix was of an invalid size
     InvalidSize,
 }
 
@@ -49,12 +54,14 @@ pub struct LayoutBuilder {
 }
 
 impl LayoutBuilder {
+    /// New
     pub fn new( width: usize, height: usize) -> LayoutBuilder {
         let mut addresses =  Slab::new();
         let none = addresses.insert(Address::None);
         LayoutBuilder { width, height, none, addresses, layout: vec![none; width * height], layers: vec![] }
     }
 
+    /// Add bind point
     pub fn add_point(&mut self, name: &str, idx: usize, location: (usize, usize)) -> Result<(), LayoutError> {
         let (x, y) = location;
 
@@ -73,6 +80,7 @@ impl LayoutBuilder {
         Ok(())
     }
 
+    /// Add a matrix of bind points
     pub fn add_matrix(&mut self, name: &str, range: Range<usize>, width: usize, location: (usize, usize)) -> Result<(), LayoutError> {
         let (x, y) = location;
         let size = range.len();
@@ -115,6 +123,7 @@ impl LayoutBuilder {
         Ok(())
     }
 
+    /// Build layout
     pub async fn build(self, driver_manager: Arc<RwLock<DriverManager>>, function_builder: &Arc<RwLock<FunctionBuilder>>) -> Layout {
         let mut layer_stack = Vec::new();
         for layer in self.layers.into_iter() {
@@ -146,7 +155,7 @@ impl Serialize for LayoutBuilder {
             width: usize,
             height: usize,
             bound: Vec<&'a Address>,
-            layers: Vec<Vec<Vec<FunctionType>>>
+            layers: Vec<Vec<Vec<FunctionType>>>,
         }
         let layers: Vec<Vec<Vec<FunctionType>>> = self.layers.iter()
             .map(|layer| {
@@ -172,10 +181,11 @@ impl<'de> Deserialize<'de> for LayoutBuilder {
             width: usize,
             height: usize,
             bound: Vec<Address>,
-            layers: Vec<Vec<Vec<FunctionType>>>
+            layers: Vec<Vec<Vec<FunctionType>>>,
         }
         let layout = Layout::deserialize(deserializer)?;
         let mut builder = LayoutBuilder::new(layout.width, layout.height);
+
         for (i, address) in layout.bound.into_iter().enumerate() {
            match address {
                 Address::DriverMatrix { name, input, width, root } => 
@@ -208,7 +218,7 @@ impl<'de> Deserialize<'de> for LayoutBuilder {
 }
 
 
-
+/// Layout
 pub struct Layout {
     width: usize,
     height: usize,
@@ -221,6 +231,7 @@ pub struct Layout {
 }
 
 impl Layout {
+    /// Switch layout
     pub fn switch_layer(&mut self,  index: usize) -> Option<()> {
         if index >= self.layer_stack.len() {
             None
@@ -230,6 +241,7 @@ impl Layout {
         }
     }
 
+    /// Move one layer above
     pub fn up_layer(&mut self) -> Option<()> {
         if self.cur_layer + 1 >= self.layer_stack.len() {
             None
@@ -239,6 +251,7 @@ impl Layout {
         }
     }
 
+    /// Move one layer down
     pub fn down_layer(&mut self) -> Option<()> {
         if self.cur_layer - 1 >= self.layer_stack.len() {
             None
@@ -249,6 +262,7 @@ impl Layout {
     }
 
     #[allow(dead_code)]
+    /// Remove layer
     pub fn remove_layer(&mut self, index: usize) -> Option<Vec<Function>> {
         if index >= self.layer_stack.len() {
             return None;
@@ -260,6 +274,7 @@ impl Layout {
     }
 
     #[allow(dead_code)]
+    /// Add layer
     pub fn add_layer(&mut self, layer: Vec<Function>, index: usize) -> Result<usize, LayoutError> {
         if layer.len() > self.width * self.height {
             return Err(LayoutError::InvalidSize)
@@ -274,10 +289,12 @@ impl Layout {
         }
     }
 
+    /// Tick drivers
     pub async fn tick(&mut self) {
         self.driver_manager.write().await.tick().await;
     }
 
+    /// Get string representing layout
     pub fn layout_string(&self) -> String {
         let mut str = String::new();
         let last = self.layer_stack[self.cur_layer].len() - 1;
@@ -297,6 +314,7 @@ impl Layout {
         str
     }
 
+    /// Poll the layout states and call corresponding functions
     pub async fn poll(&mut self) {
         if self.layer_stack.len() == 0 {
             return;
@@ -316,15 +334,18 @@ impl Layout {
                         continue;
                     };
                     
+                    let state = state.to_vec();
+
                     drop(driver);
+                    drop(driver_manager);
 
                     let (mut x, mut y) = root;
 
-                    for state in state.iter() {
+                    for state in state {
                         for layer in self.layer_stack[self.cur_layer..].iter_mut().rev() {
                             match &mut layer[x + (y * self.width)] {
                                 Some(func) => {
-                                    let res = func.event(*state).await;
+                                    let res = func.event(state).await;
                                     if !matches!(res, ReturnCommand::None) {
                                         commands.push(res);
                                     }
@@ -351,7 +372,9 @@ impl Layout {
                     let (x, y) = root;
 
                     let state = driver.poll(*input);
+                    
                     drop(driver);
+                    drop(driver_manager);
 
                     for layer in self.layer_stack[self.cur_layer..].iter_mut().rev() {
                         match &mut layer[*x + (*y * self.width)] {

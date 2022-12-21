@@ -6,7 +6,7 @@ use serde::{Serialize, Deserialize};
 
 use crate::modules::{ExternalDriver, ModuleManager};
 
-use self::mcp23017::{InputType, MCP23017DriverBuilder};
+use self::mcp23017::{PinType, MCP23017DriverBuilder};
 
 /// MCP23017 driver
 pub mod mcp23017;
@@ -39,7 +39,7 @@ pub enum DriverType {
         name: String,
         address: u16,
         bus: Option<u8>,
-        inputs: Vec<InputType>
+        inputs: Vec<PinType>
     },
     /// External driver
     External{ module: String, driver: Data }
@@ -66,6 +66,8 @@ pub trait DriverInterface {
     fn poll(&self, idx: usize) -> u16;
     /// Poll a range of states
     fn poll_range(&self, range: &Range<usize>) -> Option<&[u16]>;
+    /// Output a state
+    async fn set(&mut self, idx: usize, state: u16);
     /// Tick the driver. Used to update the driver state.
     async fn tick(&mut self);
     /// Driver Type
@@ -89,6 +91,12 @@ impl DriverManager {
     /// Get a driver by name
     pub fn get(&self, name: &str) -> Option<&Driver> {
         self.drivers.get(name)
+    }
+
+    #[allow(dead_code)]
+    /// Get a driver by name
+    pub fn get_mut(&mut self, name: &str) -> Option<&mut Driver> {
+        self.drivers.get_mut(name)
     }
 
     /// Tick drivers

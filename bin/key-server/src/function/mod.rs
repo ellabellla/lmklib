@@ -22,8 +22,10 @@ pub mod hid;
 pub mod log;
 /// NanoMsg functions
 pub mod nng;
+/// Output functions
+pub mod output;
 
-use self::{keyboard::{Key, BasicString, ComplexString, Special, Shortcut, ModifierKey}, mouse::{ConstMove, LeftClick, RightClick, ConstScroll, Move, Scroll, ImmediateMove, ImmediateScroll}, midi::{Note, MidiController, Channel, ConstPitchBend, PitchBend, Instrument, GMSoundSet, note_param}, cmd::{Bash, Pipe, CommandPool}, hid::{HID, SwitchHid}, log::{Log, LogLevel}, nng::{DriverData, NanoMsg, NanoMessenger}};
+use self::{keyboard::{Key, BasicString, ComplexString, Special, Shortcut, ModifierKey}, mouse::{ConstMove, LeftClick, RightClick, ConstScroll, Move, Scroll, ImmediateMove, ImmediateScroll}, midi::{Note, MidiController, Channel, ConstPitchBend, PitchBend, Instrument, GMSoundSet, note_param}, cmd::{Bash, Pipe, CommandPool}, hid::{HID, SwitchHid}, log::{Log, LogLevel}, nng::{DriverData, NanoMsg, NanoMessenger}, output::{Output, Flip}};
 
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq)]
@@ -158,7 +160,9 @@ pub enum FunctionType {
     SwitchHid,
     Log(LogLevel, String),
     NanoMsg { topic: u8, format: String, driver_data: Vec<DriverData> },
-    External{ module: String, func: Data }
+    External{ module: String, func: Data },
+    Output { driver_name: String, idx: usize, state: u16 },
+    Flip { driver_name: String, idx: usize },
 }
 
 impl FunctionType  {
@@ -229,6 +233,8 @@ impl FunctionBuilder {
             FunctionType::Log(log_level, msg) => Log::new(log_level, msg),
             FunctionType::NanoMsg { topic, format: msg, driver_data } => NanoMsg::new(topic, msg, driver_data, self.nano_messenger.clone(), self.driver_manager.clone()),
             FunctionType::External { module, func } => ExternalFunction::new(module, self.module_manager.clone(), func).await,
+            FunctionType::Output { driver_name, idx, state } => Output::new(driver_name, idx, state, self.driver_manager.clone()),
+            FunctionType::Flip { driver_name, idx } => Flip::new(driver_name, idx, self.driver_manager.clone()),
         }.or_log_ignore(&format!("Unable to build function (Function Builder), {}", debug))
     }
 }

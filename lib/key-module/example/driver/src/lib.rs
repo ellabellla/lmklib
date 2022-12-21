@@ -57,4 +57,17 @@ impl Driver for DriverManager {
             RErr(RString::from("Driver not found"))
         }
     }
+
+    fn set(&mut self, id:u64, idx: usize, state:u16) -> RResult<(), RString> {
+        if let Some(data) = self.drivers.get_mut(id as usize) {
+            if let Some(curr_state) = data.state.get_mut(idx) {
+                *curr_state = state;
+                ROk(())
+            } else {
+                RErr(RString::from("Idx out of bounds"))
+            }
+        } else {
+            RErr(RString::from("Driver not found"))
+        }
+    }
 }

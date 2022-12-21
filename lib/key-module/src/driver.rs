@@ -33,9 +33,12 @@ pub trait Driver {
     /// Fetch the name of the driver with the specified id
     fn name(&self, id: u64) -> RResult<RString, RString>;
 
-    #[sabi(last_prefix_field)]
     /// Poll the current state of the driver with the specified id
     fn poll(&mut self, id: u64) -> RResult<RVec<u16>, RString>;
+
+    #[sabi(last_prefix_field)]
+    //. Set the current state of the driver with the specified id
+    fn set(&mut self, id: u64, idx: usize, state: u16) -> RResult<(), RString>;
 }
 
 pub type DriverBox = Driver_TO<'static, RBox<()>>;

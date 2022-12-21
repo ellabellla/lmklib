@@ -33,4 +33,13 @@ def poll(driver_id):
         return drivers[driver_id]["state"]
     else:
         return "Unknown id"
+    
+def set(driver_id, idx, state):
+    if driver_id < len(drivers):
+        if idx >= len(drivers[driver_id]["state"]):
+            return "Idx out of bounds"
+        drivers[driver_id]["state"][idx] = state
+    else:
+        return "Invalid id"
+    
         

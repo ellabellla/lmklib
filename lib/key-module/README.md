@@ -82,6 +82,23 @@ def poll(driver_id):
             Ok (list): List of the states (int)
             Err (str):  String describing error
     """
+    pass
+
+def set(driver_id, idx, state):
+    """Set the current state of the driver with the specified id
+
+    Args:
+        driver_id (int): Driver id
+        idx: (int) State index
+        state (int): The state
+
+    Returns:
+        Result: 
+            Ok (None)
+            Err (str): String describing error
+    """
+    pass
+
 ```
 
 ### Function Module

@@ -136,6 +136,12 @@ impl DriverInterface for ExternalDriver {
         self.state.get(range.clone())
     }
 
+    async fn set(&mut self, idx: usize, state:u16) {
+        self.module_manager
+            .driver_set(&self.module_name, self.id, idx, state).await
+            .or_log("Poll error (External Driver)");
+    }
+
     async fn tick(&mut self) {
         if let Some(state) = self.module_manager
             .driver_poll(&self.module_name, self.id).await
@@ -167,6 +173,8 @@ enum DriverCommand {
     Name(u64, Sender<Result<String, String>>),
     /// Poll the state of the driver
     Poll(u64, Sender<Result<Vec<u16>, String>>),
+    /// Set the state of the driver
+    Set(u64, usize, u16, Sender<Result<(), String>>),
 }
 
 #[derive(FromPyObject)]
@@ -245,6 +253,8 @@ const PY_EVENT: &'static str = "event";
 const PY_NAME: &'static str = "name";
 /// Python poll function name
 const PY_POLL: &'static str = "poll";
+/// Python set function name
+const PY_SET: &'static str = "set";
 
 impl ModuleManager {
     /// New
@@ -395,13 +405,20 @@ impl ModuleManager {
                             .into()
                         )
                         .or_log_ignore("Channel error (Module Manager)"),
-                    DriverCommand::Poll(id, tx) => tx.send(
-                            driver.poll(id)
-                            .map(|o| o.into())
-                            .map_err(|e| e.to_string())
-                            .into()
-                        )
-                        .or_log_ignore("Channel error (Module Manager)"),
+                        DriverCommand::Poll(id, tx) => tx.send(
+                                driver.poll(id)
+                                .map(|o| o.into())
+                                .map_err(|e| e.to_string())
+                                .into()
+                            )
+                            .or_log_ignore("Channel error (Module Manager)"),
+                        DriverCommand::Set(id, idx, state, tx) => tx.send(
+                                driver.set(id, idx, state)
+                                .map(|o| o.into())
+                                .map_err(|e| e.to_string())
+                                .into()
+                            )
+                            .or_log_ignore("Channel error (Module Manager)"),
                 };
             }
         });
@@ -453,6 +470,18 @@ impl ModuleManager {
                             };
                             match res() {
                                 Ok(res) => tx.send(res).or_log_ignore("Channel error (Module Manager)"),
+                                Err(e) => tx.send(Err(e.to_string())).or_log_ignore("Channel error (Module Manager)"),
+                            }
+                        },
+                        DriverCommand::Set(id, idx, state, tx) => {
+                            let res = || -> Result<_, PyErr> { 
+                                Ok(interface.getattr(py, PY_SET)?
+                                .call1(py, (id, idx, state))?
+                                .extract::<Option<_>>(py)?)
+                            };
+                            match res() {
+                                Ok(Some(e)) => tx.send(Err(e)).or_log_ignore("Channel error (Module Manager)"),
+                                Ok(None) => tx.send(Ok(())).or_log_ignore("Channel error (Module Manager)"),
                                 Err(e) => tx.send(Err(e.to_string())).or_log_ignore("Channel error (Module Manager)"),
                             }
                         }
@@ -520,6 +549,14 @@ impl ModuleManager {
         let module = self.find_driver_module(module_name)?;
         let (tx, rx) = oneshot::channel();
         module.send(DriverCommand::Poll(id, tx)).map_err(|e| ModError::Channel(e.to_string()))?;
+        ModuleManager::receive(rx).await
+    }
+
+    /// Set a driver. Calls set
+    pub async fn driver_set(&self, module_name: &str, id: u64, idx: usize, state: u16) -> Result<(), ModError> {
+        let module = self.find_driver_module(module_name)?;
+        let (tx, rx) = oneshot::channel();
+        module.send(DriverCommand::Set(id, idx, state, tx)).map_err(|e| ModError::Channel(e.to_string()))?;
         ModuleManager::receive(rx).await
     }
 }
