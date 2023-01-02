@@ -3,8 +3,7 @@ use std::{process::exit, thread, time::Duration, path::PathBuf, str::FromStr, fm
 use clap::Parser;
 use driver::{DriverManager};
 use function::{FunctionBuilder};
-use log::{error, LevelFilter, info};
-use simplelog::{CombinedLogger, TermLogger, Config, TerminalMode, ColorChoice};
+use log::{error, info};
 use tokio::sync::RwLock;
 
 use crate::{function::{midi::MidiController, cmd::CommandPool, hid::HID, FunctionConfiguration, FunctionConfig, nng::NanoMessenger}, driver::SerdeDriverManager, modules::ModuleManager};
@@ -17,6 +16,8 @@ mod layout;
 mod function;
 /// Plugin modules
 mod modules;
+/// ConfigFS modules
+mod keyfs;
 
 #[derive(Parser)]
 /// Cli Args
@@ -86,6 +87,8 @@ impl<T> OrLogIgnore<T> for Option<T> {
 /// followed by the error message (for result), and exit the program with and exit status of 1.
 pub trait OrExit<T> {
     fn or_exit(self, msg: &str) -> T;
+
+    fn or_exit_print(self, msg: &str) -> T;
 }
 
 /// Implementation for Result
@@ -98,6 +101,16 @@ where
             Ok(t) => t,
             Err(e) => {
                 error!("{}, {}", msg, e);
+                exit(1);
+            }
+        }
+    }
+
+    fn or_exit_print(self, msg: &str) -> T {
+        match self {
+            Ok(t) => t,
+            Err(e) => {
+                println!("{}, {}", msg, e);
                 exit(1);
             }
         }
@@ -115,6 +128,16 @@ impl<T> OrExit<T> for Option<T> {
             }
         }
     }
+
+    fn or_exit_print(self, msg: &str) -> T {
+        match self {
+            Some(t) => t,
+            None => {
+                print!("{}", msg);
+                exit(1);
+            }
+        }
+    }
 }
 
 #[tokio::main]
@@ -124,13 +147,6 @@ async fn main() {
     const LAYOUT_JSON: &str = "layout.json";
     const FRONTEND_JSON: &str = "frontend.json";
     const MODULES: &str = "modules";
-    
-    // init logger
-    CombinedLogger::init(
-        vec![
-            TermLogger::new(LevelFilter::Info, Config::default(), TerminalMode::Stdout, ColorChoice::Auto),
-        ]
-    ).unwrap();
 
     // Load configuration
     let args = Args::parse();
@@ -141,8 +157,23 @@ async fn main() {
             .or_exit("Invalid config path")
         })
         .or_else(|| dirs::config_dir().map(|p| p.join("key-server")))
-        .or_exit("Unable to locate config directory");
+        .or_exit_print("Unable to locate config directory");
+
+    // init logger
+    let logger_config = config.join("config.yaml");
+    if !logger_config.exists() {
+        const DEFAULT_CONFIG: &'static str = include_str!("../log-config.yaml");
+        fs::File::create(&logger_config)
+            .or_exit_print("Unable to create logger config")
+            .write(DEFAULT_CONFIG.as_bytes())
+            .or_exit_print("Unable to create logger config");
+    }
+    match log4rs::init_file(&logger_config, Default::default()) {
+        Ok(_) => (),
+        Err(e) => {println!("unable to load logger config, {}", e); return},
+    };
     
+    // Load configuration
     if !config.exists() {
         fs::create_dir_all(&config)
             .or_exit("Unable to create config folder");
@@ -199,7 +230,7 @@ async fn main() {
 
     let mut layout = builder.build(driver_manager, &func_builder).await;
 
-    info!("Layout:\n{}", layout.layout_string());
+    info!("Layout:\n{}", layout.layout_string().unwrap_or("".to_string()));
 
     // event loop
     tokio::spawn(async move {

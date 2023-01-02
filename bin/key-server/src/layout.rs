@@ -1,5 +1,6 @@
 use std::{ops::Range, fmt::Display, sync::Arc};
 
+use itertools::Itertools;
 use serde::{Serialize, Deserialize, de};
 use slab::Slab;
 use tokio::sync::RwLock;
@@ -274,6 +275,12 @@ impl Layout {
     }
 
     #[allow(dead_code)]
+    /// Remove layer
+    pub fn curr_layer(&self) -> usize {
+        self.cur_layer
+    }
+
+    #[allow(dead_code)]
     /// Add layer
     pub fn add_layer(&mut self, layer: Vec<Function>, index: usize) -> Result<usize, LayoutError> {
         if layer.len() > self.width * self.height {
@@ -295,23 +302,14 @@ impl Layout {
     }
 
     /// Get string representing layout
-    pub fn layout_string(&self) -> String {
-        let mut str = String::new();
-        let last = self.layer_stack[self.cur_layer].len() - 1;
-        for (i, func) in self.layer_stack[self.cur_layer].iter().enumerate() {
-            if let Some(func) = func {
-                str.push_str(&format!("{:?}", func.ftype()));
-            } else {
-                str.push_str("None")
-            }
-
-            if (i + 1) % self.width == 0 {
-                str.push_str("\n");
-            } else if i != last {
-                str.push_str(", ");
-            }
-        }
-        str
+    pub fn layout_string(&self) -> Option<String> {
+        serde_json::to_string_pretty(
+            &self.layer_stack[self.cur_layer].iter()
+                .map(|func| {
+                    func.as_ref().map(|func| func.ftype())
+                })
+                .collect_vec()
+        ).ok()
     }
 
     /// Poll the layout states and call corresponding functions
@@ -372,7 +370,7 @@ impl Layout {
                     let (x, y) = root;
 
                     let state = driver.poll(*input);
-                    
+
                     drop(driver);
                     drop(driver_manager);
 
