@@ -4,6 +4,7 @@ members = [
     "lib/key-module",
     "lib/key-module/example/driver",
     "lib/key-module/example/func",
+    "lib/mcp23017-driver",
     "bin/key-server",
     "bin/gadget-service",
     "bin/kout",

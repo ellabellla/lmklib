@@ -44,30 +44,16 @@ def err(err):
 ```
 ### Driver Module
 ```python
-def load_data(name, data):
+def load_data(data):
     """Initialize new driver from key server config data
 
     Args:
-        name (str): Name of the driver type
         data (str): Driver data
 
     Returns:
         Result:
             Ok (int): Id of initialized driver
             Err (str): String describing error
-    """
-    pass
-
-def name(driver_id):
-    """Fetch the name of the driver with the specified id
-
-    Args:
-        driver_id (int): Driver id
-
-    Returns:
-        Result: 
-            Ok (str): Name of the driver
-            Err (str):  String describing error
     """
     pass
 

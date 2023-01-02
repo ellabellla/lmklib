@@ -6,7 +6,7 @@ use function::{FunctionBuilder};
 use log::{error, info};
 use tokio::sync::RwLock;
 
-use crate::{function::{midi::MidiController, cmd::CommandPool, hid::HID, FunctionConfiguration, FunctionConfig, nng::NanoMessenger}, driver::SerdeDriverManager, modules::ModuleManager};
+use crate::{function::{midi::MidiController, cmd::CommandPool, hid::HID, FunctionConfiguration, FunctionConfig, nng::NanoMessenger}, modules::ModuleManager};
 
 /// Driver module
 mod driver;
@@ -143,7 +143,7 @@ impl<T> OrExit<T> for Option<T> {
 #[tokio::main]
 async fn main() {
     /// Config files and folders
-    const BACKEND_JSON: &str = "backend.json";
+    const DRIVERS: &str = "drivers";
     const LAYOUT_JSON: &str = "layout.json";
     const FRONTEND_JSON: &str = "frontend.json";
     const MODULES: &str = "modules";
@@ -178,13 +178,8 @@ async fn main() {
         fs::create_dir_all(&config)
             .or_exit("Unable to create config folder");
         
-        fs::File::create(config.join(BACKEND_JSON))
-            .or_exit("Unable to create default backend config")
-            .write_all(&serde_json::to_string_pretty(&SerdeDriverManager::new())
-                .or_exit("Unable to create default backend config")
-                .as_bytes()
-            )
-            .or_exit("Unable to create default backend config");
+        fs::create_dir_all(config.join(DRIVERS))
+            .or_exit("Unable to create driver folder");
 
         fs::File::create(config.join(LAYOUT_JSON))
             .or_exit("Unable to create default layout config")
@@ -209,10 +204,9 @@ async fn main() {
     // init key-server
     let module_manager = ModuleManager::new(config.join(MODULES)).or_exit("Unable to create module manager");
 
-    let driver_manager: SerdeDriverManager = serde_json::from_reader(fs::File::open(config.join(BACKEND_JSON))
-        .or_exit("Unable to read backend config"))
-        .or_exit("Unable to parse backend config");
-    let driver_manager: Arc<RwLock<DriverManager>> = Arc::new(RwLock::new(driver_manager.build(module_manager.clone()).await.or_exit("Unable to build driver manager")));
+    let driver_manager = DriverManager::load(&config.join(DRIVERS), module_manager.clone()).await
+        .or_exit("Unable to load drivers");
+    let driver_manager: Arc<RwLock<DriverManager>> = Arc::new(RwLock::new(driver_manager));
     
     let function_config: FunctionConfiguration = serde_json::from_reader(fs::File::open(config.join(FRONTEND_JSON))
         .or_exit("Unable to read frontend config"))

@@ -1,5 +1,5 @@
 use abi_stable::{export_root_module, sabi_extern_fn, sabi_trait::TD_Opaque, std_types::{RString, RResult::{self, ROk, RErr}, RVec}, prefix_type::PrefixTypeTrait};
-use key_module::{driver::{DriverModuleRef, DriverModule, DriverBox, Driver}, Data};
+use key_module::{driver::{DriverModuleRef, DriverModule, DriverBox, Driver}};
 use slab::Slab;
 use serde::{Serialize, Deserialize};
 
@@ -19,7 +19,6 @@ fn new_driver() -> DriverBox {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ConstData {
-    name: String,
     state: RVec<u16>,
 }
 
@@ -28,26 +27,14 @@ pub struct DriverManager {
 }
 
 impl Driver for DriverManager {
-    fn load_data(&mut self, data: Data) -> RResult<u64, RString> {
-        if data.name == "Const" {
-            let data = match serde_json::from_str(&data.data) {
-                Ok(data) => data,
-                Err(e) => return RErr(format!("{}", e).into())
-            };
-            let id = self.drivers.insert(data) as u64;
+    fn load_data(&mut self, data: RString) -> RResult<u64, RString> {
+        let data = match serde_json::from_str(&data) {
+            Ok(data) => data,
+            Err(e) => return RErr(format!("{}", e).into())
+        };
+        let id = self.drivers.insert(data) as u64;
 
-            return ROk(id)
-        }
-        return RErr("Unknown function".into())
-    }
-
-    fn name(&self, id: u64) -> RResult<RString, RString> {
-        if let Some(name) = self.drivers.get(id as usize)
-            .map(|data| RString::from(data.name.to_string())) {
-                ROk(name.into()) 
-        } else {
-            RErr(RString::from("Driver not found"))
-        }
+        return ROk(id);
     }
 
     fn poll(&mut self, id:u64) -> RResult<RVec<u16>, RString> {

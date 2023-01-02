@@ -6,7 +6,7 @@ use key_module::{Data, function, driver};
 use serde::{Serialize, Deserialize};
 use tokio::sync::{mpsc::{self, UnboundedSender}, oneshot::{self, Sender, Receiver}};
 
-use crate::{OrLogIgnore, function::{FunctionInterface, ReturnCommand, FunctionType, Function}, OrLog, driver::{DriverInterface, DriverType, Driver, DriverError}};
+use crate::{OrLogIgnore, function::{FunctionInterface, ReturnCommand, FunctionType, Function}, OrLog, driver::{DriverInterface, DriverData, Driver, DriverError}};
 
 #[derive(Debug, Serialize, Deserialize)]
 /// Interface type
@@ -47,7 +47,7 @@ pub enum ModError {
     /// Meta parse error
     Parse(serde_json::Error),
     /// No module found
-    NoSuchModule,
+    NoSuchModule(String),
     /// Internal module error
     Module(String),
     /// Message passing error
@@ -60,7 +60,7 @@ impl Display for ModError {
             ModError::IO(e) => f.write_fmt(format_args!("IO error, {}", e)),
             ModError::LoadModule(e) => f.write_fmt(format_args!("Module loading error, {}", e)),
             ModError::Parse(e) => f.write_fmt(format_args!("Parse error, {}", e)),
-            ModError::NoSuchModule => f.write_str("No such module"),
+            ModError::NoSuchModule(name) => f.write_fmt(format_args!("No such module, {}", name)),
             ModError::Module(e) => f.write_fmt(format_args!("Module error, {}", e)),
             ModError::Channel(e) => f.write_fmt(format_args!("Channel error, {}", e)),
         }
@@ -97,33 +97,26 @@ impl FunctionInterface for ExternalFunction {
 /// Internal "External Driver" Interface
 pub struct ExternalDriver {
     module_name: String,
-    name: String,
     id: u64,
-    driver: Data,
+    data: String,
     module_manager: Arc<ModuleManager>,
     state: Vec<u16>,
 }
 
 impl ExternalDriver {
     /// New
-    pub async fn new(module_name: String, driver: Data, module_manager: Arc<ModuleManager>) -> Result<Driver, DriverError> {
-        let id = module_manager.load_driver(&module_name, driver.clone()).await
-            .map_err(|e| DriverError::new(format!("{}", e)))?;
-        let name = module_manager.driver_name(&module_name, id).await
+    pub async fn new(module_name: String, data: String, module_manager: Arc<ModuleManager>) -> Result<Driver, DriverError> {
+        let id = module_manager.load_driver(&module_name, data.clone()).await
             .map_err(|e| DriverError::new(format!("{}", e)))?;
         let state = module_manager.driver_poll(&module_name, id).await
             .map_err(|e| DriverError::new(format!("{}", e)))?;
         
-        Ok(Box::new(ExternalDriver{module_name, name: name.into(), id, driver, module_manager, state: state.into()}))
+        Ok(Box::new(ExternalDriver{module_name, id, data, module_manager, state: state.into()}))
     }
 }
 
 #[async_trait]
 impl DriverInterface for ExternalDriver {
-    fn name(&self) -> &str {
-        &self.name
-    }
-
     fn iter(&self) -> std::slice::Iter<u16> {
         self.state.iter()
     }
@@ -150,8 +143,8 @@ impl DriverInterface for ExternalDriver {
         }
     }
     
-    fn to_driver_type(&self) -> DriverType {
-        DriverType::External { module: self.module_name.clone(), driver: self.driver.clone() }
+    fn to_driver_data(&self) -> DriverData {
+        DriverData{ module: self.module_name.clone(), data: self.data.clone().into() }
     }
 }
 
@@ -168,9 +161,7 @@ enum FuncCommand {
 /// Driver Module commands
 enum DriverCommand {
     /// Load and init new driver from data
-    LoadData(Data, Sender<Result<u64, String>>),
-    /// Get name of driver
-    Name(u64, Sender<Result<String, String>>),
+    LoadData(String, Sender<Result<u64, String>>),
     /// Poll the state of the driver
     Poll(u64, Sender<Result<Vec<u16>, String>>),
     /// Set the state of the driver
@@ -249,8 +240,6 @@ const PY_MODULE_FILE: &'static str = "module.py";
 const PY_LOAD_DATA: &'static str = "load_data";
 /// Python load data function name
 const PY_EVENT: &'static str = "event";
-/// Python name function name
-const PY_NAME: &'static str = "name";
 /// Python poll function name
 const PY_POLL: &'static str = "poll";
 /// Python set function name
@@ -393,32 +382,25 @@ impl ModuleManager {
             while let Some(command) = rx.blocking_recv() {
                 match command {
                     DriverCommand::LoadData(data, tx) => tx.send(
-                            driver.load_data(data)
+                            driver.load_data(data.into())
                             .map_err(|e| e.to_string())
                             .into()
                         )
                         .or_log_ignore("Channel error (Module Manager)"),
-                    DriverCommand::Name(id, tx) => tx.send(
-                            driver.name(id)
-                            .map(|o| o.to_string())
+                    DriverCommand::Poll(id, tx) => tx.send(
+                            driver.poll(id)
+                            .map(|o| o.into())
                             .map_err(|e| e.to_string())
                             .into()
                         )
                         .or_log_ignore("Channel error (Module Manager)"),
-                        DriverCommand::Poll(id, tx) => tx.send(
-                                driver.poll(id)
-                                .map(|o| o.into())
-                                .map_err(|e| e.to_string())
-                                .into()
-                            )
-                            .or_log_ignore("Channel error (Module Manager)"),
-                        DriverCommand::Set(id, idx, state, tx) => tx.send(
-                                driver.set(id, idx, state)
-                                .map(|o| o.into())
-                                .map_err(|e| e.to_string())
-                                .into()
-                            )
-                            .or_log_ignore("Channel error (Module Manager)"),
+                    DriverCommand::Set(id, idx, state, tx) => tx.send(
+                            driver.set(id, idx, state)
+                            .map(|o| o.into())
+                            .map_err(|e| e.to_string())
+                            .into()
+                        )
+                        .or_log_ignore("Channel error (Module Manager)"),
                 };
             }
         });
@@ -443,18 +425,7 @@ impl ModuleManager {
                         DriverCommand::LoadData(data, tx) => {
                             let res = || -> Result<_, PyErr> { 
                                 Ok(interface.getattr(py, PY_LOAD_DATA)?
-                                .call1(py, (data.name.into_string(), data.data.into_string()))?
-                                .extract::<WrapResult<_, _>>(py)?.0)
-                            };
-                            match res() {
-                                Ok(res) => tx.send(res).or_log_ignore("Channel error (Module Manager)"),
-                                Err(e) => tx.send(Err(e.to_string())).or_log_ignore("Channel error (Module Manager)"),
-                            }
-                        },
-                        DriverCommand::Name(id, tx) => {
-                            let res = || -> Result<_, PyErr> { 
-                                Ok(interface.getattr(py, PY_NAME)?
-                                .call1(py, (id as i64,))?
+                                .call1(py, (data, ))?
                                 .extract::<WrapResult<_, _>>(py)?.0)
                             };
                             match res() {
@@ -496,12 +467,12 @@ impl ModuleManager {
 
     /// Find function module by name
     fn find_function_module(&self, module_name: &str) -> Result<&UnboundedSender<FuncCommand>, ModError> {
-        self.function_modules.get(module_name).ok_or_else(|| ModError::NoSuchModule)
+        self.function_modules.get(module_name).ok_or_else(|| ModError::NoSuchModule(module_name.to_string()))
     }
 
     /// Find driver module by name
     fn find_driver_module(&self, module_name: &str) -> Result<&UnboundedSender<DriverCommand>, ModError> {
-        self.driver_modules.get(module_name).ok_or_else(|| ModError::NoSuchModule)
+        self.driver_modules.get(module_name).ok_or_else(|| ModError::NoSuchModule(module_name.to_string()))
     }
 
     /// Receive command respond from channel
@@ -529,18 +500,10 @@ impl ModuleManager {
     }
 
     /// Load driver from data. Calls load_data
-    pub async fn load_driver(&self, module_name: &str, data: Data) -> Result<u64, ModError> {
+    pub async fn load_driver(&self, module_name: &str, data: String) -> Result<u64, ModError> {
         let module = self.find_driver_module(module_name)?;
         let (tx, rx) = oneshot::channel();
         module.send(DriverCommand::LoadData(data, tx)).map_err(|e| ModError::Channel(e.to_string()))?;
-        ModuleManager::receive(rx).await
-    }
-
-    /// Get a drivers name. Calls name
-    pub async fn driver_name(&self, module_name: &str, id: u64) -> Result<String, ModError> {
-        let module = self.find_driver_module(module_name)?;
-        let (tx, rx) = oneshot::channel();
-        module.send(DriverCommand::Name(id, tx)).map_err(|e| ModError::Channel(e.to_string()))?;
         ModuleManager::receive(rx).await
     }
 

@@ -1,7 +1,6 @@
 use std::{path::Path};
 
 use abi_stable::{StableAbi, std_types::{RString, RBox, RVec, RResult}, library::{RootModule, LibraryError}, sabi_types::VersionStrings, package_version_strings, sabi_trait};
-use crate::Data;
 
 #[repr(C)]
 #[derive(StableAbi)]
@@ -28,10 +27,7 @@ impl RootModule for DriverModuleRef {
 pub trait Driver {
     /// Initialize new driver from key server config data
     /// Returns the id of the new driver
-    fn load_data<'borr, A>(&mut self, data: Data) -> abi_stable::std_types::RResult<u64,RString>;
-
-    /// Fetch the name of the driver with the specified id
-    fn name(&self, id: u64) -> RResult<RString, RString>;
+    fn load_data<'borr, A>(&mut self, data: RString) -> abi_stable::std_types::RResult<u64,RString>;
 
     /// Poll the current state of the driver with the specified id
     fn poll(&mut self, id: u64) -> RResult<RVec<u16>, RString>;
