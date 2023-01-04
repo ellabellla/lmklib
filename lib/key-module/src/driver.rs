@@ -39,12 +39,8 @@ pub trait Driver {
 
 pub type DriverBox = Driver_TO<'static, RBox<()>>;
 
-/// Load from directory
-pub fn load_root_module_in_directory(directory: &Path) -> Result<DriverModuleRef, LibraryError> {
-    DriverModuleRef::load_from_directory(directory)
-}
-
 /// Load from file
 pub fn load_module(path: &Path) -> Result<DriverModuleRef, LibraryError> {
-    DriverModuleRef::load_from_file(path)
+    abi_stable::library::lib_header_from_path(path)
+            .and_then(|x| x.init_root_module::<DriverModuleRef>())
 }
