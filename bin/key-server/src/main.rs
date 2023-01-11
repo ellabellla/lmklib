@@ -234,8 +234,6 @@ async fn main() {
 
     let layout = builder.build(driver_manager, func_builder.clone()).await;
 
-    info!("Layout:\n{}", layout.read().await.layout_string().unwrap_or("".to_string()));
-
     let config_thread = ConfigRPC::start(
         CONFIG_FRONT.to_string(), 
         CONFIG_BACK.to_string(), 
