@@ -1,6 +1,6 @@
 use std::{fmt::Display, sync::Arc};
 
-use configfs::async_trait;
+use async_trait::async_trait;
 use midi_msg::{MidiMsg, ChannelVoiceMsg};
 use midir::{MidiOutput};
 use serde::{Serialize, Deserialize};

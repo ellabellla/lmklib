@@ -1,6 +1,6 @@
 use std::{sync::Arc, io::{Write}, fmt::Display, thread, time::Duration, str::MatchIndices};
 
-use configfs::async_trait;
+use async_trait::async_trait;
 use dynfmt::{Format, ArgumentSpec};
 use nanomsg::{Socket, Protocol, Endpoint};
 use serde::{Serialize, Deserialize};
@@ -10,6 +10,7 @@ use crate::{driver::DriverManager, OrLogIgnore, OrLog};
 
 use super::{Function, FunctionInterface, ReturnCommand, FunctionType, FunctionConfig, FunctionConfigData};
 
+/// Dynamic hash formatter, format("# bees", 10) = "10 bees"
 struct HashFormat;
 
 impl<'f> Format<'f> for HashFormat {
@@ -31,9 +32,13 @@ impl<'f> Iterator for HashIter<'f> {
 }
 
 #[derive(Debug)]
+/// NanoMsg Error
 pub enum NanoMsgError {
+    /// Controller error
     Controller(nanomsg::Error),
+    /// No configuration found
     NoConfig,
+    /// Message passing error
     ChannelError,
 }
 
@@ -49,11 +54,13 @@ impl Display for NanoMsgError {
 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Driver data to fetch for message
 pub struct DriverData {
     name: String,    
     idx: Vec<usize>,
 }
 
+/// Nano message controller 
 pub struct NanoMessenger{
     tx: UnboundedSender<Vec<u8>>,
     pub_addr: String, 
@@ -81,6 +88,7 @@ impl FunctionConfig for NanoMessenger {
 }
 
 impl NanoMessenger {
+    /// Create a device connection
     fn device_connection(addr: &str, protocal: Protocol) -> nanomsg::Result<(Socket, Endpoint)> {
         let mut socket = Socket::new_for_device(protocal)?;
         if matches!(protocal, Protocol::Sub) {
@@ -90,12 +98,14 @@ impl NanoMessenger {
         Ok((socket, endpoint))
     }
 
+    /// Create a client connection
     fn connect(addr: &str, protocal: Protocol) -> nanomsg::Result<(Socket, Endpoint)> {
         let mut socket = Socket::new(protocal)?;
         let endpoint = socket.connect(addr)?;
         Ok((socket, endpoint))
     }
 
+    /// New
     pub async fn new(pub_addr: String, sub_addr: String, timeout: isize) -> Result<Arc<RwLock<NanoMessenger>>, NanoMsgError> {
         let (tx, mut rx) = mpsc::unbounded_channel::<Vec<u8>>();
         let (new_tx, new_rx) = oneshot::channel::<Result<(), nanomsg::Error>>();
@@ -154,12 +164,13 @@ impl NanoMessenger {
         }
     }
 
+    /// Send message
     pub fn send(&self, bytes: Vec<u8>) {
         self.tx.send(bytes).or_log("Channel error (Nano Messenger)");
     }
 }
 
-
+/// NanoMsg function
 pub struct NanoMsg {
     topic: u8,
     format: String,
@@ -170,6 +181,7 @@ pub struct NanoMsg {
 }
 
 impl NanoMsg {
+    /// New
     pub fn new(topic: u8, format: String, driver_data: Vec<DriverData>, nano_messenger: Arc<RwLock<NanoMessenger>>, driver_manager: Arc<RwLock<DriverManager>>) -> Function {
         Some(Box::new(NanoMsg{topic, format, driver_data, prev_state: 0, nano_messenger, driver_manager}))
     }

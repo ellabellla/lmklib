@@ -1,7 +1,7 @@
 
 use std::{sync::{Arc}, collections::HashSet, hash::Hash};
 
-use configfs::async_trait;
+use async_trait::async_trait;
 use key_module::Data;
 use serde::{Serialize, Deserialize};
 use tokio::sync::RwLock;

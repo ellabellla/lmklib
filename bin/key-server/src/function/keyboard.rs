@@ -1,12 +1,12 @@
 use std::{sync::{Arc}};
 
-use configfs::async_trait;
+use async_trait::async_trait;
 use tokio::sync::RwLock;
 use virt_hid::key::{BasicKey, SpecialKey, Modifier};
 
 use super::{FunctionInterface, ReturnCommand, FunctionType, hid::HID, Function};
 
-
+/// Key function (acts as normal key)
 pub struct Key{
     key: char,
     hid: Arc<RwLock<HID>>,
@@ -14,6 +14,7 @@ pub struct Key{
 }
 
 impl Key {
+    /// New
     pub fn new(key: char, hid: Arc<RwLock<HID>>) -> Function {
         Some(Box::new(Key { key, prev_state: 0, hid }))
     }
@@ -43,6 +44,7 @@ impl FunctionInterface for Key {
     }
 }
 
+/// Special Key function (acts as normal key)
 pub struct Special {
     special: SpecialKey,
     hid: Arc<RwLock<HID>>,
@@ -50,6 +52,7 @@ pub struct Special {
 }
 
 impl Special {
+    /// New
     pub fn new(special: SpecialKey, hid: Arc<RwLock<HID>>) -> Function {
         Some(Box::new(Special { special, prev_state: 0, hid }))
     }
@@ -79,6 +82,7 @@ impl FunctionInterface for Special {
     }
 }
 
+/// Modifier key function (acts as normal key)
 pub struct ModifierKey {
     modifier: Modifier,
     hid: Arc<RwLock<HID>>,
@@ -86,6 +90,7 @@ pub struct ModifierKey {
 }
 
 impl ModifierKey {
+    /// New
     pub fn new(modifier: Modifier, hid: Arc<RwLock<HID>>) -> Function {
         Some(Box::new(ModifierKey { modifier, prev_state: 0, hid }))
     }
@@ -115,6 +120,7 @@ impl FunctionInterface for ModifierKey {
     }
 }
 
+/// Basic String function, types a string
 pub struct BasicString {
     string: std::string::String,
     prev_state: u16,
@@ -122,6 +128,7 @@ pub struct BasicString {
 }
 
 impl BasicString {
+    /// New
     pub fn new(string: std::string::String, hid: Arc<RwLock<HID>>) -> Function {
         Some(Box::new(BasicString { string, prev_state: 0, hid }))
     }
@@ -146,6 +153,7 @@ impl FunctionInterface for BasicString {
     }
 }
 
+/// Complex string function, types a string based on a keyboard layout
 pub struct ComplexString {
     string: std::string::String,
     layout: std::string::String,
@@ -154,6 +162,7 @@ pub struct ComplexString {
 }
 
 impl ComplexString {
+    /// New
     pub fn new(string: std::string::String, layout: std::string::String, hid: Arc<RwLock<HID>>) -> Function {
         Some(Box::new(ComplexString { string, layout, prev_state: 0, hid }))
     }
@@ -178,6 +187,7 @@ impl FunctionInterface for ComplexString {
     }
 }
 
+/// Shortcut function, presses a key combination (will not hold the combination)
 pub struct Shortcut {
     modifiers: Vec<Modifier>,
     keys: Vec<BasicKey>,

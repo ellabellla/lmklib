@@ -1,6 +1,6 @@
 use std::{sync::{Arc}, time::{Instant, Duration}};
 
-use configfs::async_trait;
+use async_trait::async_trait;
 use tokio::sync::RwLock;
 use virt_hid::mouse::{MouseDir, MouseButton};
 

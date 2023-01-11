@@ -1,6 +1,6 @@
 use std::{ops::Range, collections::HashMap, fmt::Display, sync::Arc, path::Path, fs, io::Write};
 
-use configfs::async_trait;
+use async_trait::async_trait;
 use itertools::Itertools;
 use serde::{Serialize, Deserialize};
 

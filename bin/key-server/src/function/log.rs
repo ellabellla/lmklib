@@ -1,16 +1,18 @@
-use configfs::async_trait;
+use async_trait::async_trait;
 use log::{warn, info, error};
 use serde::{Serialize, Deserialize};
 
 use super::{Function, FunctionInterface, ReturnCommand, FunctionType};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Log level
 pub enum LogLevel {
     Warn,
     Info,
     Error,
 }
 
+/// Log function, logs a message
 pub struct Log {
     log_level: LogLevel,
     msg: String,
@@ -18,6 +20,7 @@ pub struct Log {
 }
 
 impl Log {
+    /// New
     pub fn new(log_level: LogLevel, msg: String) -> Function {
         Some(Box::new(Log{log_level, msg, prev_state: 0}))
     }

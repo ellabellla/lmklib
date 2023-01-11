@@ -1,7 +1,7 @@
 use std::{collections::HashMap, io, path::PathBuf, fs, fmt::Display, sync::Arc, ops::{Range, Deref, DerefMut}};
 
 use pyo3::{prelude::*};
-use configfs::async_trait;
+use async_trait::async_trait;
 use key_module::{Data, function, driver};
 use serde::{Serialize, Deserialize};
 use tokio::sync::{mpsc::{self, UnboundedSender}, oneshot::{self, Sender, Receiver}};

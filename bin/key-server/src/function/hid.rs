@@ -1,6 +1,6 @@
 use std::{sync::Arc, io, fmt::Display};
 
-use configfs::async_trait;
+use async_trait::async_trait;
 use tokio::{sync::{RwLock, mpsc::{UnboundedSender, self}, oneshot}};
 use uinput::{event::{self, controller::Mouse, relative::{Position, Wheel}, keyboard::{Key, Misc, KeyPad, InputAssist}}, Device};
 use virt_hid::{key::{self, BasicKey, KeyOrigin, SpecialKey, Modifier}, mouse::{self, MouseDir, MouseButton}};
