@@ -71,7 +71,7 @@ impl ConfigRPC {
             }
         }
 
-        Ok(tokio::spawn(async move {
+        Ok(tokio::task::spawn_blocking(move || {
             let mut buffer = String::new();
             loop {
                 buffer.clear();
@@ -85,7 +85,7 @@ impl ConfigRPC {
                 };
 
                 socket.write_all(&match command {
-                    RPCCommand::Layer => layout.read().await
+                    RPCCommand::Layer => layout.blocking_read()
                         .layout_string()
                         .unwrap_or("".to_string())
                         .as_bytes()
@@ -95,32 +95,31 @@ impl ConfigRPC {
                             continue;
                         };
 
-                        let mut layout_write = layout.write().await;
+                        let mut layout_write = layout.blocking_write();
                         let index = layout_write.layer_len();
                         bool_to_str(
-                            layout_write
-                            .add_layer(layer, index)
-                            .await
+                            tokio::runtime::Handle::current()
+                            .block_on(layout_write.add_layer(layer, index))
                             .is_ok()
                         )
                         .as_bytes()
                         .to_owned()
                     }
                     RPCCommand::SwitchLayer(index) => bool_to_str(
-                        layout.write().await
+                        layout.blocking_write()
                             .switch_layer(index).is_some()
                         )
                         .as_bytes()
                         .to_owned(),
                     RPCCommand::UpLayer => bool_to_str(
-                            layout.write().await.
+                            layout.blocking_write().
                             up_layer().
                             is_some()
                         )
                         .as_bytes()
                         .to_owned(),
                     RPCCommand::DownLayer => bool_to_str(
-                            layout.write().await.
+                            layout.blocking_write().
                             down_layer()
                             .is_some()
                         )
