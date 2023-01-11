@@ -362,13 +362,14 @@ impl Layout {
                     let (mut x, mut y) = root;
 
                     for state in state {
-                        for layer in self.layer_stack[self.cur_layer..].iter_mut().rev() {
+                        for layer in self.layer_stack[..self.cur_layer+1].iter_mut().rev() {
                             match &mut layer[x + (y * self.width)] {
                                 Some(func) => {
                                     let res = func.event(state).await;
                                     if !matches!(res, ReturnCommand::None) {
                                         commands.push(res);
                                     }
+                                    break;
                                 },
                                 None=> {
                                     continue;
@@ -396,13 +397,14 @@ impl Layout {
                     drop(driver);
                     drop(driver_manager);
 
-                    for layer in self.layer_stack[self.cur_layer..].iter_mut().rev() {
+                    for layer in self.layer_stack[..self.cur_layer+1].iter_mut().rev() {
                         match &mut layer[*x + (*y * self.width)] {
                             Some(func) => {
                                 let res = func.event(state).await;
                                 if !matches!(res, ReturnCommand::None) {
                                     commands.push(res);
                                 }
+                                break;
                             },
                             None=> {
                                 continue;
