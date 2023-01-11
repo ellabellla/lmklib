@@ -1,11 +1,13 @@
 [workspace]
 members = [
+    "lib/key-rpc",
     "lib/virt-hid",
     "lib/key-module",
     "lib/key-module/example/driver",
     "lib/key-module/example/func",
     "lib/mcp23017-driver",
     "bin/key-server",
+    "bin/key-server-cli",
     "bin/gadget-service",
     "bin/kout",
     "bin/quack",
@@ -20,6 +22,7 @@ members = [
 [workspace.dependencies]
 virt-hid = { path = "lib/virt-hid" }
 key-module = { path = "lib/key-module" }
+key-rpc = { path = "lib/key-rpc" }
 fschema-lib = { path = "external/fschema/fschema-lib" }
 keyboard-layouts = { path= "external/keyboard-layouts" }
 gen_layouts_sys = { path= "external/keyboard-layouts/gen_layouts_sys" }
