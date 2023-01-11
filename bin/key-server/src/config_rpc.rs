@@ -81,6 +81,11 @@ impl ConfigRPC {
                         .unwrap_or("".to_string())
                         .as_bytes()
                         .to_owned(),
+                    Command::LayerIdx => layout.blocking_read()
+                        .curr_layer()
+                        .to_string()
+                        .as_bytes()
+                        .to_owned(),
                     Command::AddLayer(layer) => {
                         let Some(layer) = serde_json::from_str::<Vec<Vec<FunctionType>>>(&layer).or_log("Unable to parse layer (ConfigRPC)") else {
                             continue;

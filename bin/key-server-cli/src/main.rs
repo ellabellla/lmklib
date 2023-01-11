@@ -48,6 +48,7 @@ struct Args {
 #[derive(Subcommand)]
 enum Command {
     Layer,
+    LayerIdx,
     AddLayer {
         json: String,
     },
@@ -65,6 +66,7 @@ fn main() {
 
     match args.command {
         Command::Layer => println!("{}", client.layer().or_exit("Unable to get layer")),
+        Command::LayerIdx => println!("{}", client.layer_idx().or_exit("Unable to get layer")),
         Command::AddLayer { json } => client.add_layer(json).or_exit("Unable to add layer"),
         Command::SwitchLayer { idx } => client.switch_layer(idx).or_exit("Unable to switch layer"),
         Command::UpLayer => client.up_layer().or_exit("Unable to switch layer"),
