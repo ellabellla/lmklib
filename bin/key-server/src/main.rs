@@ -6,7 +6,7 @@ use function::{FunctionBuilder};
 use log::{error, info};
 use tokio::sync::RwLock;
 
-use crate::{function::{midi::MidiController, cmd::CommandPool, hid::HID, FunctionConfiguration, FunctionConfig, nng::NanoMessenger}, modules::ModuleManager};
+use crate::{function::{midi::MidiController, cmd::CommandPool, hid::HID, FunctionConfiguration, FunctionConfig, nng::NanoMessenger}, modules::ModuleManager, config_rpc::ConfigRPC};
 
 /// Driver module
 mod driver;
@@ -16,8 +16,8 @@ mod layout;
 mod function;
 /// Plugin modules
 mod modules;
-/// ConfigFS modules
-mod keyfs;
+/// Config rpc modules
+mod config_rpc;
 
 #[derive(Parser)]
 /// Cli Args
@@ -148,6 +148,9 @@ async fn main() {
     const FRONTEND_JSON: &str = "frontend.json";
     const MODULES: &str = "modules";
 
+    const CONFIG_FRONT: &str = "ipc:///lmk/ksf.ipc";
+    const CONFIG_BACK: &str = "ipc:///lmk/ksb.ipc";
+
     // Load configuration
     let args = Args::parse();
 
@@ -222,16 +225,24 @@ async fn main() {
         .or_exit("Unable to read layout config"))
         .or_exit("Unable to parse layout config");
 
-    let mut layout = builder.build(driver_manager, &func_builder).await;
+    let layout = builder.build(driver_manager, func_builder.clone()).await;
 
-    info!("Layout:\n{}", layout.layout_string().unwrap_or("".to_string()));
+    info!("Layout:\n{}", layout.read().await.layout_string().unwrap_or("".to_string()));
+
+    let config_thread = ConfigRPC::start(CONFIG_FRONT.to_string(), CONFIG_BACK.to_string(), layout.clone()).await.or_exit("Unable to start Config RPC");
 
     // event loop
-    tokio::spawn(async move {
-        loop {
-            layout.tick().await;
-            layout.poll().await;
-            thread::sleep(Duration::from_millis(30));
-        }
-    }).await.unwrap();
+    let layout_thread = {
+        let layout = layout.clone();
+        tokio::spawn(async move {
+            loop {
+                layout.write().await.tick().await;
+                layout.write().await.poll().await;
+                thread::sleep(Duration::from_millis(30));
+            }
+        })
+    };
+
+    layout_thread.await.or_log("Layout thread error");
+    config_thread.await.or_log("Config FS thread error");
 }

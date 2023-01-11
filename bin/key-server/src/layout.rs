@@ -125,7 +125,7 @@ impl LayoutBuilder {
     }
 
     /// Build layout
-    pub async fn build(self, driver_manager: Arc<RwLock<DriverManager>>, function_builder: &Arc<RwLock<FunctionBuilder>>) -> Layout {
+    pub async fn build(self, driver_manager: Arc<RwLock<DriverManager>>, function_builder: Arc<RwLock<FunctionBuilder>>) -> Arc<RwLock<Layout>> {
         let mut layer_stack = Vec::new();
         for layer in self.layers.into_iter() {
             let mut built_layer = Vec::new();
@@ -134,14 +134,15 @@ impl LayoutBuilder {
             }
             layer_stack.push(built_layer);
         }
-        Layout { 
+        Arc::new(RwLock::new(Layout { 
             width: self.width, 
             height: self.height, 
             addresses: self.addresses, 
             driver_manager: driver_manager, 
+            function_builder: function_builder,
             layer_stack,
             cur_layer: 0,
-        }
+        }))
     }
 }
 
@@ -226,7 +227,8 @@ pub struct Layout {
     addresses: Slab<Address>,
 
     driver_manager: Arc<RwLock<DriverManager>>,
-    
+    function_builder: Arc<RwLock<FunctionBuilder>>,
+
     layer_stack: Vec<Vec<Function>>,
     cur_layer: usize,
 }
@@ -280,18 +282,35 @@ impl Layout {
         self.cur_layer
     }
 
-    #[allow(dead_code)]
+    /// Number of layers
+    pub fn layer_len(&self) -> usize {
+        self.layer_stack.len()
+    }
+
     /// Add layer
-    pub fn add_layer(&mut self, layer: Vec<Function>, index: usize) -> Result<usize, LayoutError> {
-        if layer.len() > self.width * self.height {
+    pub async fn add_layer(&mut self, layer: Vec<Vec<FunctionType>>, index: usize) -> Result<usize, LayoutError> {
+        if layer.len() > self.height {
             return Err(LayoutError::InvalidSize)
         }
 
+        let mut built_layer = Vec::with_capacity(self.width*self.height);
+
+        let function_builder = self.function_builder.read().await;
+
+        for row in layer {
+            if row.len() > self.width {
+                return Err(LayoutError::InvalidSize)
+            }
+            for ftype in row {
+                built_layer.push(function_builder.build(ftype).await)
+            }
+        }
+
         if index > self.layer_stack.len() {
-            self.layer_stack.push(layer);
+            self.layer_stack.push(built_layer);
             Ok(self.layer_stack.len())
         } else {
-            self.layer_stack.insert(index, layer);
+            self.layer_stack.insert(index, built_layer);
             Ok(index)
         }
     }
@@ -303,11 +322,14 @@ impl Layout {
 
     /// Get string representing layout
     pub fn layout_string(&self) -> Option<String> {
-        serde_json::to_string_pretty(
+        serde_json::to_string(
             &self.layer_stack[self.cur_layer].iter()
                 .map(|func| {
                     func.as_ref().map(|func| func.ftype())
                 })
+                .chunks(self.width)
+                .into_iter()
+                .map(|chunk| chunk.collect_vec())
                 .collect_vec()
         ).ok()
     }
