@@ -1,17 +1,20 @@
 
 set -e
 
-download=false
-offline=false
+reload=false
+fetch=false
 whole=false
+target="release"
+targetFlag="--release"
 ARGS=()
 
 while [ $# -gt 0 ]; do
-    while getopts dfw name; do
+    while getopts rdfw name; do
         case $name in
-            d) download=true;;
+            r) reload=true;;
             f) fetch=true;;
             w) whole=true;;
+            d) target="debug" targetFlag="";;
         esac
     done
     [ $? -eq 0 ] || exit 1
@@ -26,9 +29,17 @@ done
 REMOTE=${ARGS[0]}
 CRATE=${ARGS[1]}
 
-if [[ "$download" == "true" ]]; then
+if [[ "$reload" == "true" ]]; then
     mkdir -p .cargo/
     cargo vendor > .cargo/config
+    docker container create --name dummy -v lmk-vendor:/vendor -v lmk-cargo:/.cargo -it lmklib/build:latest bash > /dev/null
+    docker start dummy > /dev/null
+    docker exec -it dummy bash -c "rm -rf /.cargo/* && rm -rf /vendor/*" > /dev/null
+    docker cp vendor dummy:/ > /dev/null
+    docker cp .cargo dummy:/ > /dev/null
+    docker rm -f dummy > /dev/null
+    rm -rf .cargo
+    rm -rf .vendor
 fi
 
 if [[ "$fetch" == "true" ]]; then
@@ -39,16 +50,17 @@ fi
 docker rm -f lmk > /dev/null 2>&1
 docker create --name lmk --platform linux/arm/v7 \
     -v lmk-target:/app/target -v ${PWD}:/app -v ${HOME}/.cargo/registry:/root/.cargo/registry \
+    -v lmk-cargo:/app/.cargo -v lmk-vendor:/app/vendor \
     -it lmklib/build:latest bash > /dev/null
 docker start lmk > /dev/null
 if [[ "$whole" == "true" ]]; then 
-    docker exec -it lmk /root/.cargo/bin/cargo build --release --offline
-    docker exec -it lmk bash -c "cd target && tar --exclude=\"release/*/*\" --exclude=\"release/*/\" -czvf release.tar.gz release/"
-    docker cp lmk:/app/target/release.tar.gz /tmp > /dev/null
-    CRATE=release.tar.gz
+    docker exec -it lmk /root/.cargo/bin/cargo build $targetFlag --offline
+    docker exec -it lmk bash -c "cd target && tar --exclude=\"$target/*/*\" --exclude=\"$target/*/\" -czvf $target.tar.gz $target/"
+    docker cp lmk:/app/target/$target.tar.gz /tmp > /dev/null
+    CRATE=$target.tar.gz
 else
-    docker exec -it lmk /root/.cargo/bin/cargo build --release --offline --bin ${CRATE} 
-    docker cp lmk:/app/target/release/$CRATE /tmp/$CRATE > /dev/null
+    docker exec -it lmk /root/.cargo/bin/cargo build $targetFlag --offline --bin ${CRATE} 
+    docker cp lmk:/app/target/$target/$CRATE /tmp/$CRATE > /dev/null
 fi
 docker stop lmk > /dev/null
 docker rm -f lmk > /dev/null
