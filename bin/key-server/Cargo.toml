@@ -9,6 +9,7 @@ edition = "2021"
 virt-hid = { workspace = true }
 mcp23017-rpi-lib = { workspace = true }
 key-module = { workspace = true }
+key-rpc = { workspace = true }
 tokio = { version = "1", features = ["full"] }
 libc = "0.2"
 serde = { version = "1.0", features = ["derive"]}

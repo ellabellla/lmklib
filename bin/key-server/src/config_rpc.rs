@@ -1,19 +1,10 @@
 use std::{sync::Arc, thread, time::Duration, io::{Read, Write}};
 
 use nanomsg::{Socket, Protocol};
-use serde::{Serialize, Deserialize};
 use tokio::{sync::{RwLock, oneshot}, task::JoinHandle};
+use key_rpc::Command;
 
 use crate::{layout::Layout, OrLogIgnore, function::FunctionType, OrLog};
-
-#[derive(Debug, Serialize, Deserialize)]
-pub enum RPCCommand {
-    Layer,
-    AddLayer(String),
-    SwitchLayer(usize),
-    UpLayer,
-    DownLayer,
-}
 
 
 pub struct ConfigRPC {
@@ -80,17 +71,17 @@ impl ConfigRPC {
                     continue;
                 };
 
-                let Some(command) = serde_json::from_str::<RPCCommand>(&buffer).or_log("Invalid RPC command (Config RPC)") else {
+                let Some(command) = serde_json::from_str::<Command>(&buffer).or_log("Invalid RPC command (Config RPC)") else {
                     continue;
                 };
 
                 socket.write_all(&match command {
-                    RPCCommand::Layer => layout.blocking_read()
+                    Command::Layer => layout.blocking_read()
                         .layout_string()
                         .unwrap_or("".to_string())
                         .as_bytes()
                         .to_owned(),
-                    RPCCommand::AddLayer(layer) => {
+                    Command::AddLayer(layer) => {
                         let Some(layer) = serde_json::from_str::<Vec<Vec<FunctionType>>>(&layer).or_log("Unable to parse layer (ConfigRPC)") else {
                             continue;
                         };
@@ -105,20 +96,20 @@ impl ConfigRPC {
                         .as_bytes()
                         .to_owned()
                     }
-                    RPCCommand::SwitchLayer(index) => bool_to_str(
+                    Command::SwitchLayer(index) => bool_to_str(
                         layout.blocking_write()
                             .switch_layer(index).is_some()
                         )
                         .as_bytes()
                         .to_owned(),
-                    RPCCommand::UpLayer => bool_to_str(
+                    Command::UpLayer => bool_to_str(
                             layout.blocking_write().
                             up_layer().
                             is_some()
                         )
                         .as_bytes()
                         .to_owned(),
-                    RPCCommand::DownLayer => bool_to_str(
+                    Command::DownLayer => bool_to_str(
                             layout.blocking_write().
                             down_layer()
                             .is_some()
