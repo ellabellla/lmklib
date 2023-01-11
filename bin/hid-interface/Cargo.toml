@@ -10,4 +10,4 @@ clap = { version = "4.0.29", features = ["derive"] }
 configfs = { workspace = true }
 virt-hid = { workspace = true }
 libc = "0.2.138"
-tokio = { version = "1", futures = ["rt", "rt-multi-thread"] }
+tokio = { version = "1", features = ["rt", "rt-multi-thread"] }
