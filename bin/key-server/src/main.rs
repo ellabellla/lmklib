@@ -3,7 +3,7 @@ use std::{process::exit, thread, time::Duration, path::PathBuf, str::FromStr, fm
 use clap::Parser;
 use driver::{DriverManager};
 use function::{FunctionBuilder};
-use log::{error, info};
+use log::{error};
 use tokio::sync::RwLock;
 
 use crate::{function::{midi::MidiController, cmd::CommandPool, hid::HID, FunctionConfiguration, FunctionConfig, nng::NanoMessenger}, modules::ModuleManager, config_rpc::ConfigRPC};
