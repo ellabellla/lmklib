@@ -24,10 +24,14 @@ impl Display for ClientError {
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Command {
     Layer,
+    LayerIdx,
+    NumLayers,
     AddLayer(String),
+    RemoveLayer(usize),
     SwitchLayer(usize),
     UpLayer,
     DownLayer,
+    SaveLayout,
 }
 
 
@@ -47,73 +51,64 @@ impl Client {
         Ok(Client { socket, _endpoint })
     }
 
-    pub fn layer(&mut self) -> Result<String, ClientError>{
-        let data = serde_json::to_string(&Command::Layer).map_err(|e| ClientError::Serde(e))?;
+    fn call_infallible(&mut self, command: Command) -> Result<String, ClientError> {
+        let data = serde_json::to_string(&command).map_err(|e| ClientError::Serde(e))?;
         self.socket.write_all(&data.as_bytes()).map_err(|e| ClientError::IO(e))?;
 
         let mut buffer = String::new();
         self.socket.read_to_string(&mut buffer).map_err(|e| ClientError::IO(e))?;
 
-        if buffer != "" {
-            Ok(buffer)
+        Ok(buffer)
+    }
+
+    fn call_no_ret(&mut self, command: Command) -> Result<(), ClientError> {
+        let data = serde_json::to_string(&command).map_err(|e| ClientError::Serde(e))?;
+        self.socket.write_all(&data.as_bytes()).map_err(|e| ClientError::IO(e))?;
+
+        let mut buffer = String::new();
+        self.socket.read_to_string(&mut buffer).map_err(|e| ClientError::IO(e))?;
+
+        if buffer == "true" {
+            Ok(())
         } else {
             Err(ClientError::Return(buffer))
         }
+    }
+
+    pub fn layer(&mut self) -> Result<String, ClientError>{
+        self.call_infallible(Command::Layer)
+    }
+
+    pub fn layer_idx(&mut self) -> Result<String, ClientError>{
+        self.call_infallible(Command::LayerIdx)
+    }
+
+    pub fn num_layers(&mut self) -> Result<usize, ClientError>{
+        self.call_infallible(Command::NumLayers)
+            .and_then(|ret| usize::from_str_radix(&ret, 10).map_err(|e| ClientError::Return(e.to_string())))
     }
 
     pub fn add_layer(&mut self, layer: String) -> Result<(), ClientError>{
-        let data = serde_json::to_string(&Command::AddLayer(layer)).map_err(|e| ClientError::Serde(e))?;
-        self.socket.write_all(&data.as_bytes()).map_err(|e| ClientError::IO(e))?;
-
-        let mut buffer = String::new();
-        self.socket.read_to_string(&mut buffer).map_err(|e| ClientError::IO(e))?;
-
-        if buffer == "true" {
-            Ok(())
-        } else {
-            Err(ClientError::Return(buffer))
-        }
+        self.call_no_ret(Command::AddLayer(layer))
     }
 
-    pub fn switch_layer(&mut self, index: usize) -> Result<(), ClientError>{
-        let data = serde_json::to_string(&Command::SwitchLayer(index)).map_err(|e| ClientError::Serde(e))?;
-        self.socket.write_all(&data.as_bytes()).map_err(|e| ClientError::IO(e))?;
+    pub fn remove_layer(&mut self, idx: usize) -> Result<(), ClientError>{
+        self.call_no_ret(Command::RemoveLayer(idx))
+    }
 
-        let mut buffer = String::new();
-        self.socket.read_to_string(&mut buffer).map_err(|e| ClientError::IO(e))?;
-
-        if buffer == "true" {
-            Ok(())
-        } else {
-            Err(ClientError::Return(buffer))
-        }
+    pub fn switch_layer(&mut self, idx: usize) -> Result<(), ClientError>{
+        self.call_no_ret(Command::SwitchLayer(idx))
     }
 
     pub fn down_layer(&mut self) -> Result<(), ClientError>{
-        let data = serde_json::to_string(&Command::DownLayer).map_err(|e| ClientError::Serde(e))?;
-        self.socket.write_all(&data.as_bytes()).map_err(|e| ClientError::IO(e))?;
-
-        let mut buffer = String::new();
-        self.socket.read_to_string(&mut buffer).map_err(|e| ClientError::IO(e))?;
-
-        if buffer == "true" {
-            Ok(())
-        } else {
-            Err(ClientError::Return(buffer))
-        }
+        self.call_no_ret(Command::DownLayer)
     }
 
     pub fn up_layer(&mut self) -> Result<(), ClientError>{
-        let data = serde_json::to_string(&Command::UpLayer).map_err(|e| ClientError::Serde(e))?;
-        self.socket.write_all(&data.as_bytes()).map_err(|e| ClientError::IO(e))?;
+        self.call_no_ret(Command::UpLayer)
+    }
 
-        let mut buffer = String::new();
-        self.socket.read_to_string(&mut buffer).map_err(|e| ClientError::IO(e))?;
-
-        if buffer == "true" {
-            Ok(())
-        } else {
-            Err(ClientError::Return(buffer))
-        }
+    pub fn save_layer(&mut self) -> Result<(), ClientError>{
+        self.call_no_ret(Command::SaveLayout)
     }
 }

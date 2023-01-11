@@ -219,7 +219,14 @@ async fn main() {
     let hid = HID::from_config(&function_config).await.or_exit("Unable to create hid");
     let nano_messanger = NanoMessenger::from_config(&function_config).await.or_exit("Unable to create nano messange");
     let midi_controller = MidiController::from_config(&function_config).await.or_exit("Unable to create midi controller");
-    let func_builder = FunctionBuilder::new(hid, midi_controller, command_pool, driver_manager.clone(), nano_messanger, module_manager.clone());
+    let func_builder = FunctionBuilder::new(
+        hid, 
+        midi_controller, 
+        command_pool, 
+        driver_manager.clone(), 
+        nano_messanger, 
+        module_manager.clone()
+    );
 
     let builder: layout::LayoutBuilder = serde_json::from_reader(fs::File::open(config.join(LAYOUT_JSON))
         .or_exit("Unable to read layout config"))
@@ -229,7 +236,12 @@ async fn main() {
 
     info!("Layout:\n{}", layout.read().await.layout_string().unwrap_or("".to_string()));
 
-    let config_thread = ConfigRPC::start(CONFIG_FRONT.to_string(), CONFIG_BACK.to_string(), layout.clone()).await.or_exit("Unable to start Config RPC");
+    let config_thread = ConfigRPC::start(
+        CONFIG_FRONT.to_string(), 
+        CONFIG_BACK.to_string(), 
+        layout.clone(), 
+        config.join(LAYOUT_JSON)
+    ).await.or_exit("Unable to start Config RPC");
 
     // event loop
     let layout_thread = {

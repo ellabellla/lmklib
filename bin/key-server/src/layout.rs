@@ -264,7 +264,6 @@ impl Layout {
         }
     }
 
-    #[allow(dead_code)]
     /// Remove layer
     pub fn remove_layer(&mut self, index: usize) -> Option<Vec<Function>> {
         if index >= self.layer_stack.len() {
@@ -276,7 +275,11 @@ impl Layout {
         Some(layer)
     }
 
-    #[allow(dead_code)]
+    /// Number of layers
+    pub fn num_layers(&self) -> usize {
+        self.layer_stack.len()
+    }
+
     /// Remove layer
     pub fn curr_layer(&self) -> usize {
         self.cur_layer
@@ -419,6 +422,10 @@ impl Layout {
         for command in commands {
             command.eval(self);
         }
+    }
+
+    pub fn to_json(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string_pretty(&self)
     }
 }
 

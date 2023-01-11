@@ -1,4 +1,4 @@
-use std::{sync::Arc, thread, time::Duration, io::{Read, Write}};
+use std::{sync::Arc, thread, time::Duration, io::{Read, Write}, path::PathBuf, fs};
 
 use nanomsg::{Socket, Protocol};
 use tokio::{sync::{RwLock, oneshot}, task::JoinHandle};
@@ -11,7 +11,7 @@ pub struct ConfigRPC {
 }
 
 impl ConfigRPC {
-    pub async fn start(front: String, back: String, layout: Arc<RwLock<Layout>>) -> Result<JoinHandle<()>, nanomsg::Error> {
+    pub async fn start(front: String, back: String, layout: Arc<RwLock<Layout>>, layout_path: PathBuf) -> Result<JoinHandle<()>, nanomsg::Error> {
         let (device_tx, mut device_rx) = oneshot::channel();
         {
             let back = back.clone();
@@ -86,6 +86,11 @@ impl ConfigRPC {
                         .to_string()
                         .as_bytes()
                         .to_owned(),
+                    Command::NumLayers => layout.blocking_read()
+                        .num_layers()
+                        .to_string()
+                        .as_bytes()
+                        .to_owned(),
                     Command::AddLayer(layer) => {
                         let Some(layer) = serde_json::from_str::<Vec<Vec<FunctionType>>>(&layer).or_log("Unable to parse layer (ConfigRPC)") else {
                             continue;
@@ -97,6 +102,15 @@ impl ConfigRPC {
                             tokio::runtime::Handle::current()
                             .block_on(layout_write.add_layer(layer, index))
                             .is_ok()
+                        )
+                        .as_bytes()
+                        .to_owned()
+                    }
+                    Command::RemoveLayer(idx) => {
+                        bool_to_str(
+                            layout.blocking_write()
+                            .remove_layer(idx)
+                            .is_some()
                         )
                         .as_bytes()
                         .to_owned()
@@ -121,6 +135,18 @@ impl ConfigRPC {
                         )
                         .as_bytes()
                         .to_owned(),
+                    Command::SaveLayout => layout.blocking_read().to_json().or_log("Unable to serialize layout")
+                        .and_then(|json| 
+                            fs::File::create(&layout_path)
+                            .or_log("Unable to open layout config")
+                            .map(|file| (json, file))
+                        )
+                        .and_then(|(json, mut file)| 
+                            file.write_all(&json.as_bytes())
+                            .or_log("Unable to write to layout config")
+                        )
+                        .map(|_| "true".as_bytes().to_owned())
+                        .unwrap_or_else(|| "false".as_bytes().to_owned()),
                 }).or_log_ignore("Socket error (Config RPC)");    
             }
         }))
