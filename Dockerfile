@@ -15,5 +15,7 @@ WORKDIR /app
 
 VOLUME ["/root/.cargo/registry"]
 VOLUME [ "/app" ]
+VOLUME [ "/app/.cargo" ]
+VOLUME [ "/app/vendor" ]
 VOLUME [ "/app/target" ]
 
