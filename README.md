@@ -5,6 +5,7 @@ A software suite for using a Raspberry Pi Zero as a smart mechanical keyboard. U
 | Name | Readme | Description |
 |------|--------|-------------|
 |Key-Server|[link](bin/key-server/)|A server that interfaces with the Raspberry Pi's GPIO and sends mouse and key events based on hardware input to either the Pi or host.|
+|Key-Server-Cli|[link](bin/key-server-cli/)|Cli for interacting with the key server.|
 |Key-Module|[link](lib/key-module/)|A library for creating modules for Key-server in rust and python.|
 |Gadget-Service|[link](bin/gadget-service/)|A Systemd service and installer that sets up a raspberry pi as a usb-gadget on boot.|
 |Virt-HID|[link](lib/virt-hid/)|A hid interface library.|
