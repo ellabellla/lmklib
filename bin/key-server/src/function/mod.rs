@@ -58,16 +58,22 @@ pub trait FunctionConfig {
     async fn from_config(function_config: &FunctionConfiguration) -> Result<Self::Output, Self::Error>;
 }
 
-#[derive(Debug)]
 /// Function configuration, managers function controller configs
 pub struct FunctionConfiguration {
+    module_manager: Arc<ModuleManager>,
     configs: HashSet<FunctionConfigData>,
 }
 
 impl FunctionConfiguration {
     /// New
-    pub fn new() -> FunctionConfiguration {
-        FunctionConfiguration { configs: HashSet::new() }
+    pub fn new(config: &str, module_manager: Arc<ModuleManager>) -> Result<FunctionConfiguration, serde_json::Error> {
+        let configs = serde_json::from_str(config)?;
+        Ok(FunctionConfiguration { configs, module_manager })
+    }
+
+    /// Create new config data
+    pub fn create_config() -> Result<String, serde_json::Error> {
+        serde_json::to_string_pretty(&HashSet::<FunctionConfigData>::new())
     }
 
     #[allow(dead_code)]
@@ -82,25 +88,6 @@ impl FunctionConfiguration {
         M: FnMut(&&FunctionConfigData) -> bool
     {
         self.configs.iter().find(matches)
-    }
-}
-
-impl Serialize for FunctionConfiguration {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer 
-    {
-        self.configs.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for FunctionConfiguration {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de> 
-    {
-        let configs = HashSet::<FunctionConfigData>::deserialize(deserializer)?;    
-        Ok(FunctionConfiguration { configs })
     }
 }
 
@@ -157,7 +144,7 @@ pub enum FunctionType {
     Instrument { channel: Channel, instrument: GMSoundSet },
     Bash(String),
     Pipe(String),
-    SwitchHid,
+    SwitchHid{name: String},
     Log(LogLevel, String),
     NanoMsg { topic: u8, format: String, driver_data: Vec<DriverData> },
     External{ module: String, func: Data },
@@ -229,7 +216,7 @@ impl FunctionBuilder {
             FunctionType::Instrument { channel, instrument } => Instrument::new(channel, instrument.into(), self.midi_controller.clone()),
             FunctionType::Bash(command) => Bash::new(command, self.command_pool.clone()),
             FunctionType::Pipe(command) => Pipe::new(command, self.command_pool.clone()),
-            FunctionType::SwitchHid => SwitchHid::new(self.hid.clone()),
+            FunctionType::SwitchHid{name} => SwitchHid::new(name, self.hid.clone()),
             FunctionType::Log(log_level, msg) => Log::new(log_level, msg),
             FunctionType::NanoMsg { topic, format: msg, driver_data } => NanoMsg::new(topic, msg, driver_data, self.nano_messenger.clone(), self.driver_manager.clone()),
             FunctionType::External { module, func } => ExternalFunction::new(module, self.module_manager.clone(), func).await,

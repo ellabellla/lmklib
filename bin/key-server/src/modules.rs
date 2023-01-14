@@ -2,15 +2,18 @@ use std::{collections::HashMap, io, path::PathBuf, fs, fmt::Display, sync::Arc, 
 
 use pyo3::{prelude::*};
 use async_trait::async_trait;
-use key_module::{Data, function, driver};
+use key_module::{Data, function, driver, hid};
 use serde::{Serialize, Deserialize};
 use tokio::sync::{mpsc::{self, UnboundedSender}, oneshot::{self, Sender, Receiver}};
+use virt_hid::{key::{SpecialKey, Modifier}, mouse::{MouseDir, MouseButton}};
 
 use crate::{OrLogIgnore, function::{FunctionInterface, ReturnCommand, FunctionType, Function}, OrLog, driver::{DriverInterface, DriverData, Driver, DriverError}};
 
 #[derive(Debug, Serialize, Deserialize)]
 /// Interface type
 enum InterfaceType {
+    /// HID interface
+    HID,
     /// Function interface
     Function,
     /// Driver interface
@@ -149,6 +152,25 @@ impl DriverInterface for ExternalDriver {
 }
 
 #[derive(Debug)]
+/// HID Module commands
+enum HidCommand {
+    HoldKey(char),
+    HoldSpecial(SpecialKey),
+    HoldModifier(Modifier),
+    ReleaseKey(char),
+    ReleaseSpecial(SpecialKey),
+    ReleaseModifier(Modifier),
+    PressBasicStr(String),
+    PressStr(String, String),
+    ScrollWheel(i8),
+    MoveMouse(i8, MouseDir),
+    HoldButton(MouseButton),
+    ReleaseButton(MouseButton),
+    SendKeyboard,
+    SendMouse
+}
+
+#[derive(Debug)]
 /// Function Module commands
 enum FuncCommand {
     /// Load and init new driver from data
@@ -225,6 +247,7 @@ impl<T, E> Into<Result<T, E>> for WrapResult<T, E> {
 
 /// Module Manager
 pub struct ModuleManager {
+    hid_modules: HashMap<String, UnboundedSender<HidCommand>>,
     function_modules: HashMap<String, UnboundedSender<FuncCommand>>,
     driver_modules: HashMap<String, UnboundedSender<DriverCommand>>,
 }
@@ -245,11 +268,27 @@ const PY_POLL: &'static str = "poll";
 /// Python set function name
 const PY_SET: &'static str = "set";
 
+const PY_HOLD_KEY: &'static str = "hold_key";
+const PY_HOLD_SPECIAL: &'static str = "hold_special";
+const PY_HOLD_MODIFIER: &'static str = "hold_modifier";
+const PY_RELEASE_KEY: &'static str = "release_key";
+const PY_RELEASE_SPECIAL: &'static str = "release_special";
+const PY_RELEASE_MODIFIER: &'static str = "release_modifier";
+const PY_PRESS_BASIC_STR: &'static str = "press_basic_str";
+const PY_PRESS_STR: &'static str = "press_str";
+const PY_MOVE_MOUSE_X: &'static str = "move_mouse_x";
+const PY_MOVE_MOUSE_Y: &'static str = "move_mouse_y";
+const PY_SCROLL_WHEEL: &'static str = "scroll_wheel";
+const PY_HOLD_BUTTON: &'static str = "hold_button";
+const PY_RELEASE_BUTTON: &'static str = "release_button";
+const PY_SEND_KEYBOARD: &'static str = "send_keyboard";
+const PY_SEND_MOUSE: &'static str = "send_mouse";
+
 impl ModuleManager {
     /// New
     pub fn new(plugin_dir: PathBuf) -> Result<Arc<ModuleManager>, ModError> {
         let contents = fs::read_dir(plugin_dir).map_err(|e| ModError::IO(e))?;
-        let mut modules = ModuleManager{function_modules: HashMap::new(), driver_modules: HashMap::new()};
+        let mut modules = ModuleManager{hid_modules: HashMap::new(), function_modules: HashMap::new(), driver_modules: HashMap::new()};
         
         for entry in contents {
             let entry = entry.map_err(|e| ModError::IO(e))?;
@@ -257,6 +296,10 @@ impl ModuleManager {
         }
 
         Ok(Arc::new(modules))
+    }
+
+    pub fn is_hid(&self, name: &str) -> bool {
+        self.hid_modules.contains_key(name)
     }
 
     /// Load module
@@ -267,6 +310,7 @@ impl ModuleManager {
             .map_err(|e| ModError::Parse(e))?;
         
         match module.interface {
+            InterfaceType::HID => self.load_hid_module(module_path, module)?,
             InterfaceType::Function => self.load_function_module(module_path, module)?,
             InterfaceType::Driver => self.load_driver_module(module_path, module)?,
         }
@@ -274,8 +318,118 @@ impl ModuleManager {
         Ok(())
     }
 
+    /// Load hid module
+    fn load_hid_module(&mut self, module_path: PathBuf, module: Module) -> Result<(), ModError> {
+        if self.hid_modules.contains_key(&module.name) {
+            return Err(ModError::LoadModule("Module name must be unique for it's interface type".to_string()))
+        }
+
+        let tx = match module.module_type {
+            ModuleType::ABIStable => ModuleManager::init_abi_hid(module_path)?,
+            ModuleType::Python => ModuleManager::init_py_hid(module_path)?,
+        };
+
+        self.hid_modules.insert(module.name, tx);
+        Ok(())
+
+    }
+
+    /// Init abi hid
+    fn init_abi_hid(module_path: PathBuf) -> Result<UnboundedSender<HidCommand>, ModError> {
+        let interface = hid::load_module(&module_path.join(ABI_MODULE_FILE))
+            .map_err(|e| ModError::LoadModule(e.to_string()))?;
+
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        tokio::task::spawn_blocking(move || {
+            let mut hid = interface.new_hid()();
+            while let Some(command) = rx.blocking_recv() {
+                match command {
+                    HidCommand::HoldKey(key) => hid.hold_key(key as usize),
+                    HidCommand::HoldSpecial(special) => hid.hold_special(special as usize),
+                    HidCommand::HoldModifier(modifier) => hid.hold_modifier(modifier as usize),
+                    HidCommand::ReleaseKey(key) => hid.release_key(key as usize),
+                    HidCommand::ReleaseSpecial(special) => hid.release_special(special as usize),
+                    HidCommand::ReleaseModifier(modifier) => hid.release_modifier(modifier as usize),
+                    HidCommand::PressBasicStr(string) => hid.press_basic_str(string.into()),
+                    HidCommand::PressStr(layout, string) => hid.press_str(layout.into(), string.into()),
+                    HidCommand::ScrollWheel(amount) => hid.scroll_wheel(amount),
+                    HidCommand::MoveMouse(amount, dir) => match dir {
+                        MouseDir::X => hid.move_mouse_x(amount),
+                        MouseDir::Y => hid.move_mouse_y(amount),
+                    },
+                    HidCommand::HoldButton(button) => hid.hold_button(button as usize),
+                    HidCommand::ReleaseButton(button) => hid.release_button(button as usize),
+                    HidCommand::SendKeyboard => hid.send_keyboard(),
+                    HidCommand::SendMouse => hid.send_mouse(),
+                };
+            }
+        });
+        Ok(tx)
+    }
+
+    /// Init python hid
+    fn init_py_hid(module_path: PathBuf) -> Result<UnboundedSender<HidCommand>, ModError> {
+        let path = module_path.join(PY_MODULE_FILE);
+        let path_str = path.to_string_lossy().to_string();
+        let code = fs::read_to_string(&path)
+            .map_err(|e|ModError::LoadModule(e.to_string()))?;
+        let interface = Python::with_gil(|py| -> PyResult<Py<PyAny>> {
+            Ok(PyModule::from_code(py, &code, &path_str, &path_str)?.into())
+        }).map_err(|e| ModError::LoadModule(e.to_string()))?;
+
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        tokio::task::spawn_blocking(move || {
+            while let Some(command) = rx.blocking_recv() {
+                Python::with_gil(|py| -> PyResult<Py<PyAny>> {
+                    match command {
+                        HidCommand::HoldKey(key) => interface.getattr(py, PY_HOLD_KEY)?
+                            .call1(py, (key as usize,))?,
+                        HidCommand::HoldSpecial(special) => interface.getattr(py, PY_HOLD_SPECIAL)?
+                            .call1(py, (special as usize,))?,
+                        HidCommand::HoldModifier(modifier) => interface.getattr(py, PY_HOLD_MODIFIER)?
+                            .call1(py, (modifier as usize,))?,
+                        HidCommand::ReleaseKey(key) => interface.getattr(py, PY_RELEASE_KEY)?
+                            .call1(py, (key as usize,))?,
+                        HidCommand::ReleaseSpecial(special) => interface.getattr(py, PY_RELEASE_SPECIAL)?
+                            .call1(py, (special as usize,))?,
+                        HidCommand::ReleaseModifier(modifier) => interface.getattr(py, PY_RELEASE_MODIFIER)?
+                            .call1(py, (modifier as usize,))?,
+                        HidCommand::PressBasicStr(str) => interface.getattr(py, PY_PRESS_BASIC_STR)?
+                            .call1(py, (str,))?,
+                        HidCommand::PressStr(layout, str) => interface.getattr(py, PY_PRESS_STR)?
+                            .call1(py, (layout, str))?,
+                        HidCommand::ScrollWheel(amount) => interface.getattr(py, PY_SCROLL_WHEEL)?
+                            .call1(py, (amount,))?,
+                        HidCommand::MoveMouse(amount, dir) => match dir {
+                            MouseDir::X => interface.getattr(py, PY_MOVE_MOUSE_X)?
+                                .call1(py, (amount,))?,
+                            MouseDir::Y => interface.getattr(py, PY_MOVE_MOUSE_Y)?
+                                .call1(py, (amount,))?,
+                        },
+                        HidCommand::HoldButton(button) => interface.getattr(py, PY_HOLD_BUTTON)?
+                            .call1(py, (button as usize,))?,
+                        HidCommand::ReleaseButton(button) => interface.getattr(py, PY_RELEASE_BUTTON)?
+                            .call1(py, (button as usize,))?,
+                        HidCommand::SendKeyboard => interface.getattr(py, PY_SEND_KEYBOARD)?
+                            .call0(py)?,
+                        HidCommand::SendMouse => interface.getattr(py, PY_SEND_MOUSE)?
+                            .call0(py)?,
+                    };
+                    Ok(py.None())
+                }).map_err(|e| ModError::LoadModule(e.to_string()))
+                    .or_log("Python error (Module Manager)");
+            }
+        });
+        Ok(tx)
+    }
+
+
     /// Load function module
     fn load_function_module(&mut self, module_path: PathBuf, module: Module) -> Result<(), ModError> {
+        if self.function_modules.contains_key(&module.name) {
+            return Err(ModError::LoadModule("Module name must be unique for it's interface type".to_string()))
+        }
+
         let tx = match module.module_type {
             ModuleType::ABIStable => ModuleManager::init_abi_function(module_path)?,
             ModuleType::Python => ModuleManager::init_py_function(module_path)?,
@@ -362,6 +516,10 @@ impl ModuleManager {
 
     /// Load driver module
     fn load_driver_module(&mut self, module_path: PathBuf, module: Module) -> Result<(), ModError> {
+        if self.driver_modules.contains_key(&module.name) {
+            return Err(ModError::LoadModule("Module name must be unique for it's interface type".to_string()))
+        }
+
         let tx = match module.module_type {
             ModuleType::ABIStable => ModuleManager::init_abi_driver(module_path)?,
             ModuleType::Python => ModuleManager::init_py_driver(module_path)?,
@@ -465,6 +623,11 @@ impl ModuleManager {
         Ok(tx)
     }
 
+    /// Find hid module by name
+    fn find_hid_module(&self, module_name: &str) -> Result<&UnboundedSender<HidCommand>, ModError> {
+        self.hid_modules.get(module_name).ok_or_else(|| ModError::NoSuchModule(module_name.to_string()))
+    }
+
     /// Find function module by name
     fn find_function_module(&self, module_name: &str) -> Result<&UnboundedSender<FuncCommand>, ModError> {
         self.function_modules.get(module_name).ok_or_else(|| ModError::NoSuchModule(module_name.to_string()))
@@ -521,5 +684,89 @@ impl ModuleManager {
         let (tx, rx) = oneshot::channel();
         module.send(DriverCommand::Set(id, idx, state, tx)).map_err(|e| ModError::Channel(e.to_string()))?;
         ModuleManager::receive(rx).await
+    }
+    
+    pub async fn hold_key(&self, module_name: &str, key: char) -> Result<(), ModError> {
+        let module = self.find_hid_module(module_name)?;
+        module.send(HidCommand::HoldKey(key)).map_err(|e| ModError::Channel(e.to_string()))?;
+        Ok(())
+    }
+
+    pub async fn hold_special(&self, module_name: &str, special: SpecialKey) -> Result<(), ModError> {
+        let module = self.find_hid_module(module_name)?;
+        module.send(HidCommand::HoldSpecial(special)).map_err(|e| ModError::Channel(e.to_string()))?;
+        Ok(())
+    }
+
+    pub async fn hold_modifier(&self, module_name: &str, modifier: Modifier) -> Result<(), ModError> {
+        let module = self.find_hid_module(module_name)?;
+        module.send(HidCommand::HoldModifier(modifier)).map_err(|e| ModError::Channel(e.to_string()))?;
+        Ok(())
+    }
+    
+    pub async fn release_key(&self, module_name: &str, key: char) -> Result<(), ModError> {
+        let module = self.find_hid_module(module_name)?;
+        module.send(HidCommand::ReleaseKey(key)).map_err(|e| ModError::Channel(e.to_string()))?;
+        Ok(())
+    }
+
+    pub async fn release_special(&self, module_name: &str, special: SpecialKey) -> Result<(), ModError> {
+        let module = self.find_hid_module(module_name)?;
+        module.send(HidCommand::ReleaseSpecial(special)).map_err(|e| ModError::Channel(e.to_string()))?;
+        Ok(())
+    }
+
+    pub async fn release_modifier(&self, module_name: &str, modifier: Modifier) -> Result<(), ModError> {
+        let module = self.find_hid_module(module_name)?;
+        module.send(HidCommand::ReleaseModifier(modifier)).map_err(|e| ModError::Channel(e.to_string()))?;
+        Ok(())
+    }
+
+    pub async fn press_basic_str(&self, module_name: &str, str: String) -> Result<(), ModError> {
+        let module = self.find_hid_module(module_name)?;
+        module.send(HidCommand::PressBasicStr(str)).map_err(|e| ModError::Channel(e.to_string()))?;
+        Ok(())
+    }
+
+    pub async fn press_str(&self, module_name: &str, layout: String, str: String) -> Result<(), ModError> {
+        let module = self.find_hid_module(module_name)?;
+        module.send(HidCommand::PressStr(layout, str)).map_err(|e| ModError::Channel(e.to_string()))?;
+        Ok(())
+    }
+
+    pub async fn scroll_wheel(&self, module_name: &str, amount: i8) -> Result<(), ModError> {
+        let module = self.find_hid_module(module_name)?;
+        module.send(HidCommand::ScrollWheel(amount)).map_err(|e| ModError::Channel(e.to_string()))?;
+        Ok(())
+    }
+
+    pub async fn move_mouse(&self, module_name: &str, amount: i8, dir: MouseDir) -> Result<(), ModError> {
+        let module = self.find_hid_module(module_name)?;
+        module.send(HidCommand::MoveMouse(amount, dir)).map_err(|e| ModError::Channel(e.to_string()))?;
+        Ok(())
+    }
+    
+    pub async fn hold_button(&self, module_name: &str, button: MouseButton) -> Result<(), ModError> {
+        let module = self.find_hid_module(module_name)?;
+        module.send(HidCommand::HoldButton(button)).map_err(|e| ModError::Channel(e.to_string()))?;
+        Ok(())
+    }
+    
+    pub async fn release_button(&self, module_name: &str, button: MouseButton) -> Result<(), ModError> {
+        let module = self.find_hid_module(module_name)?;
+        module.send(HidCommand::ReleaseButton(button)).map_err(|e| ModError::Channel(e.to_string()))?;
+        Ok(())
+    }
+    
+    pub async fn send_keyboard(&self, module_name: &str) -> Result<(), ModError> {
+        let module = self.find_hid_module(module_name)?;
+        module.send(HidCommand::SendKeyboard).map_err(|e| ModError::Channel(e.to_string()))?;
+        Ok(())
+    }
+    
+    pub async fn send_mouse(&self, module_name: &str) -> Result<(), ModError> {
+        let module = self.find_hid_module(module_name)?;
+        module.send(HidCommand::SendMouse).map_err(|e| ModError::Channel(e.to_string()))?;
+        Ok(())
     }
 }

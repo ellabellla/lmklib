@@ -5,6 +5,7 @@ use serde::{Serialize, Deserialize};
 
 pub mod function;
 pub mod driver;
+pub mod hid;
 
 
 #[repr(C)]

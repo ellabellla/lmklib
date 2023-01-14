@@ -194,7 +194,7 @@ async fn main() {
         
         fs::File::create(config.join(FRONTEND_JSON))
             .or_exit("Unable to create default frontend config")
-            .write_all(&serde_json::to_string_pretty(&FunctionConfiguration::new())
+            .write_all(FunctionConfiguration::create_config()
                 .or_exit("Unable to create default frontend config")
                 .as_bytes()
             )
@@ -211,8 +211,8 @@ async fn main() {
         .or_exit("Unable to load drivers");
     let driver_manager: Arc<RwLock<DriverManager>> = Arc::new(RwLock::new(driver_manager));
     
-    let function_config: FunctionConfiguration = serde_json::from_reader(fs::File::open(config.join(FRONTEND_JSON))
-        .or_exit("Unable to read frontend config"))
+    let function_config: FunctionConfiguration = FunctionConfiguration::new(&fs::read_to_string(config.join(FRONTEND_JSON))
+        .or_exit("Unable to read frontend config"), module_manager.clone())
         .or_exit("Unable to parse frontend config");
 
     let command_pool = CommandPool::from_config(&function_config).await.or_exit("Unable to create command pool");

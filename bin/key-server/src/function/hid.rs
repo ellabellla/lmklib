@@ -1,11 +1,12 @@
 use std::{sync::Arc, io, fmt::Display};
 
 use async_trait::async_trait;
+use log::error;
 use tokio::{sync::{RwLock, mpsc::{UnboundedSender, self}, oneshot}};
 use uinput::{event::{self, controller::Mouse, relative::{Position, Wheel}, keyboard::{Key, Misc, KeyPad, InputAssist}}, Device};
 use virt_hid::{key::{self, BasicKey, KeyOrigin, SpecialKey, Modifier}, mouse::{self, MouseDir, MouseButton}};
 
-use crate::{OrLogIgnore, OrLog};
+use crate::{OrLogIgnore, OrLog, modules::ModuleManager};
 
 use super::{Function, FunctionInterface, ReturnCommand, FunctionType, FunctionConfig, FunctionConfigData};
 
@@ -35,14 +36,15 @@ impl Display for HIDError {
 
 /// Switch hid mode (uinput, usb hid)
 pub struct SwitchHid {
+    name: String,
     prev_state: u16,
     hid: Arc<RwLock<HID>>,
 }
 
 impl SwitchHid {
     /// new
-    pub fn new(hid: Arc<RwLock<HID>>) -> Function {
-        Some(Box::new(SwitchHid{prev_state: 0, hid}))
+    pub fn new(name: String, hid: Arc<RwLock<HID>>) -> Function {
+        Some(Box::new(SwitchHid{name, prev_state: 0, hid}))
     }
 }
 
@@ -50,7 +52,7 @@ impl SwitchHid {
 impl FunctionInterface for SwitchHid {
     async fn event(&mut self, state: u16) -> ReturnCommand {
         if state != 0 && self.prev_state == 0 {
-            self.hid.read().await.switch();
+            self.hid.read().await.switch(self.name.clone());
         }
 
         self.prev_state = state;
@@ -58,7 +60,7 @@ impl FunctionInterface for SwitchHid {
     }
 
     fn ftype(&self) -> FunctionType {
-        FunctionType::SwitchHid
+        FunctionType::SwitchHid{name:self.name.clone()}
     }
 }
 
@@ -79,7 +81,7 @@ enum Command {
     ReleaseButton(MouseButton),
     SendKeyboard,
     SendMouse,
-    Switch,
+    Switch(String),
 }
 
 /// HID controller
@@ -87,7 +89,7 @@ pub struct HID {
     tx: UnboundedSender<Command>,
     led: String, 
     mouse: String, 
-    keyboard: String
+    keyboard: String,
 }
 
 #[async_trait]
@@ -105,13 +107,13 @@ impl FunctionConfig for HID {
             .get(|config| matches!(config, FunctionConfigData::HID { mouse: _, keyboard: _, led: _})) else {
                 return Err(HIDError::NoConfig)
         };
-        HID::new(mouse.clone(), keyboard.clone(), led.clone()).await
+        HID::new(mouse.clone(), keyboard.clone(), led.clone(), function_config.module_manager.clone()).await
     }
 }
 
 impl HID {
     /// New, requires path to usb hid interfaces
-    pub async fn new(mouse: String, keyboard: String, led: String) -> Result<Arc<RwLock<HID>>, HIDError> {
+    pub async fn new(mouse: String, keyboard: String, led: String, module_manager: Arc<ModuleManager>) -> Result<Arc<RwLock<HID>>, HIDError> {
         let (tx, mut rx) = mpsc::unbounded_channel();        
         let (new_tx, new_rx) = oneshot::channel();    
 
@@ -144,124 +146,188 @@ impl HID {
 
             let mut keyboard = key::Keyboard::new(); 
             let mut mouse = mouse::Mouse::new();
-            let mut real = true;
+            let mut cur_hid = "usb".to_owned();
 
             while let Some(command) = rx.recv().await {
                 match command {
-                    Command::HoldKey(key) => if real {
-                        keyboard.hold_key(&BasicKey::Char(key, KeyOrigin::Keyboard));
-                    } else {
-                        let Some(key) = char_to_uinput(key) else {
-                            continue;
-                        };
-                        uinput.press(&key).or_log("Uinput error (HID Driver)");
-                    },
-                    Command::HoldSpecial(special) => if real {
-                        keyboard.hold_key(&BasicKey::Special(special));
-                    } else {
-                        let Some(key) = special_to_uinput(special) else {
-                            continue;
-                        };
-                        uinput.press(&key).or_log("Uinput error (HID Driver)");
-                    },
-                    Command::HoldModifier(modifier) => if real {
-                        keyboard.hold_mod(&modifier);
-                    } else {
-                        let Some(key) = mod_to_uinput(modifier) else {
-                            continue;
-                        };
-                        uinput.press(&key).or_log("Uinput error (HID Driver)");
-                    },
-                    Command::ReleaseKey(key) => if real {
-                        keyboard.release_key(&BasicKey::Char(key, KeyOrigin::Keyboard));
-                    } else {
-                        let Some(key) = char_to_uinput(key) else {
-                            continue;
-                        };
-                        uinput.release(&key).or_log("Uinput error (HID Driver)");
-                    },
-                    Command::ReleaseSpecial(special) => if real {
-                        keyboard.release_key(&BasicKey::Special(special));
-                    } else {
-                        let Some(key) = special_to_uinput(special) else {
-                            continue;
-                        };
-                        uinput.release(&key).or_log("Uinput error (HID Driver)");
-                    },
-                    Command::ReleaseModifier(modifier) => if real {
-                        keyboard.release_mod(&modifier);
-                    } else {
-                        let Some(key) = mod_to_uinput(modifier) else {
-                            continue;
-                        };
-                        uinput.release(&key).or_log("Uinput error (HID Driver)");
-                    },
-                    Command::PressBasicStr(str) => if real {
-                        keyboard.press_basic_string(&str);
-                    } else {
-                        for key in str.chars() {
-                            if requires_shift(key) {
-                                uinput.press(&event::Keyboard::Key(Key::LeftShift)).or_log("Uinput error (HID Driver)");
-                            }
-            
-                            let Some(ukey) = char_to_uinput(key) else {
+                    Command::HoldKey(key) => match cur_hid.as_ref() { 
+                        "usb" => {
+                            keyboard.hold_key(&BasicKey::Char(key, KeyOrigin::Keyboard));
+                        } 
+                        "uinput" => {
+                            let Some(key) = char_to_uinput(key) else {
                                 continue;
                             };
-                            uinput.click(&ukey).or_log("Uinput error (HID Driver)");
-            
-                            if requires_shift(key) {
-                                uinput.release(&event::Keyboard::Key(Key::LeftShift)).or_log("Uinput error (HID Driver)");
-                            }
+                            uinput.press(&key).or_log("Uinput error (HID Driver)");
                         }
+                        _ => {module_manager.hold_key(&cur_hid, key).await.or_log("Unable to process hid input (HID Driver)");}
                     },
-                    Command::PressStr(layout, str) => if real {
-                        keyboard.press_string(&layout, &str);
-                    } else {
-                        for key in str.chars() {
-                            if requires_shift(key) {
-                                uinput.press(&event::Keyboard::Key(Key::LeftShift)).or_log("Uinput error (HID Driver)");
-                            }
-            
-                            let Some(ukey) = char_to_uinput(key) else {
+                    Command::HoldSpecial(special) => match cur_hid.as_ref() { 
+                        "usb" => {
+                            keyboard.hold_key(&BasicKey::Special(special));
+                        } 
+                        "uinput" => {
+                            let Some(key) = special_to_uinput(special) else {
                                 continue;
                             };
-                            uinput.click(&ukey).or_log("Uinput error (HID Driver)");
-            
-                            if requires_shift(key) {
-                                uinput.release(&event::Keyboard::Key(Key::LeftShift)).or_log("Uinput error (HID Driver)");
+                            uinput.press(&key).or_log("Uinput error (HID Driver)");
+                        }
+                        _ => {module_manager.hold_special(&cur_hid, special).await.or_log("Unable to process hid input (HID Driver)");}
+                    },
+                    Command::HoldModifier(modifier) => match cur_hid.as_ref() { 
+                        "usb" => {
+                            keyboard.hold_mod(&modifier);
+                        } 
+                        "uinput" => {
+                            let Some(key) = mod_to_uinput(modifier) else {
+                                continue;
+                            };
+                            uinput.press(&key).or_log("Uinput error (HID Driver)");
+                        }
+                        _ => {module_manager.hold_modifier(&cur_hid, modifier).await.or_log("Unable to process hid input (HID Driver)");}
+                    },
+                    Command::ReleaseKey(key) => match cur_hid.as_ref() { 
+                        "usb" => {
+                            keyboard.release_key(&BasicKey::Char(key, KeyOrigin::Keyboard));
+                        } 
+                        "uinput" => {
+                            let Some(key) = char_to_uinput(key) else {
+                                continue;
+                            };
+                            uinput.release(&key).or_log("Uinput error (HID Driver)");
+                        }
+                        _ => {module_manager.release_key(&cur_hid, key).await.or_log("Unable to process hid input (HID Driver)");}
+                    },
+                    Command::ReleaseSpecial(special) => match cur_hid.as_ref() { 
+                        "usb" => {
+                            keyboard.release_key(&BasicKey::Special(special));
+                        } 
+                        "uinput" => {
+                            let Some(key) = special_to_uinput(special) else {
+                                continue;
+                            };
+                            uinput.release(&key).or_log("Uinput error (HID Driver)");
+                        }
+                        _ => {module_manager.release_special(&cur_hid, special).await.or_log("Unable to process hid input (HID Driver)");}
+                    },
+                    Command::ReleaseModifier(modifier) => match cur_hid.as_ref() { 
+                        "usb" => {
+                            keyboard.release_mod(&modifier);
+                        } 
+                        "uinput" => {
+                            let Some(key) = mod_to_uinput(modifier) else {
+                                continue;
+                            };
+                            uinput.release(&key).or_log("Uinput error (HID Driver)");
+                        }
+                        _ => {module_manager.release_modifier(&cur_hid, modifier).await.or_log("Unable to process hid input (HID Driver)");}
+                    },
+                    Command::PressBasicStr(str) => match cur_hid.as_ref() { 
+                        "usb" => {
+                            keyboard.press_basic_string(&str);
+                        } 
+                        "uinput" => {
+                            for key in str.chars() {
+                                if requires_shift(key) {
+                                    uinput.press(&event::Keyboard::Key(Key::LeftShift)).or_log("Uinput error (HID Driver)");
+                                }
+                
+                                let Some(ukey) = char_to_uinput(key) else {
+                                    continue;
+                                };
+                                uinput.click(&ukey).or_log("Uinput error (HID Driver)");
+                
+                                if requires_shift(key) {
+                                    uinput.release(&event::Keyboard::Key(Key::LeftShift)).or_log("Uinput error (HID Driver)");
+                                }
                             }
                         }
+                        _ => {module_manager.press_basic_str(&cur_hid, str).await.or_log("Unable to process hid input (HID Driver)");}
+                    },
+                    Command::PressStr(layout, str) => match cur_hid.as_ref() { 
+                        "usb" => {
+                            keyboard.press_string(&layout, &str);
+                        } 
+                        "uinput" => {
+                            for key in str.chars() {
+                                if requires_shift(key) {
+                                    uinput.press(&event::Keyboard::Key(Key::LeftShift)).or_log("Uinput error (HID Driver)");
+                                }
+                
+                                let Some(ukey) = char_to_uinput(key) else {
+                                    continue;
+                                };
+                                uinput.click(&ukey).or_log("Uinput error (HID Driver)");
+                
+                                if requires_shift(key) {
+                                    uinput.release(&event::Keyboard::Key(Key::LeftShift)).or_log("Uinput error (HID Driver)");
+                                }
+                            }
+                        }
+                        _ => {module_manager.press_str(&cur_hid, layout, str).await.or_log("Unable to process hid input (HID Driver)");}
                     }
-                    Command::ScrollWheel(amount) => if real {
-                        mouse.scroll_wheel(&amount);
-                    } else {
-                        uinput.position(&event::Relative::Wheel(Wheel::Vertical), amount as i32).or_log("Uinput error (HID Driver)");
+                    Command::ScrollWheel(amount) => match cur_hid.as_ref() { 
+                        "usb" => {
+                            mouse.scroll_wheel(&amount);
+                        } 
+                        "uinput" => {
+                            uinput.position(&event::Relative::Wheel(Wheel::Vertical), amount as i32).or_log("Uinput error (HID Driver)");
+                        }
+                        _ => {module_manager.scroll_wheel(&cur_hid, amount).await.or_log("Unable to process hid input (HID Driver)");}
                     },
-                    Command::MoveMouse(amount, dir) => if real {
-                        mouse.move_mouse(&amount, &dir);
-                    } else {
-                        let dir = mouse_dir_to_position(dir);
-                        uinput.position(&event::Relative::Position(dir), amount as i32).or_log("Uinput error (HID Driver)");
+                    Command::MoveMouse(amount, dir) => match cur_hid.as_ref() { 
+                        "usb" => {
+                            mouse.move_mouse(&amount, &dir);
+                        } 
+                        "uinput" => {
+                            let dir = mouse_dir_to_position(dir);
+                            uinput.position(&event::Relative::Position(dir), amount as i32).or_log("Uinput error (HID Driver)");
+                        }
+                        _ => {module_manager.move_mouse(&cur_hid, amount, dir).await.or_log("Unable to process hid input (HID Driver)");}
                     },
-                    Command::HoldButton(button) => if real {
-                        mouse.hold_button(&button);
-                    } else {
-                        let button = mouse_button_to_mouse(button);
-                        uinput.press(&event::Controller::Mouse(button)).or_log("Uinput error (HID Driver)");
+                    Command::HoldButton(button) => match cur_hid.as_ref() { 
+                        "usb" => {
+                            mouse.hold_button(&button);
+                        } 
+                        "uinput" => {
+                            let button = mouse_button_to_mouse(button);
+                            uinput.press(&event::Controller::Mouse(button)).or_log("Uinput error (HID Driver)");
+                        }
+                        _ => {module_manager.hold_button(&cur_hid, button).await.or_log("Unable to process hid input (HID Driver)");}
                     },
-                    Command::ReleaseButton(button) => if real {
-                        mouse.release_button(&button);
-                    } else {
-                        let button = mouse_button_to_mouse(button);
-                        uinput.release(&event::Controller::Mouse(button)).or_log("Uinput error (HID Driver)");
+                    Command::ReleaseButton(button) => match cur_hid.as_ref() { 
+                        "usb" => {
+                            mouse.release_button(&button);
+                        } 
+                        "uinput" => {
+                            let button = mouse_button_to_mouse(button);
+                            uinput.release(&event::Controller::Mouse(button)).or_log("Uinput error (HID Driver)");
+                        }
+                        _ => {module_manager.release_button(&cur_hid, button).await.or_log("Unable to process hid input (HID Driver)");}
                     },
-                    Command::SendKeyboard => if real {
-                        keyboard.send(&mut hid).or_log("USB HID error (HID Driver)");
+                    Command::SendKeyboard => match cur_hid.as_ref() { 
+                        "usb" => {
+                            keyboard.send(&mut hid).or_log("USB HID error (HID Driver)");
+                        }
+                        "uinput" => (),
+                        _ => {module_manager.send_keyboard(&cur_hid).await.or_log("Unable to process hid input (HID Driver)");}
                     },
-                    Command::SendMouse => if real {
-                        mouse.send(&mut hid).or_log("USB HID error (HID Driver)");
+                    Command::SendMouse => match cur_hid.as_ref() { 
+                        "usb" => {
+                            mouse.send(&mut hid).or_log("USB HID error (HID Driver)");
+                        }
+                        "uinput" => (),
+                        _ => {module_manager.send_mouse(&cur_hid).await.or_log("Unable to process hid input (HID Driver)");}
                     },
-                    Command::Switch => real = !real,
+                    Command::Switch(name) => match name.as_ref() {
+                        "usb" => cur_hid = name,
+                        "uinput" => cur_hid = name,
+                        _ => if module_manager.is_hid(&name) {
+                            cur_hid = name;
+                        } else {
+                            error!("Could not switch to hid (HID Driver), Unable to find hid module, {}", name)
+                        },
+                    },
                 }
             }
         });
@@ -345,8 +411,8 @@ impl HID {
     }
 
     /// Switch hid controllers (uinput or usb hid)
-    pub fn switch(&self) {
-        self.tx.send(Command::Switch).or_log_ignore("Broken Channel (HID Driver)");
+    pub fn switch(&self, name: String) {
+        self.tx.send(Command::Switch(name)).or_log_ignore("Broken Channel (HID Driver)");
     }
 }
 

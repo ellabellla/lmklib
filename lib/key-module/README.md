@@ -1,6 +1,6 @@
 # Key-module
 
-A library for creating modules for Key-server in rust and python. A module can provide either external functions or drivers to the key server.
+A library for creating modules for Key-server in rust and python. A module can provide either a HID output, external functions or drivers to the key server.
 
 Rust modules are written using abi_stable and are dynamically linked. Python modules are loaded and interpreted at runtime using Pyo3.
 
@@ -25,7 +25,7 @@ All modules are placed in the modules folder inside the key-server config folder
 
 A json file containing an object with the items:
 - name: The name of the module
-- interface: The interface type (Function or Driver)
+- interface: The interface type (HID, Function or Driver)
 - module_type: The module type (ABIStable or Python)
 
 ## Python Templates
