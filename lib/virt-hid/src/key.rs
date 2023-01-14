@@ -8,6 +8,7 @@ use std::{
 
 use gen_layouts_sys::*;
 use keyboard_layouts::{keycode_for_unicode, Keycode, deadkey_for_keycode, key_for_keycode, modifier_for_keycode};
+use num_enum::IntoPrimitive;
 use serde::{Serialize, Deserialize};
 
 pub use crate::translate::*;
@@ -18,7 +19,8 @@ const KEY_PACKET_LEN: usize = KEY_PACKET_KEY_IDX + KEY_PACKET_KEY_LEN;
 const KEY_PACKET_MOD_IDX: usize = 0;
 const KEY_PACKET_KEY_IDX: usize = 1;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, IntoPrimitive)]
+#[repr(usize)]
 /// LED State Types
 pub enum LEDState {
     /// Kana
