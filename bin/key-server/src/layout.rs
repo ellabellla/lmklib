@@ -142,6 +142,7 @@ impl LayoutBuilder {
             function_builder: function_builder,
             layer_stack,
             cur_layer: 0,
+            shift_from: vec![],
         }))
     }
 }
@@ -231,6 +232,8 @@ pub struct Layout {
 
     layer_stack: Vec<Vec<Function>>,
     cur_layer: usize,
+
+    shift_from: Vec<(usize, usize)>,
 }
 
 impl Layout {
@@ -261,6 +264,44 @@ impl Layout {
         } else {
             self.cur_layer -= 1;
             Some(())
+        }
+    }
+
+
+    pub fn shift(&mut self, index: usize) -> Option<()> {
+        if index >= self.layer_stack.len() || self.cur_layer == index  || self.shift_from.len() == 0 {
+            None
+        } else {
+            self.shift_from.push((self.cur_layer, index));
+            self.cur_layer = index;
+            Some(())
+        }
+    }
+
+    pub fn unshift(&mut self, index: usize) -> Option<()> {
+        if index >= self.layer_stack.len() || self.shift_from.len() == 0  {
+            None
+        } else {
+            if let Some((start, curr)) = self.shift_from.last() {
+                if *curr == index {
+                    self.switch_layer(*start);
+                    self.shift_from.pop();
+                    return Some(())
+                }
+            }
+            let mut i = self.shift_from.len() -1;
+            loop {
+                let (_, curr) = self.shift_from[i];
+                if curr == index {
+                    self.shift_from.remove(i);
+                    return Some(())
+                }
+                if i == 0 {
+                    break;
+                }
+                i -= 1;
+            }
+            None
         }
     }
 

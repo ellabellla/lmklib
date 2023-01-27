@@ -95,6 +95,10 @@ impl FunctionConfiguration {
 pub enum ReturnCommand {
     /// Switch layout
     Switch(usize),
+    /// Shift layout too
+    Shift(usize),
+    // Return from shifted layout
+    UnShift(usize),
     /// Up layout
     Up,
     /// Down layout
@@ -111,6 +115,8 @@ impl ReturnCommand {
             ReturnCommand::Up => {layout.up_layer();},
             ReturnCommand::Down => {layout.down_layer();},
             ReturnCommand::None => return,
+            ReturnCommand::Shift(index) => {layout.shift(*index);},
+            ReturnCommand::UnShift(index) => {layout.unshift(*index);},
         }
     }
 }
@@ -123,6 +129,7 @@ pub enum FunctionType {
     Up,
     Down,
     Switch(usize),
+    Shift(usize),
     None,
     LeftClick,
     RightClick,
@@ -222,6 +229,7 @@ impl FunctionBuilder {
             FunctionType::External { module, func } => ExternalFunction::new(module, self.module_manager.clone(), func).await,
             FunctionType::Output { driver_name, idx, state } => Output::new(driver_name, idx, state, self.driver_manager.clone()),
             FunctionType::Flip { driver_name, idx } => Flip::new(driver_name, idx, self.driver_manager.clone()),
+            FunctionType::Shift(id) => Shift::new(id),
         }.or_log_ignore(&format!("Unable to build function (Function Builder), {}", debug))
     }
 }
@@ -300,5 +308,35 @@ impl FunctionInterface for Switch {
 
     fn ftype(&self) -> FunctionType {
         FunctionType::Switch(self.id)
+    }
+}
+
+/// Shift function
+pub struct Shift {
+    id: usize,
+    prev_state: u16,
+}
+
+impl Shift {
+    /// New
+    pub fn new(id: usize) -> Function {
+        Some(Box::new(Shift{id, prev_state: 0}))
+    }
+}
+
+#[async_trait]
+impl FunctionInterface for Shift {
+    async fn event(&mut self, state: u16) -> ReturnCommand {
+        if state == 1 && self.prev_state == 0 {
+            return ReturnCommand::Shift(self.id)
+        } else if state == 0 && self.prev_state == 1 {
+            return ReturnCommand::UnShift(self.id)
+        }
+
+        ReturnCommand::None
+    }
+
+    fn ftype(&self) -> FunctionType {
+        FunctionType::Shift(self.id)
     }
 }
