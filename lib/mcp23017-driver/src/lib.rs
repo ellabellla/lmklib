@@ -1,8 +1,8 @@
-use std::{collections::{HashSet}, ops::Range, fmt::Display};
+use std::{collections::{HashSet}, ops::Range, fmt::Display, hash::Hash};
 
 use abi_stable::{std_types::{RVec, RString, RResult::{RErr, ROk, self}}, traits::IntoReprC, export_root_module, sabi_extern_fn, prefix_type::PrefixTypeTrait, sabi_trait::TD_Opaque};
 use key_module::driver::{Driver, DriverModuleRef, DriverBox, DriverModule};
-use mcp23017_rpi_lib::{Pin, Mode, State, MCP23017};
+use mcp23017_rpi_lib::{Mode, State, MCP23017};
 use serde::{Serialize, Deserialize};
 
 
@@ -17,6 +17,55 @@ pub fn get_library() -> DriverModuleRef {
 #[sabi_extern_fn]
 fn new_driver() -> DriverBox {
     DriverBox::from_value(MCPModule{drivers: Vec::new()}, TD_Opaque)
+}
+
+#[derive(Debug, Clone)]
+struct Pin {
+    inner: mcp23017_rpi_lib::Pin,
+    chip: usize
+}
+
+impl Pin {
+    pub fn new(pin: usize, chips: usize) -> Option<Pin> {
+        let chip = pin / 16;
+        let pin = (pin % 16) as u8;
+
+        if chip >= chips {
+            return None
+        }
+
+        mcp23017_rpi_lib::Pin::new(pin).map(|inner| Pin{chip, inner})
+    }
+}
+
+impl Display for Pin {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("{}", usize::from(self)))
+    }
+}
+
+impl From<&Pin> for usize {
+    fn from(p: &Pin) -> Self {
+        let pin: u8 = u8::from(&p.inner);
+        p.chip * 16 + pin as usize
+    }
+}
+
+impl Hash for Pin {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.chip.hash(state);
+        self.inner.hash(state);
+    }
+}
+
+impl PartialEq for Pin {
+    fn eq(&self, other: &Self) -> bool {
+        self.chip == other.chip && self.inner == other.inner
+    }
+}
+
+impl Eq for Pin {
+    
 }
 
 
@@ -43,28 +92,29 @@ impl Display for DriverError {
 pub enum PinType {
     /// Matrix pin configuration
     Matrix {
-        x: Vec<u8>,
-        y: Vec<u8>
+        x: Vec<usize>,
+        y: Vec<usize>,
+        invert: Option<bool>
     },
     /// Single pin input
     Input {
-        pin: u8,
+        pin: usize,
         on_state: bool,
         pull_high: bool,
     },
     /// Single pin output
     Output {
-        pin: u8,
+        pin: usize,
     }
 }
 
 impl PinType {
     /// Build an input
-    fn build(self) -> Result<PinConfig, DriverError> {
+    fn build(self, chips: usize) -> Result<PinConfig, DriverError> {
         match self {
-            PinType::Matrix { x, y } => Ok(Box::new(Matrix::new(x, y)?)),
-            PinType::Input { pin, on_state, pull_high } => Ok(Box::new(Input::new(pin, on_state, pull_high)?)),
-            PinType::Output { pin } => Ok(Box::new(Output::new(pin)?)),
+            PinType::Matrix { x, y, invert } => Ok(Box::new(Matrix::new(x, y, invert.unwrap_or(false), chips)?)),
+            PinType::Input { pin, on_state, pull_high } => Ok(Box::new(Input::new(pin, on_state, pull_high, chips)?)),
+            PinType::Output { pin } => Ok(Box::new(Output::new(pin, chips)?)),
         }
     }
 }
@@ -76,11 +126,11 @@ type PinConfig = Box<dyn PinConfiguration + Send + Sync>;
 /// Pin Configuration interface
 trait PinConfiguration {
     /// Setup
-    fn setup(&self, mcp: &mut MCP23017) -> Result<(), DriverError>;
+    fn setup(&self, mcp: &mut Vec<MCP23017>) -> Result<(), DriverError>;
     /// Read inputs
-    fn read(&self, mcp: &MCP23017) -> Result<Vec<u16>, DriverError>;
+    fn read(&self, mcp: &Vec<MCP23017>) -> Result<Vec<u16>, DriverError>;
     /// Set output
-    fn set(&mut self, mcp: &MCP23017, idx: usize, state: u16) -> Result<(), DriverError>;
+    fn set(&mut self, mcp: &Vec<MCP23017>, idx: usize, state: u16) -> Result<(), DriverError>;
     /// List of pins
     fn pins(&self) -> Vec<Pin>;
     /// Number of pins
@@ -106,57 +156,69 @@ fn bool_int(bool: bool) -> u16 {
 struct Matrix {
     x: Vec<Pin>,
     y: Vec<Pin>,
+    invert: bool,
 }
 
 impl Matrix {
     /// New
-    pub fn new(x: Vec<u8>, y: Vec<u8>) -> Result<Matrix, DriverError> {
+    pub fn new(x: Vec<usize>, y: Vec<usize>, invert: bool, chips:  usize) -> Result<Matrix, DriverError> {
         let x = x.iter()
-            .map(|pin| Pin::new(*pin));
+            .map(|pin| Pin::new(*pin, chips));
         if x.clone().any(|pin| pin.is_none()) {
-            return Err(DriverError::new("expected a pin number between 0 and 15".to_string()))
+            return Err(DriverError::new("pin number outside bounds".to_string()))
         }
 
         let y = y.iter()
-            .map(|pin| Pin::new(*pin));
+            .map(|pin| Pin::new(*pin, chips));
         if y.clone().any(|pin| pin.is_none()) {
-            return Err(DriverError::new("expected a pin number between 0 and 15".to_string()))
+            return Err(DriverError::new("pin number outside bounds".to_string()))
         }
 
         Ok(Matrix{
             x: x.filter_map(|p| p).collect(),
             y: y.filter_map(|p| p).collect(),
+            invert
         })
+    }
+
+    fn resolve_invert(&self) -> (&Vec<Pin>, &Vec<Pin>) {
+        if self.invert {
+            (&self.y, &self.x)
+        } else {
+            (&self.x, &self.y)
+        }
     }
 }
 
 impl PinConfiguration for Matrix {
-    fn setup(&self, mcp: &mut MCP23017) -> Result<(), DriverError>{
-        for x in &self.x {
-            mcp.pin_mode(x, Mode::Input).map_err(|e| DriverError::new(format!("{}", e)))?;
+    fn setup(&self, mcp: &mut Vec<MCP23017>) -> Result<(), DriverError>{
+        let (x, y) = self.resolve_invert();
+        for x in x {
+            mcp[x.chip].pin_mode(&x.inner, Mode::Input).map_err(|e| DriverError::new(format!("{}", e)))?;
         }
-        for y in &self.y {
-            mcp.pin_mode(y, Mode::Output).map_err(|e| DriverError::new(format!("{}", e)))?;
-            mcp.output(y, State::Low).map_err(|e| DriverError::new(format!("{}", e)))?;
+        for y in y {
+            mcp[y.chip].pin_mode(&y.inner, Mode::Output).map_err(|e| DriverError::new(format!("{}", e)))?;
+            mcp[y.chip].output(&y.inner, State::Low).map_err(|e| DriverError::new(format!("{}", e)))?;
         }
 
         Ok(())
     }
 
-    fn read(&self, mcp: &MCP23017) -> Result<Vec<u16>, DriverError> {
+    fn read(&self, mcp: &Vec<MCP23017>) -> Result<Vec<u16>, DriverError> {
         let mut out = Vec::with_capacity(self.x.len() * self.y.len());
-        for y in &self.y {
-            mcp.output(y, State::High).map_err(|e| DriverError::new(format!("{}", e)))?;
-            for x in &self.x {
-                out.push(bool_int(mcp.input(x).map_err(|e| DriverError::new(format!("{}", e)))?.into()));
+        let (x, y) = self.resolve_invert();
+        for y in y {
+            mcp[y.chip].output(&y.inner, State::High).map_err(|e| DriverError::new(format!("{}", e)))?;
+            for x in x {
+                out.push(bool_int(mcp[x.chip].input(&x.inner).map_err(|e| DriverError::new(format!("{}", e)))?.into()));
             }
-            mcp.output(y, State::Low).map_err(|e| DriverError::new(format!("{}", e)))?;
+            mcp[y.chip].output(&y.inner, State::Low).map_err(|e| DriverError::new(format!("{}", e)))?;
         }
 
         Ok(out)
     }
 
-    fn set(&mut self, _mcp: &MCP23017, _idx: usize, _state: u16) -> Result<(), DriverError> {
+    fn set(&mut self, _mcp: &Vec<MCP23017>, _idx: usize, _state: u16) -> Result<(), DriverError> {
         Err(DriverError::new("Input is not settable".to_string()))
     }
 
@@ -173,8 +235,9 @@ impl PinConfiguration for Matrix {
 
     fn to_pin_type(&self) -> PinType {
         PinType::Matrix{
-            x: self.x.iter().map(|x| u8::from(x)).collect::<Vec<u8>>(),
-            y: self.y.iter().map(|x| u8::from(x)).collect::<Vec<u8>>()
+            x: self.x.iter().map(|x| usize::from(x)).collect::<Vec<usize>>(),
+            y: self.y.iter().map(|y| usize::from(y)).collect::<Vec<usize>>(),
+            invert: Some(self.invert)
         }
     } 
 }
@@ -190,27 +253,27 @@ struct Input {
 
 impl Input {
     /// New, on_state will invert High to Low when true, pull high will pull the input high when true.
-    pub fn new(pin: u8, on_state: bool, pull_high: bool) -> Result<Input, DriverError> {
-        let pin = Pin::new(pin).ok_or_else(|| DriverError::new("expected a pin number between 0 and 15".to_string()))?;
+    pub fn new(pin: usize, on_state: bool, pull_high: bool, chips: usize) -> Result<Input, DriverError> {
+        let pin = Pin::new(pin, chips).ok_or_else(|| DriverError::new("expected a pin number between 0 and 15".to_string()))?;
         Ok(Input { pin, on_state, pull_high })
     }
 }
 
 impl PinConfiguration for Input {
-    fn setup(&self, mcp: &mut MCP23017) -> Result<(), DriverError> {
-        mcp.pin_mode(&self.pin, Mode::Input).map_err(|e| DriverError::new(format!("{}", e)))?;
+    fn setup(&self, mcp: &mut Vec<MCP23017>) -> Result<(), DriverError> {
+        mcp[self.pin.chip].pin_mode(&self.pin.inner, Mode::Input).map_err(|e| DriverError::new(format!("{}", e)))?;
         if self.pull_high {
-            mcp.pull_up(&self.pin, State::High).map_err(|e| DriverError::new(format!("{}", e)))?;
+            mcp[self.pin.chip].pull_up(&self.pin.inner, State::High).map_err(|e| DriverError::new(format!("{}", e)))?;
         }
         Ok(())
     }
 
-    fn read(&self, mcp: &MCP23017) -> Result<Vec<u16>, DriverError> {
-        let state: bool = mcp.input(&self.pin).map_err(|e| DriverError::new(format!("{}", e)))?.into();
+    fn read(&self, mcp: &Vec<MCP23017>) -> Result<Vec<u16>, DriverError> {
+        let state: bool = mcp[self.pin.chip].input(&self.pin.inner).map_err(|e| DriverError::new(format!("{}", e)))?.into();
         Ok(vec![bool_int(state == self.on_state)])
     }
 
-    fn set(&mut self, _mcp: &MCP23017, _idx: usize, _state: u16) -> Result<(), DriverError> {
+    fn set(&mut self, _mcp: &Vec<MCP23017>, _idx: usize, _state: u16) -> Result<(), DriverError> {
         Err(DriverError::new("Input is not settable".to_string()))
     }
 
@@ -223,7 +286,7 @@ impl PinConfiguration for Input {
     }
 
     fn to_pin_type(&self) -> PinType {
-        PinType::Input{pin: u8::from(&self.pin), on_state: self.on_state, pull_high: self.pull_high}
+        PinType::Input{pin: usize::from(&self.pin), on_state: self.on_state, pull_high: self.pull_high}
     }
 }
 
@@ -233,26 +296,26 @@ struct Output {
 }
 
 impl Output {
-    pub fn new(pin: u8) -> Result<Output, DriverError> {
-        let pin = Pin::new(pin).ok_or_else(|| DriverError::new("expected a pin number between 0 and 15".to_string()))?;
+    pub fn new(pin: usize, chips: usize) -> Result<Output, DriverError> {
+        let pin = Pin::new(pin, chips).ok_or_else(|| DriverError::new("expected a pin number between 0 and 15".to_string()))?;
         Ok(Output { pin, state: false })
     }
 }
 
 impl PinConfiguration for Output {
-    fn setup(&self, mcp: &mut MCP23017) -> Result<(), DriverError> {
-        mcp.pin_mode(&self.pin, Mode::Output).map_err(|e| DriverError::new(format!("{}", e)))?;
-        mcp.output(&self.pin, State::from(self.state)).map_err(|e| DriverError::new(format!("{}", e)))?;
+    fn setup(&self, mcp: &mut Vec<MCP23017>) -> Result<(), DriverError> {
+        mcp[self.pin.chip].pin_mode(&self.pin.inner, Mode::Output).map_err(|e| DriverError::new(format!("{}", e)))?;
+        mcp[self.pin.chip].output(&self.pin.inner, State::from(self.state)).map_err(|e| DriverError::new(format!("{}", e)))?;
         Ok(())
     }
 
-    fn read(&self, _mcp: &MCP23017) -> Result<Vec<u16>, DriverError> {
+    fn read(&self, _mcp: &Vec<MCP23017>) -> Result<Vec<u16>, DriverError> {
         Ok(vec![bool_int(self.state)])
     }
 
-    fn set(&mut self, mcp: &MCP23017, _idx: usize, state: u16) -> Result<(), DriverError> {
+    fn set(&mut self, mcp: &Vec<MCP23017>, _idx: usize, state: u16) -> Result<(), DriverError> {
         self.state = state != 0;
-        mcp.output(&self.pin, State::from(self.state)).map(|_| ())
+        mcp[self.pin.chip].output(&self.pin.inner, State::from(self.state)).map(|_| ())
             .map_err(|e| DriverError::new(format!("{}", e)))
     }
 
@@ -265,7 +328,7 @@ impl PinConfiguration for Output {
     }
 
     fn to_pin_type(&self) -> PinType {
-        PinType::Output { pin: u8::from(&self.pin) }
+        PinType::Output { pin: usize::from(&self.pin) }
     }
 }
 
@@ -273,7 +336,7 @@ impl PinConfiguration for Output {
 #[derive(Serialize, Deserialize)]
 /// MCP23017 Driver Data
 pub struct MCP23017Data { 
-    address: u16, 
+    address: Vec<u16>, 
     bus: Option<u8>, 
     inputs: Vec<PinType>
 }
@@ -318,7 +381,7 @@ impl Driver for MCPModule {
 /// MCP23017 Driver
 pub struct MCP23017Driver {
     pins: Vec<PinConfig>,
-    mcp: MCP23017,
+    mcp: Vec<MCP23017>,
     output_size: usize,
     pin_map: Vec<Range<usize>>,
 }
@@ -330,13 +393,17 @@ impl MCP23017Driver {
 
         let bus = data.bus.unwrap_or(1);
         let mut output_size = 0;
-        let inputs = data.inputs.into_iter().map(|input| input.build());
+        let inputs = data.inputs.into_iter().map(|input| input.build(data.address.len()));
         if let Some(res) = inputs.clone().find(|i | i.is_err()) {
             res?;
         }
 
-        let mut mcp = MCP23017::new(data.address, bus).map_err(|e| DriverError::new(format!("{}", e)))?;
-        mcp.reset().map_err(|e| DriverError::new(format!("{}", e)))?;
+        let mut mcps = vec![];
+        for address in &data.address {
+            let mcp = MCP23017::new(*address, bus).map_err(|e| DriverError::new(format!("{}", e)))?;
+            mcp.reset().map_err(|e| DriverError::new(format!("{}", e)))?;
+            mcps.push(mcp);
+        }
         
         let mut used = HashSet::new();
         let mut pins = Vec::with_capacity(inputs.len());
@@ -347,14 +414,14 @@ impl MCP23017Driver {
                     return Err(DriverError::new(format!("Pin {} cannot be reused", pin)))
                 }
             }
-            pin.setup(&mut mcp)?;
+            pin.setup(&mut mcps)?;
             output_size += pin.len();
             pins.push(pin)
         }
 
         Ok(MCP23017Driver { 
             pins, 
-            mcp: mcp,
+            mcp: mcps,
             pin_map: Vec::new(),
             output_size,
         })
