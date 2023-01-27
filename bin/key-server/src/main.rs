@@ -248,7 +248,7 @@ async fn main() {
             loop {
                 layout.write().await.tick().await;
                 layout.write().await.poll().await;
-                thread::sleep(Duration::from_millis(30));
+                thread::sleep(Duration::from_millis(10));
             }
         })
     };
