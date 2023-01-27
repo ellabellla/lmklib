@@ -2,7 +2,7 @@ use std::{sync::Arc, io, fmt::Display};
 
 use async_trait::async_trait;
 use log::error;
-use tokio::{sync::{RwLock, mpsc::{UnboundedSender, self}, oneshot}};
+use tokio::{sync::{RwLock, mpsc::{UnboundedSender, self}, oneshot}, runtime::Handle};
 use uinput::{event::{self, controller::Mouse, relative::{Position, Wheel}, keyboard::{Key, Misc, KeyPad, InputAssist}}, Device};
 use virt_hid::{key::{self, BasicKey, KeyOrigin, SpecialKey, Modifier}, mouse::{self, MouseDir, MouseButton}};
 
@@ -120,7 +120,7 @@ impl HID {
         let mse = mouse.clone();
         let kbd = keyboard.clone();
         let ld = led.clone();
-        tokio::spawn(async move {
+        tokio::task::spawn_blocking(move || {
             let mut hid = match virt_hid::HID::new(&mse, &kbd, &ld){
                 Ok(hid) => hid,
                 Err(e) => {new_tx.send(Err(HIDError::IO(e))).or_log_ignore("Broken Channel (HID Driver)"); return;}
@@ -148,7 +148,7 @@ impl HID {
             let mut mouse = mouse::Mouse::new();
             let mut cur_hid = "usb".to_owned();
 
-            while let Some(command) = rx.recv().await {
+            while let Some(command) = rx.blocking_recv() {
                 match command {
                     Command::HoldKey(key) => match cur_hid.as_ref() { 
                         "usb" => {
@@ -160,7 +160,7 @@ impl HID {
                             };
                             uinput.press(&key).or_log("Uinput error (HID Driver)");
                         }
-                        _ => {module_manager.hold_key(&cur_hid, key).await.or_log("Unable to process hid input (HID Driver)");}
+                        _ => {Handle::current().block_on(module_manager.hold_key(&cur_hid, key)).or_log("Unable to process hid input (HID Driver)");}
                     },
                     Command::HoldSpecial(special) => match cur_hid.as_ref() { 
                         "usb" => {
@@ -172,7 +172,7 @@ impl HID {
                             };
                             uinput.press(&key).or_log("Uinput error (HID Driver)");
                         }
-                        _ => {module_manager.hold_special(&cur_hid, special).await.or_log("Unable to process hid input (HID Driver)");}
+                        _ => {Handle::current().block_on(module_manager.hold_special(&cur_hid, special)).or_log("Unable to process hid input (HID Driver)");}
                     },
                     Command::HoldModifier(modifier) => match cur_hid.as_ref() { 
                         "usb" => {
@@ -184,7 +184,7 @@ impl HID {
                             };
                             uinput.press(&key).or_log("Uinput error (HID Driver)");
                         }
-                        _ => {module_manager.hold_modifier(&cur_hid, modifier).await.or_log("Unable to process hid input (HID Driver)");}
+                        _ => {Handle::current().block_on(module_manager.hold_modifier(&cur_hid, modifier)).or_log("Unable to process hid input (HID Driver)");}
                     },
                     Command::ReleaseKey(key) => match cur_hid.as_ref() { 
                         "usb" => {
@@ -196,7 +196,7 @@ impl HID {
                             };
                             uinput.release(&key).or_log("Uinput error (HID Driver)");
                         }
-                        _ => {module_manager.release_key(&cur_hid, key).await.or_log("Unable to process hid input (HID Driver)");}
+                        _ => {Handle::current().block_on(module_manager.release_key(&cur_hid, key)).or_log("Unable to process hid input (HID Driver)");}
                     },
                     Command::ReleaseSpecial(special) => match cur_hid.as_ref() { 
                         "usb" => {
@@ -208,7 +208,7 @@ impl HID {
                             };
                             uinput.release(&key).or_log("Uinput error (HID Driver)");
                         }
-                        _ => {module_manager.release_special(&cur_hid, special).await.or_log("Unable to process hid input (HID Driver)");}
+                        _ => {Handle::current().block_on(module_manager.release_special(&cur_hid, special)).or_log("Unable to process hid input (HID Driver)");}
                     },
                     Command::ReleaseModifier(modifier) => match cur_hid.as_ref() { 
                         "usb" => {
@@ -220,7 +220,7 @@ impl HID {
                             };
                             uinput.release(&key).or_log("Uinput error (HID Driver)");
                         }
-                        _ => {module_manager.release_modifier(&cur_hid, modifier).await.or_log("Unable to process hid input (HID Driver)");}
+                        _ => {Handle::current().block_on(module_manager.release_modifier(&cur_hid, modifier)).or_log("Unable to process hid input (HID Driver)");}
                     },
                     Command::PressBasicStr(str) => match cur_hid.as_ref() { 
                         "usb" => {
@@ -242,7 +242,7 @@ impl HID {
                                 }
                             }
                         }
-                        _ => {module_manager.press_basic_str(&cur_hid, str).await.or_log("Unable to process hid input (HID Driver)");}
+                        _ => {Handle::current().block_on(module_manager.press_basic_str(&cur_hid, str)).or_log("Unable to process hid input (HID Driver)");}
                     },
                     Command::PressStr(layout, str) => match cur_hid.as_ref() { 
                         "usb" => {
@@ -264,7 +264,7 @@ impl HID {
                                 }
                             }
                         }
-                        _ => {module_manager.press_str(&cur_hid, layout, str).await.or_log("Unable to process hid input (HID Driver)");}
+                        _ => {Handle::current().block_on(module_manager.press_str(&cur_hid, layout, str)).or_log("Unable to process hid input (HID Driver)");}
                     }
                     Command::ScrollWheel(amount) => match cur_hid.as_ref() { 
                         "usb" => {
@@ -273,7 +273,7 @@ impl HID {
                         "uinput" => {
                             uinput.position(&event::Relative::Wheel(Wheel::Vertical), amount as i32).or_log("Uinput error (HID Driver)");
                         }
-                        _ => {module_manager.scroll_wheel(&cur_hid, amount).await.or_log("Unable to process hid input (HID Driver)");}
+                        _ => {Handle::current().block_on(module_manager.scroll_wheel(&cur_hid, amount)).or_log("Unable to process hid input (HID Driver)");}
                     },
                     Command::MoveMouse(amount, dir) => match cur_hid.as_ref() { 
                         "usb" => {
@@ -283,7 +283,7 @@ impl HID {
                             let dir = mouse_dir_to_position(dir);
                             uinput.position(&event::Relative::Position(dir), amount as i32).or_log("Uinput error (HID Driver)");
                         }
-                        _ => {module_manager.move_mouse(&cur_hid, amount, dir).await.or_log("Unable to process hid input (HID Driver)");}
+                        _ => {Handle::current().block_on(module_manager.move_mouse(&cur_hid, amount, dir)).or_log("Unable to process hid input (HID Driver)");}
                     },
                     Command::HoldButton(button) => match cur_hid.as_ref() { 
                         "usb" => {
@@ -293,7 +293,7 @@ impl HID {
                             let button = mouse_button_to_mouse(button);
                             uinput.press(&event::Controller::Mouse(button)).or_log("Uinput error (HID Driver)");
                         }
-                        _ => {module_manager.hold_button(&cur_hid, button).await.or_log("Unable to process hid input (HID Driver)");}
+                        _ => {Handle::current().block_on(module_manager.hold_button(&cur_hid, button)).or_log("Unable to process hid input (HID Driver)");}
                     },
                     Command::ReleaseButton(button) => match cur_hid.as_ref() { 
                         "usb" => {
@@ -303,21 +303,21 @@ impl HID {
                             let button = mouse_button_to_mouse(button);
                             uinput.release(&event::Controller::Mouse(button)).or_log("Uinput error (HID Driver)");
                         }
-                        _ => {module_manager.release_button(&cur_hid, button).await.or_log("Unable to process hid input (HID Driver)");}
+                        _ => {Handle::current().block_on(module_manager.release_button(&cur_hid, button)).or_log("Unable to process hid input (HID Driver)");}
                     },
                     Command::SendKeyboard => match cur_hid.as_ref() { 
                         "usb" => {
                             keyboard.send(&mut hid).or_log("USB HID error (HID Driver)");
                         }
                         "uinput" => (),
-                        _ => {module_manager.send_keyboard(&cur_hid).await.or_log("Unable to process hid input (HID Driver)");}
+                        _ => {Handle::current().block_on(module_manager.send_keyboard(&cur_hid)).or_log("Unable to process hid input (HID Driver)");}
                     },
                     Command::SendMouse => match cur_hid.as_ref() { 
                         "usb" => {
                             mouse.send(&mut hid).or_log("USB HID error (HID Driver)");
                         }
                         "uinput" => (),
-                        _ => {module_manager.send_mouse(&cur_hid).await.or_log("Unable to process hid input (HID Driver)");}
+                        _ => {Handle::current().block_on(module_manager.send_mouse(&cur_hid)).or_log("Unable to process hid input (HID Driver)");}
                     },
                     Command::Switch(name) => match name.as_ref() {
                         "usb" => cur_hid = name,
@@ -333,7 +333,6 @@ impl HID {
         });
 
         
-            
         match new_rx.await {
             Ok(res) => res.map(|_| Arc::new(RwLock::new(HID { tx, mouse, keyboard, led }))),
             Err(_) => Err(HIDError::ChannelError)
