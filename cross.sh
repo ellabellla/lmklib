@@ -30,6 +30,8 @@ REMOTE=${ARGS[0]}
 CRATE=${ARGS[1]}
 
 if [[ "$reload" == "true" ]]; then
+    rm -rf .cargo
+    rm -rf .vendor
     mkdir -p .cargo/
     cargo vendor > .cargo/config
     docker container create --name dummy -v lmk-vendor:/vendor -v lmk-cargo:/.cargo -it lmklib/build:latest bash > /dev/null
