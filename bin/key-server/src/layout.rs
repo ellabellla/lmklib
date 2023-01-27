@@ -207,7 +207,7 @@ impl<'de> Deserialize<'de> for LayoutBuilder {
                 return Err(de::Error::custom(format!("Layer {} should have the same height as the layout.", i)))
             }
             for (y, row) in layer.into_iter().enumerate() {
-                if row.len() != layout.height {
+                if row.len() != layout.width {
                     return Err(de::Error::custom(format!("Layer {}, row {}, should have the same width as the layout.", i, y)))
                 }
                 new_layer.extend(row);
