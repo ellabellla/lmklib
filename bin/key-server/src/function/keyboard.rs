@@ -69,7 +69,7 @@ impl FunctionInterface for Special {
         } else if state == 0 && self.prev_state != 0{
             let hid = self.hid.read().await;
             
-            hid.hold_special(self.special).await;
+            hid.release_special(self.special).await;
             hid.send_keyboard();
         }
 
