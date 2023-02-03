@@ -27,6 +27,37 @@ pub mod output;
 
 use self::{keyboard::{Key, BasicString, ComplexString, Special, Shortcut, ModifierKey}, mouse::{ConstMove, LeftClick, RightClick, ConstScroll, Move, Scroll, ImmediateMove, ImmediateScroll}, midi::{Note, MidiController, Channel, ConstPitchBend, PitchBend, Instrument, GMSoundSet, note_param}, cmd::{Bash, Pipe, CommandPool}, hid::{HID, SwitchHid}, log::{Log, LogLevel}, nng::{DriverData, NanoMsg, NanoMessenger}, output::{Output, Flip}};
 
+const HALF_U16: u16 = u16::MAX / 2;
+
+pub type State = u16;
+pub trait StateHelpers {
+    fn high(&self) -> bool;
+
+    fn low(&self) -> bool;
+
+    fn rising(&self, prev_state: Self) -> bool;
+
+    fn falling(&self, prev_state: Self) -> bool;
+}
+
+impl StateHelpers  for State {
+    fn high(&self) -> bool {
+        return *self > HALF_U16
+    }
+
+    fn low(&self) -> bool {
+        return *self <= HALF_U16
+    }
+
+    fn rising(&self, prev_state: Self) -> bool {
+        return self.high() && prev_state.low()
+    }
+
+    fn falling(&self, prev_state: Self) -> bool {
+        return self.low() && prev_state.high()
+    }
+}
+
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq)]
 /// Function controller configuration data types, used for serialization
@@ -238,7 +269,7 @@ impl FunctionBuilder {
 /// Function Interface
 pub trait FunctionInterface {
     /// State poll event
-    async fn event(&mut self, state: u16) -> ReturnCommand;
+    async fn event(&mut self, state: State) -> ReturnCommand;
     /// Function Type
     fn ftype(&self) -> FunctionType;
 }   
@@ -258,7 +289,7 @@ impl Up {
 
 #[async_trait]
 impl FunctionInterface for Up {
-    async fn event(&mut self, _state: u16) -> ReturnCommand {
+    async fn event(&mut self, _state: State) -> ReturnCommand {
         return ReturnCommand::Up
     }
 
@@ -279,7 +310,7 @@ impl Down {
 
 #[async_trait]
 impl FunctionInterface for Down {
-    async fn event(&mut self, _state: u16) -> ReturnCommand {
+    async fn event(&mut self, _state: State) -> ReturnCommand {
         return ReturnCommand::Down
     }
 
@@ -302,7 +333,7 @@ impl Switch {
 
 #[async_trait]
 impl FunctionInterface for Switch {
-    async fn event(&mut self, _state: u16) -> ReturnCommand {
+    async fn event(&mut self, _state: State) -> ReturnCommand {
         return ReturnCommand::Switch(self.id)
     }
 
@@ -326,10 +357,10 @@ impl Shift {
 
 #[async_trait]
 impl FunctionInterface for Shift {
-    async fn event(&mut self, state: u16) -> ReturnCommand {
-        if state == 1 && self.prev_state == 0 {
+    async fn event(&mut self, state: State) -> ReturnCommand {
+        if state.rising(self.prev_state) {
             return ReturnCommand::Shift(self.id)
-        } else if state == 0 && self.prev_state == 1 {
+        } else if state.falling(self.prev_state) {
             return ReturnCommand::UnShift(self.id)
         }
 

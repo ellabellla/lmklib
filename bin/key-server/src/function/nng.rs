@@ -8,7 +8,7 @@ use tokio::sync::{RwLock, mpsc::{UnboundedSender, self}, oneshot};
 
 use crate::{driver::DriverManager, OrLogIgnore, OrLog};
 
-use super::{Function, FunctionInterface, ReturnCommand, FunctionType, FunctionConfig, FunctionConfigData};
+use super::{Function, FunctionInterface, ReturnCommand, FunctionType, FunctionConfig, FunctionConfigData, State, StateHelpers};
 
 /// Dynamic hash formatter, format("# bees", 10) = "10 bees"
 struct HashFormat;
@@ -189,8 +189,8 @@ impl NanoMsg {
 
 #[async_trait]
 impl FunctionInterface for NanoMsg {
-    async fn event(&mut self, state: u16) -> ReturnCommand {
-        if state != 0 && self.prev_state == 0 {
+    async fn event(&mut self, state: State) -> ReturnCommand {
+        if state.rising(self.prev_state) {
             let mut data = Vec::with_capacity(self.driver_data.len());
             
             for driver_data in &self.driver_data {

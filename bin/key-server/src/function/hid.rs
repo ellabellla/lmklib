@@ -8,7 +8,7 @@ use virt_hid::{key::{self, BasicKey, KeyOrigin, SpecialKey, Modifier}, mouse::{s
 
 use crate::{OrLogIgnore, OrLog, modules::ModuleManager};
 
-use super::{Function, FunctionInterface, ReturnCommand, FunctionType, FunctionConfig, FunctionConfigData};
+use super::{Function, FunctionInterface, ReturnCommand, FunctionType, FunctionConfig, FunctionConfigData, State, StateHelpers};
 
 #[derive(Debug)]
 /// HID Error
@@ -50,8 +50,8 @@ impl SwitchHid {
 
 #[async_trait]
 impl FunctionInterface for SwitchHid {
-    async fn event(&mut self, state: u16) -> ReturnCommand {
-        if state != 0 && self.prev_state == 0 {
+    async fn event(&mut self, state: State) -> ReturnCommand {
+        if state.rising(self.prev_state) {
             self.hid.read().await.switch(self.name.clone());
         }
 

@@ -5,7 +5,7 @@ use tokio::sync::RwLock;
 
 use crate::driver::DriverManager;
 
-use super::{FunctionInterface, ReturnCommand, FunctionType, Function};
+use super::{FunctionInterface, ReturnCommand, FunctionType, Function, State, StateHelpers};
 
 
 
@@ -24,8 +24,8 @@ impl Output {
 
 #[async_trait]
 impl FunctionInterface for Output {
-    async fn event(&mut self, state: u16) -> ReturnCommand {
-        if state != 0 && self.prev_state == 0 {
+    async fn event(&mut self, state: State) -> ReturnCommand {
+        if state.rising(self.prev_state) {
             let mut driver_manager = self.driver_manager.write().await;
             if let Some(driver) = driver_manager.get_mut(&self.name) {
                 driver.set(self.idx, self.state).await;
@@ -54,8 +54,8 @@ impl Flip {
 
 #[async_trait]
 impl FunctionInterface for Flip {
-    async fn event(&mut self, state: u16) -> ReturnCommand {
-        if state != 0 && self.prev_state == 0 {
+    async fn event(&mut self, state: State) -> ReturnCommand {
+        if state.rising(self.prev_state) {
             let mut driver_manager = self.driver_manager.write().await;
             if let Some(driver) = driver_manager.get_mut(&self.name) {
                 let mut state = driver.poll(self.idx);

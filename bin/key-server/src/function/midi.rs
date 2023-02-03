@@ -8,7 +8,7 @@ use tokio::{sync::{RwLock, mpsc::{UnboundedSender, self}, oneshot}};
 
 use crate::{OrLogIgnore, OrLog};
 
-use super::{Function, FunctionInterface, ReturnCommand, FunctionType, FunctionConfig, FunctionConfigData, FunctionConfiguration};
+use super::{Function, FunctionInterface, ReturnCommand, FunctionType, FunctionConfig, FunctionConfigData, FunctionConfiguration, State, StateHelpers};
 
 #[derive(Debug)]
 /// Midi error
@@ -667,11 +667,11 @@ impl Note {
 
 #[async_trait]
 impl FunctionInterface for Note {
-    async fn event(&mut self, state: u16) -> super::ReturnCommand {
+    async fn event(&mut self, state: State) -> super::ReturnCommand {
         let mut conn = self.midi_controller.write().await;
-        if state != 0 && self.prev_state == 0 {
+        if state.rising(self.prev_state) {
             conn.hold_note(self.channel, self.note, self.velocity).await.or_log("MIDI error (MIDI Driver)");
-        } else if state == 0 && self.prev_state != 0 {
+        } else if state.falling(self.prev_state) {
             conn.release_note(self.channel, self.note, self.velocity).await.or_log("MIDI error (MIDI Driver)");
         }
 
@@ -702,11 +702,11 @@ impl ConstPitchBend {
 
 #[async_trait]
 impl FunctionInterface for ConstPitchBend {
-    async fn event(&mut self, state: u16) -> super::ReturnCommand {
+    async fn event(&mut self, state: State) -> super::ReturnCommand {
         let mut conn = self.midi_controller.write().await;
-        if state != 0 && self.prev_state == 0 {
+        if state.rising(self.prev_state) {
             conn.pitch_bend(self.channel, self.bend).await.or_log("MIDI error (MIDI Driver)");
-        } else if state == 0 && self.prev_state != 0 
+        } else if state.falling(self.prev_state) 
             && conn.get_last_bend().map(|b| b == self.bend).unwrap_or(true) {
             conn.pitch_bend(self.channel, 0).await.or_log("MIDI error (MIDI Driver)");
         }
@@ -738,7 +738,7 @@ impl PitchBend {
 
 #[async_trait]
 impl FunctionInterface for PitchBend {
-    async fn event(&mut self, state: u16) -> super::ReturnCommand {
+    async fn event(&mut self, state: State) -> super::ReturnCommand {
         let mut conn = self.midi_controller.write().await;
 
         // Apply a pitch bend to all sounding notes. 0-8191 represent negative bends, 8192 is no bend and 8193-16383 are positive bends,
@@ -794,9 +794,9 @@ impl Instrument {
 
 #[async_trait]
 impl FunctionInterface for Instrument {
-    async fn event(&mut self, state: u16) -> super::ReturnCommand {
+    async fn event(&mut self, state: State) -> super::ReturnCommand {
         let mut conn = self.midi_controller.write().await;
-        if state != 0 && self.prev_state == 0 {
+        if state.rising(self.prev_state) {
             conn.change_instrument(self.channel, self.instrument).await.or_log("MIDI error (MIDI Driver)");
         }
 

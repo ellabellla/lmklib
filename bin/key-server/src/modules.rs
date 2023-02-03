@@ -7,7 +7,7 @@ use serde::{Serialize, Deserialize};
 use tokio::sync::{mpsc::{self, UnboundedSender}, oneshot::{self, Sender, Receiver}};
 use virt_hid::{key::{SpecialKey, Modifier}, mouse::{MouseDir, MouseButton}};
 
-use crate::{OrLogIgnore, function::{FunctionInterface, ReturnCommand, FunctionType, Function}, OrLog, driver::{DriverInterface, DriverData, Driver, DriverError}};
+use crate::{OrLogIgnore, function::{FunctionInterface, ReturnCommand, FunctionType, Function, State}, OrLog, driver::{DriverInterface, DriverData, Driver, DriverError}};
 
 #[derive(Debug, Serialize, Deserialize)]
 /// Interface type
@@ -88,7 +88,7 @@ impl ExternalFunction {
 
 #[async_trait]
 impl FunctionInterface for ExternalFunction {
-    async fn event(&mut self, state: u16) -> ReturnCommand {
+    async fn event(&mut self, state: State) -> ReturnCommand {
         self.module_manager.function_event(&self.module_name, self.id, state).await.or_log("Event error (External Function)");
         ReturnCommand::None
     }

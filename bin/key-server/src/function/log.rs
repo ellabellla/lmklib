@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use log::{warn, info, error};
 use serde::{Serialize, Deserialize};
 
-use super::{Function, FunctionInterface, ReturnCommand, FunctionType};
+use super::{Function, FunctionInterface, ReturnCommand, FunctionType, State, StateHelpers};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// Log level
@@ -28,8 +28,8 @@ impl Log {
 
 #[async_trait]
 impl FunctionInterface for Log {
-    async fn event(&mut self, state: u16) -> ReturnCommand {
-        if state != 0 && self.prev_state == 0 {
+    async fn event(&mut self, state: State) -> ReturnCommand {
+        if state.rising(self.prev_state) {
             match self.log_level {
                 LogLevel::Warn => warn!("{}", self.msg),
                 LogLevel::Info => info!("{}", self.msg),

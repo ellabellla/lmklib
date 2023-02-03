@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use tokio::sync::RwLock;
 use virt_hid::key::{BasicKey, SpecialKey, Modifier};
 
-use super::{FunctionInterface, ReturnCommand, FunctionType, hid::HID, Function};
+use super::{FunctionInterface, ReturnCommand, FunctionType, hid::HID, Function, State, StateHelpers};
 
 /// Key function (acts as normal key)
 pub struct Key{
@@ -22,13 +22,13 @@ impl Key {
 
 #[async_trait]
 impl FunctionInterface for Key {
-    async fn event(&mut self, state: u16) -> ReturnCommand {
-        if state != 0 && self.prev_state == 0 {
+    async fn event(&mut self, state: State) -> ReturnCommand {
+        if state.rising(self.prev_state) {
             let hid = self.hid.read().await; 
 
             hid.hold_key(self.key).await;
             hid.send_keyboard();
-        } else if state == 0 && self.prev_state != 0{
+        } else if state.falling(self.prev_state) {
             let hid = self.hid.read().await;
             
             hid.release_key(self.key).await;
@@ -60,13 +60,13 @@ impl Special {
 
 #[async_trait]
 impl FunctionInterface for Special {
-    async fn event(&mut self, state: u16) -> ReturnCommand {
-        if state != 0 && self.prev_state == 0 {
+    async fn event(&mut self, state: State) -> ReturnCommand {
+        if state.rising(self.prev_state) {
             let hid = self.hid.read().await;
 
             hid.hold_special(self.special).await;
             hid.send_keyboard();
-        } else if state == 0 && self.prev_state != 0{
+        } else if state.falling(self.prev_state) {
             let hid = self.hid.read().await;
             
             hid.release_special(self.special).await;
@@ -98,13 +98,13 @@ impl ModifierKey {
 
 #[async_trait]
 impl FunctionInterface for ModifierKey {
-    async fn event(&mut self, state: u16) -> ReturnCommand {
-        if state != 0 && self.prev_state == 0 {
+    async fn event(&mut self, state: State) -> ReturnCommand {
+        if state.rising(self.prev_state) {
             let hid = self.hid.read().await;
 
             hid.hold_mod(self.modifier).await;
             hid.send_keyboard();
-        } else if state == 0 && self.prev_state != 0 {
+        } else if state.falling(self.prev_state) {
             let hid = self.hid.read().await;
             
             hid.release_mod(self.modifier).await;
@@ -136,8 +136,8 @@ impl BasicString {
 
 #[async_trait]
 impl FunctionInterface for BasicString {
-    async fn event(&mut self, state: u16) -> ReturnCommand {
-        if state != 0 && self.prev_state == 0 {
+    async fn event(&mut self, state: State) -> ReturnCommand {
+        if state.rising(self.prev_state) {
             let hid = self.hid.read().await;
 
             hid.press_basic_string(&self.string).await;
@@ -170,8 +170,8 @@ impl ComplexString {
 
 #[async_trait]
 impl FunctionInterface for ComplexString {
-    async fn event(&mut self, state: u16) -> ReturnCommand {
-        if state != 0 && self.prev_state == 0 {
+    async fn event(&mut self, state: State) -> ReturnCommand {
+        if state.rising(self.prev_state) {
             let hid = self.hid.read().await;
 
             hid.press_string(&self.layout, &self.string).await;
@@ -203,8 +203,8 @@ impl Shortcut {
 
 #[async_trait]
 impl FunctionInterface for Shortcut {
-    async fn event(&mut self, state: u16) -> ReturnCommand {
-        if state != 0 && self.prev_state == 0 {
+    async fn event(&mut self, state: State) -> ReturnCommand {
+        if state.rising(self.prev_state) {
             let hid = self.hid.read().await;
 
             for modifier in &self.modifiers {

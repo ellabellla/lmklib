@@ -5,7 +5,7 @@ use tokio::{sync::RwLock};
 
 use crate::OrLog;
 
-use super::{Function, FunctionInterface, ReturnCommand, FunctionType, FunctionConfig, FunctionConfigData};
+use super::{Function, FunctionInterface, ReturnCommand, FunctionType, FunctionConfig, FunctionConfigData, State, StateHelpers};
 
 /// Command Pool, reaps spawn children
 pub struct CommandPool {
@@ -76,8 +76,8 @@ impl Bash {
 
 #[async_trait]
 impl FunctionInterface for Bash {
-    async fn event(&mut self, state: u16) -> ReturnCommand {
-        if state != 0 && self.prev_state == 0 {
+    async fn event(&mut self, state: State) -> ReturnCommand {
+        if state.rising(self.prev_state) {
             exec(&self.command, &self.command_pool).await;
         }
 
@@ -106,8 +106,8 @@ impl Pipe {
 
 #[async_trait]
 impl FunctionInterface for Pipe {
-    async fn event(&mut self, state: u16) -> ReturnCommand {
-        if state != 0 && self.prev_state == 0 {
+    async fn event(&mut self, state: State) -> ReturnCommand {
+        if state.rising(self.prev_state) {
             pipe(&self.command, &self.command_pool).await;
         }
 

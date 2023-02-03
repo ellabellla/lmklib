@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use tokio::sync::RwLock;
 use virt_hid::mouse::{MouseDir, MouseButton};
 
-use super::{FunctionInterface, HID, ReturnCommand, FunctionType, Function};
+use super::{FunctionInterface, HID, ReturnCommand, FunctionType, Function, State, StateHelpers};
 
 /// Immediate Move function, move the mouse a set amount on press
 pub struct ImmediateMove {
@@ -21,8 +21,8 @@ impl ImmediateMove {
 
 #[async_trait]
 impl FunctionInterface for ImmediateMove {
-    async fn event(&mut self, state: u16) -> super::ReturnCommand {
-        if state != 0 && self.prev_state == 0 {
+    async fn event(&mut self, state: State) -> super::ReturnCommand {
+        if state.rising(self.prev_state) {
             let hid = self.hid.read().await;
 
             hid.move_mouse(self.amount.0, MouseDir::X).await;
@@ -56,8 +56,8 @@ impl ImmediateScroll {
 
 #[async_trait]
 impl FunctionInterface for ImmediateScroll {
-    async fn event(&mut self, state: u16) -> super::ReturnCommand {
-        if state != 0 && self.prev_state == 0 {
+    async fn event(&mut self, state: State) -> super::ReturnCommand {
+        if state.rising(self.prev_state) {
             let hid = self.hid.read().await;
 
             hid.scroll_wheel(self.amount).await;
@@ -88,10 +88,10 @@ impl ConstMove {
 
 #[async_trait]
 impl FunctionInterface for ConstMove {
-    async fn event(&mut self, state: u16) -> super::ReturnCommand {
+    async fn event(&mut self, state: State) -> super::ReturnCommand {
         let hid = self.hid.read().await;
 
-        if state != 0 {
+        if state.high() {
             hid.move_mouse(self.amount.0, MouseDir::X).await;
             hid.move_mouse(self.amount.1, MouseDir::Y).await;
 
@@ -123,11 +123,11 @@ impl ConstScroll {
 
 #[async_trait]
 impl FunctionInterface for ConstScroll {
-    async fn event(&mut self, state: u16) -> super::ReturnCommand {
+    async fn event(&mut self, state: State) -> super::ReturnCommand {
 
         let hid = self.hid.read().await;
 
-        if state != 0 {
+        if state.high() {
             let now = Instant::now();
             if now.duration_since(self.prev_time) > self.period {
                 self.prev_time = now;
@@ -165,7 +165,7 @@ impl Move {
 
 #[async_trait]
 impl FunctionInterface for Move {
-    async fn event(&mut self, state: u16) -> ReturnCommand {
+    async fn event(&mut self, state: State) -> ReturnCommand {
         let hid = self.hid.read().await;
 
         if state > self.threshold {
@@ -223,7 +223,7 @@ impl Scroll {
 
 #[async_trait]
 impl FunctionInterface for Scroll {
-    async fn event(&mut self, state: u16) -> ReturnCommand {
+    async fn event(&mut self, state: State) -> ReturnCommand {
         let hid = self.hid.read().await;
 
         let now = Instant::now();
@@ -278,13 +278,13 @@ impl LeftClick {
 
 #[async_trait]
 impl FunctionInterface for LeftClick {
-    async fn event(&mut self, state: u16) -> super::ReturnCommand {
+    async fn event(&mut self, state: State) -> super::ReturnCommand {
         let hid = self.hid.read().await;
 
-        if state != 0 && self.prev_state == 0 {
+        if state.rising(self.prev_state) {
             hid.hold_button(MouseButton::Left).await;
             hid.send_mouse();
-        } else if state == 0 && self.prev_state != 0 {
+        } else if state.falling(self.prev_state) {
             hid.release_button(MouseButton::Left).await;
             hid.send_mouse();
         }
@@ -314,13 +314,13 @@ impl RightClick {
 
 #[async_trait]
 impl FunctionInterface for RightClick {
-    async fn event(&mut self, state: u16) -> super::ReturnCommand {
+    async fn event(&mut self, state: State) -> super::ReturnCommand {
         let hid = self.hid.read().await;
 
-        if state != 0 && self.prev_state == 0 {
+        if state.rising(self.prev_state) {
             hid.hold_button(MouseButton::Right).await;
             hid.send_mouse();
-        } else if state == 0 && self.prev_state != 0 {
+        } else if state.falling(self.prev_state) {
             hid.release_button(MouseButton::Right).await;
             hid.send_mouse();
         }
