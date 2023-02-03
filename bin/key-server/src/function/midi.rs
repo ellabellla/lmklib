@@ -4,9 +4,9 @@ use async_trait::async_trait;
 use midi_msg::{MidiMsg, ChannelVoiceMsg};
 use midir::{MidiOutput};
 use serde::{Serialize, Deserialize};
-use tokio::{sync::{RwLock, mpsc::{UnboundedSender, self}, oneshot}, runtime::Handle};
+use tokio::{sync::{RwLock, mpsc::{UnboundedSender, self}, oneshot}};
 
-use crate::{OrLogIgnore, OrLog, layout::{Data, Variable, Variables}};
+use crate::{OrLogIgnore, OrLog, layout::{Variable}};
 
 use super::{Function, FunctionInterface, ReturnCommand, FunctionType, FunctionConfig, FunctionConfigData, FunctionConfiguration, State, StateHelpers};
 
@@ -648,7 +648,7 @@ impl From<midi_msg::GMSoundSet> for GMSoundSet {
 
 /// Note function, play a note
 pub struct Note {
-    channel: Variable<midi_msg::Channel>,
+    channel: Variable<Channel>,
     note: Variable<u8>,
     velocity: Variable<u8>,
     prev_state: u16,
@@ -657,13 +657,10 @@ pub struct Note {
 
 impl Note {
     /// New
-    pub fn new(channel: Variable<Channel>, note: Variable<note_param::Note>, velocity: Variable<u8>, midi_controller: Arc<RwLock<MidiController>>, variables: Arc<RwLock<Variables>>) -> Function {
-        let mut lock = Handle::current().block_on(variables.write());
-
-        let channel: Variable<midi_msg::Channel> = channel.map(|c: Box<Channel>| Box::new((*c).into()), &mut lock);
-        let note = note.map(|n| Box::new(n.to_note()), &mut lock);
+    pub fn new(channel: Variable<Channel>, note: Variable<note_param::Note>, velocity: Variable<u8>, midi_controller: Arc<RwLock<MidiController>>) -> Function {
+        let note = note.map(|n| n.to_note());
         // The velocity the note should be played at, 0-127
-        let velocity = velocity.map(|velocity| if *velocity > 127 {Box::new(127)} else {velocity}, &mut lock);
+        let velocity = velocity.map(|velocity| if velocity > 127 {127} else {velocity});
 
         Some(Box::new(Note{channel, note, velocity, prev_state: 0, midi_controller}))
     } 
@@ -673,11 +670,11 @@ impl Note {
 impl FunctionInterface for Note {
     async fn event(&mut self, state: State) -> super::ReturnCommand {
         let mut conn = self.midi_controller.write().await;
-        let mut lock = self.channel.write_lock_variables().await;
+
         if state.rising(self.prev_state) {
-            conn.hold_note(**self.channel.data(&mut lock), **self.note.data(&mut lock), **self.velocity.data(&mut lock)).await.or_log("MIDI error (MIDI Driver)");
+            conn.hold_note(self.channel.data().to_owned().into(), *self.note.data(), *self.velocity.data()).await.or_log("MIDI error (MIDI Driver)");
         } else if state.falling(self.prev_state) {
-            conn.release_note(**self.channel.data(&mut lock), **self.note.data(&mut lock), **self.velocity.data(&mut lock)).await.or_log("MIDI error (MIDI Driver)");
+            conn.release_note(self.channel.data().to_owned().into(), *self.note.data(), *self.velocity.data()).await.or_log("MIDI error (MIDI Driver)");
         }
 
         self.prev_state = state;
@@ -685,16 +682,15 @@ impl FunctionInterface for Note {
     }
 
     fn ftype(&self) -> FunctionType {
-        let channel: Data<midi_msg::Channel> = self.channel.into_data();
-        let note: Data<u8> = self.note.into_data();
+        let note = self.note.clone().map(|n| note_param::Note::from_note(n));
 
-        FunctionType::Note{channel: channel.map(|c| Channel::from(c)), note: note.map(|note| note_param::Note::from_note(note)), velocity: self.velocity.into_data()}
+        FunctionType::Note{channel: self.channel.into_data(), note: note.into_data(), velocity: self.velocity.into_data()}
     }
 }
 
 /// Const Pitch Bend, bend pitch by a constant amount when pressed
 pub struct ConstPitchBend {
-    channel: Variable<midi_msg::Channel>,
+    channel: Variable<Channel>,
     bend: Variable<u16>,
     prev_state: u16,
     midi_controller: Arc<RwLock<MidiController>>,
@@ -702,10 +698,8 @@ pub struct ConstPitchBend {
 
 impl ConstPitchBend {
     /// New
-    pub fn new(channel: Variable<Channel>, bend: Variable<u16>, midi_controller: Arc<RwLock<MidiController>>, variables: Arc<RwLock<Variables>>) -> Function {
-        let mut lock = Handle::current().block_on(variables.write());
-        let channel: Variable<midi_msg::Channel> = channel.map(|c: Box<Channel>| Box::new((*c).into()), &mut lock);
-        let bend = bend.map(|bend| if *bend > 16383 {Box::new(16383)} else {bend}, &mut lock);
+    pub fn new(channel: Variable<Channel>, bend: Variable<u16>, midi_controller: Arc<RwLock<MidiController>>) -> Function {
+        let bend = bend.map(|bend| if bend > 16383 {16383} else {bend});
 
         Some(Box::new(ConstPitchBend{channel: channel, bend, prev_state: 0, midi_controller}))
     } 
@@ -715,12 +709,12 @@ impl ConstPitchBend {
 impl FunctionInterface for ConstPitchBend {
     async fn event(&mut self, state: State) -> super::ReturnCommand {
         let mut conn = self.midi_controller.write().await;
-        let mut lock = self.channel.write_lock_variables().await;
+
         if state.rising(self.prev_state) {
-            conn.pitch_bend(**self.channel.data(&mut lock), **self.bend.data(&mut lock)).await.or_log("MIDI error (MIDI Driver)");
+            conn.pitch_bend(self.channel.data().to_owned().into(), *self.bend.data()).await.or_log("MIDI error (MIDI Driver)");
         } else if state.falling(self.prev_state) 
-            && conn.get_last_bend().map(|b| b == **self.bend.data(&mut lock)).unwrap_or(true) {
-            conn.pitch_bend(**self.channel.data(&mut lock), 0).await.or_log("MIDI error (MIDI Driver)");
+            && conn.get_last_bend().map(|b| b == *self.bend.data()).unwrap_or(true) {
+            conn.pitch_bend(self.channel.data().to_owned().into(), 0).await.or_log("MIDI error (MIDI Driver)");
         }
 
         self.prev_state = state;
@@ -728,14 +722,13 @@ impl FunctionInterface for ConstPitchBend {
     }
 
     fn ftype(&self) -> FunctionType {
-        let channel: Data<midi_msg::Channel> = self.channel.into_data();
-        FunctionType::ConstPitchBend{channel: channel.map(|c| Channel::from(c)), bend: self.bend.into_data()}
+        FunctionType::ConstPitchBend{channel: self.channel.into_data(), bend: self.bend.into_data()}
     }
 }
 
 /// Pitch Bend function, bend pitch based on state
 pub struct PitchBend {
-    channel: Variable<midi_msg::Channel>,
+    channel: Variable<Channel>,
     invert: Variable<bool>,
     threshold: Variable<u16>,
     scale: Variable<f64>,
@@ -744,9 +737,7 @@ pub struct PitchBend {
 
 impl PitchBend {
     /// New 
-    pub fn new(channel: Variable<Channel>, invert: Variable<bool>, threshold: Variable<u16>, scale: Variable<f64>, midi_controller: Arc<RwLock<MidiController>>, variables: Arc<RwLock<Variables>>) -> Function {
-        let mut lock = Handle::current().block_on(variables.write());
-        let channel: Variable<midi_msg::Channel> = channel.map(|c: Box<Channel>| Box::new((*c).into()), &mut lock);
+    pub fn new(channel: Variable<Channel>, invert: Variable<bool>, threshold: Variable<u16>, scale: Variable<f64>, midi_controller: Arc<RwLock<MidiController>>) -> Function {
 
         Some(Box::new(PitchBend{channel, invert, threshold, scale, midi_controller}))
     } 
@@ -756,18 +747,17 @@ impl PitchBend {
 impl FunctionInterface for PitchBend {
     async fn event(&mut self, state: State) -> super::ReturnCommand {
         let mut conn = self.midi_controller.write().await;
-        let mut lock = self.channel.write_lock_variables().await;
 
         // Apply a pitch bend to all sounding notes. 0-8191 represent negative bends, 8192 is no bend and 8193-16383 are positive bends,
         // with the standard bend rang being +/-2 semitones per GM2
 
         let mut val = (state as f64) / (16383.0) * 2.0 - 1.0;
 
-        if **self.invert.data(&mut lock) {
+        if *self.invert.data() {
             val = -val;
         }
 
-        val *= **self.scale.data(&mut lock);
+        val *= self.scale.data();
         val = if val > 1.0 {
             1.0
         } else if val < -1.0 {
@@ -784,32 +774,27 @@ impl FunctionInterface for PitchBend {
 
         let bend = val as u16;
         
-        conn.pitch_bend(**self.channel.data(&mut lock), bend).await.or_log("MIDI error (MIDI Driver)");
+        conn.pitch_bend(self.channel.data().to_owned().into(), bend).await.or_log("MIDI error (MIDI Driver)");
 
         ReturnCommand::None
     }
 
     fn ftype(&self) -> FunctionType {
-        let channel: Data<midi_msg::Channel> = self.channel.into_data();
-        FunctionType::PitchBend{ channel: channel.map(|c| Channel::from(c)), invert: self.invert.into_data(), threshold: self.threshold.into_data(), scale: self.scale.into_data()}
+        FunctionType::PitchBend{ channel: self.channel.into_data(), invert: self.invert.into_data(), threshold: self.threshold.into_data(), scale: self.scale.into_data()}
     }
 }
 
 
 /// Instrument function, set instrument
 pub struct Instrument {
-    channel: Variable<midi_msg::Channel>,
-    instrument: Variable<midi_msg::GMSoundSet>,
+    channel: Variable<Channel>,
+    instrument: Variable<GMSoundSet>,
     prev_state: u16,
     midi_controller: Arc<RwLock<MidiController>>,
 }
 
 impl Instrument {
-    pub fn new(channel: Variable<Channel>, instrument: Variable<GMSoundSet>, midi_controller: Arc<RwLock<MidiController>>, variables: Arc<RwLock<Variables>>) -> Function {
-        let mut lock = Handle::current().block_on(variables.write());
-        let channel: Variable<midi_msg::Channel> = channel.map(|c: Box<Channel>| Box::new((*c).into()), &mut lock);
-        let instrument: Variable<midi_msg::GMSoundSet> = instrument.map(|i| Box::new((*i).into()), &mut lock);
-
+    pub fn new(channel: Variable<Channel>, instrument: Variable<GMSoundSet>, midi_controller: Arc<RwLock<MidiController>>) -> Function {
         Some(Box::new(Instrument{channel, instrument, prev_state: 0, midi_controller}))
     } 
 }
@@ -818,10 +803,9 @@ impl Instrument {
 impl FunctionInterface for Instrument {
     async fn event(&mut self, state: State) -> super::ReturnCommand {
         let mut conn = self.midi_controller.write().await;
-        let mut lock = self.channel.write_lock_variables().await;
 
         if state.rising(self.prev_state) {
-            conn.change_instrument(**self.channel.data(&mut lock), **self.instrument.data(&mut lock)).await.or_log("MIDI error (MIDI Driver)");
+            conn.change_instrument(self.channel.data().to_owned().into(), self.instrument.data().to_owned().into()).await.or_log("MIDI error (MIDI Driver)");
         }
 
         self.prev_state = state;
@@ -829,9 +813,7 @@ impl FunctionInterface for Instrument {
     }
 
     fn ftype(&self) -> FunctionType {
-        let channel: Data<midi_msg::Channel> = self.channel.into_data();
-        let instrument: Data<midi_msg::GMSoundSet> = self.instrument.into_data();
-        FunctionType::Instrument{channel: channel.map(|c| Channel::from(c)), instrument: instrument.map(|i| GMSoundSet::from(i))}
+        FunctionType::Instrument{channel: self.channel.into_data(), instrument: self.instrument.into_data()}
     }
 }
 

@@ -78,8 +78,7 @@ impl Bash {
 impl FunctionInterface for Bash {
     async fn event(&mut self, state: State) -> ReturnCommand {
         if state.rising(self.prev_state) {
-            let mut lock = self.command.write_lock_variables().await;
-            exec(&self.command.data(&mut lock), &self.command_pool).await;
+            exec(self.command.data(), &self.command_pool).await;
         }
 
         self.prev_state = state;
@@ -109,8 +108,7 @@ impl Pipe {
 impl FunctionInterface for Pipe {
     async fn event(&mut self, state: State) -> ReturnCommand {
         if state.rising(self.prev_state) {
-            let mut lock = self.command.write_lock_variables().await;
-            pipe(&self.command.data(&mut lock), &self.command_pool).await;
+            pipe(self.command.data(), &self.command_pool).await;
         }
 
         self.prev_state = state;

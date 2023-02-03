@@ -233,27 +233,27 @@ impl FunctionBuilder {
             FunctionType::Key(key) => Key::new(key, self.hid.clone()),
             FunctionType::Special(special) => Special::new(special, self.hid.clone()),
             FunctionType::Modifier(modifier) => ModifierKey::new(modifier, self.hid.clone()),
-            FunctionType::String(str) => BasicString::new(str.into_variable(self.variables.clone()), false, self.hid.clone(), self.variables.clone()),
-            FunctionType::ComplexString { str, layout } => ComplexString::new(str.into_variable(self.variables.clone()), false, layout.into_variable(self.variables.clone()), self.hid.clone(), self.variables.clone()),
-            FunctionType::StringLn(string) => BasicString::new( string.into_variable(self.variables.clone()), true, self.hid.clone(), self.variables.clone()),
-            FunctionType::ComplexStringLn { str, layout } => ComplexString::new(str.into_variable(self.variables.clone()), true, layout.into_variable(self.variables.clone()), self.hid.clone(), self.variables.clone()),
+            FunctionType::String(str) => BasicString::new(str.into_variable(self.variables.clone()), false, self.hid.clone()),
+            FunctionType::ComplexString { str, layout } => ComplexString::new(str.into_variable(self.variables.clone()), false, layout.into_variable(self.variables.clone()), self.hid.clone()),
+            FunctionType::StringLn(string) => BasicString::new( string.into_variable(self.variables.clone()), true, self.hid.clone()),
+            FunctionType::ComplexStringLn { str, layout } => ComplexString::new(str.into_variable(self.variables.clone()), true, layout.into_variable(self.variables.clone()), self.hid.clone()),
             FunctionType::Shortcut { modifiers, keys } => Shortcut::new(modifiers, keys, self.hid.clone()),
             FunctionType::Up => Up::new(),
             FunctionType::Down => Down::new(),
             FunctionType::Switch(id) => Switch::new(id.into_variable(self.variables.clone())),
-            FunctionType::Scroll { period, invert, threshold, scale } => Scroll::new(period.into_variable(self.variables.clone()), invert.into_variable(self.variables.clone()), threshold.into_variable(self.variables.clone()), scale.into_variable(self.variables.clone()), self.hid.clone(), self.variables.clone()),
+            FunctionType::Scroll { period, invert, threshold, scale } => Scroll::new(period.into_variable(self.variables.clone()), invert.into_variable(self.variables.clone()), threshold.into_variable(self.variables.clone()), scale.into_variable(self.variables.clone()), self.hid.clone()),
             FunctionType::Move { dir, invert, threshold, scale } => Move::new(dir, invert.into_variable(self.variables.clone()), threshold.into_variable(self.variables.clone()), scale.into_variable(self.variables.clone()), self.hid.clone()),
             FunctionType::ImmediateMove { x, y } => ImmediateMove::new(x.into_variable(self.variables.clone()), y.into_variable(self.variables.clone()), self.hid.clone()),
             FunctionType::ImmediateScroll(amount) => ImmediateScroll::new(amount.into_variable(self.variables.clone()), self.hid.clone()),
             FunctionType::ConstMove{x, y} => ConstMove::new(x.into_variable(self.variables.clone()), y.into_variable(self.variables.clone()), self.hid.clone()),
-            FunctionType::ConstScroll{amount, period} => ConstScroll::new(amount.into_variable(self.variables.clone()), period.into_variable(self.variables.clone()), self.hid.clone(), self.variables.clone()),
+            FunctionType::ConstScroll{amount, period} => ConstScroll::new(amount.into_variable(self.variables.clone()), period.into_variable(self.variables.clone()), self.hid.clone()),
             FunctionType::LeftClick => LeftClick::new(self.hid.clone()),
             FunctionType::RightClick => RightClick::new(self.hid.clone()),
             FunctionType::None => None,
-            FunctionType::Note{channel, note, velocity} => Note::new(channel.into_variable(self.variables.clone()), note.into_variable(self.variables.clone()), velocity.into_variable(self.variables.clone()), self.midi_controller.clone(), self.variables.clone()),
-            FunctionType::ConstPitchBend{channel, bend} => ConstPitchBend::new(channel.into_variable(self.variables.clone()), bend.into_variable(self.variables.clone()), self.midi_controller.clone(), self.variables.clone()),
-            FunctionType::PitchBend { channel, invert, threshold, scale } => PitchBend::new(channel.into_variable(self.variables.clone()), invert.into_variable(self.variables.clone()), threshold.into_variable(self.variables.clone()), scale.into_variable(self.variables.clone()), self.midi_controller.clone(), self.variables.clone()),
-            FunctionType::Instrument { channel, instrument } => Instrument::new(channel.into_variable(self.variables.clone()), instrument.into_variable(self.variables.clone()), self.midi_controller.clone(), self.variables.clone()),
+            FunctionType::Note{channel, note, velocity} => Note::new(channel.into_variable(self.variables.clone()), note.into_variable(self.variables.clone()), velocity.into_variable(self.variables.clone()), self.midi_controller.clone()),
+            FunctionType::ConstPitchBend{channel, bend} => ConstPitchBend::new(channel.into_variable(self.variables.clone()), bend.into_variable(self.variables.clone()), self.midi_controller.clone()),
+            FunctionType::PitchBend { channel, invert, threshold, scale } => PitchBend::new(channel.into_variable(self.variables.clone()), invert.into_variable(self.variables.clone()), threshold.into_variable(self.variables.clone()), scale.into_variable(self.variables.clone()), self.midi_controller.clone()),
+            FunctionType::Instrument { channel, instrument } => Instrument::new(channel.into_variable(self.variables.clone()), instrument.into_variable(self.variables.clone()), self.midi_controller.clone()),
             FunctionType::Bash(command) => Bash::new(command.into_variable(self.variables.clone()), self.command_pool.clone()),
             FunctionType::Pipe(command) => Pipe::new(command.into_variable(self.variables.clone()), self.command_pool.clone()),
             FunctionType::SwitchHid{name} => SwitchHid::new(name.into_variable(self.variables.clone()), self.hid.clone()),
@@ -338,9 +338,7 @@ impl Switch {
 impl FunctionInterface for Switch {
     async fn event(&mut self, state: State) -> ReturnCommand {
         if state.rising(self.prev_state) {
-            let mut lock = self.id.write_lock_variables().await;
-
-            return ReturnCommand::Switch(**self.id.data(&mut lock))
+            return ReturnCommand::Switch(*self.id.data())
         }
 
         return ReturnCommand::None
@@ -367,11 +365,10 @@ impl Shift {
 #[async_trait]
 impl FunctionInterface for Shift {
     async fn event(&mut self, state: State) -> ReturnCommand {
-        let mut lock = self.id.write_lock_variables().await;
         if state.rising(self.prev_state) {
-            return ReturnCommand::Shift(**self.id.data(&mut lock))
+            return ReturnCommand::Shift(*self.id.data())
         } else if state.falling(self.prev_state) {
-            return ReturnCommand::UnShift(**self.id.data(&mut lock))
+            return ReturnCommand::UnShift(*self.id.data())
         }
 
         ReturnCommand::None

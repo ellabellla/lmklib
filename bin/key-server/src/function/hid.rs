@@ -52,8 +52,7 @@ impl SwitchHid {
 impl FunctionInterface for SwitchHid {
     async fn event(&mut self, state: State) -> ReturnCommand {
         if state.rising(self.prev_state) {
-            let mut lock = self.name.write_lock_variables().await;
-            self.hid.read().await.switch(*self.name.data(&mut lock).clone());
+            self.hid.read().await.switch(self.name.data().clone());
         }
 
         self.prev_state = state;

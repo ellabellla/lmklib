@@ -26,10 +26,9 @@ impl Output {
 impl FunctionInterface for Output {
     async fn event(&mut self, state: State) -> ReturnCommand {
         if state.rising(self.prev_state) {
-            let mut lock = self.idx.write_lock_variables().await;
             let mut driver_manager = self.driver_manager.write().await;
             if let Some(driver) = driver_manager.get_mut(&self.name) {
-                driver.set(**self.idx.data(&mut lock), **self.state.data(&mut lock)).await;
+                driver.set(*self.idx.data(), *self.state.data()).await;
             }
         }
 
@@ -57,10 +56,9 @@ impl Flip {
 impl FunctionInterface for Flip {
     async fn event(&mut self, state: State) -> ReturnCommand {
         if state.rising(self.prev_state) {
-            let mut lock = self.idx.write_lock_variables().await;
             let mut driver_manager = self.driver_manager.write().await;
             if let Some(driver) = driver_manager.get_mut(&self.name) {
-                let mut state = driver.poll(**self.idx.data(&mut lock));
+                let mut state = driver.poll(*self.idx.data());
                 
                 if state == 0 {
                     state = 1;
@@ -68,7 +66,7 @@ impl FunctionInterface for Flip {
                     state = 0;
                 }                
                 
-                driver.set(**self.idx.data(&mut lock), state).await;
+                driver.set(*self.idx.data(), state).await;
             }
         }
 

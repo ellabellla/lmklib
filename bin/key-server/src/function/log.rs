@@ -33,11 +33,10 @@ impl FunctionInterface for Log {
     async fn event(&mut self, state: State) -> ReturnCommand {
         
         if state.rising(self.prev_state) {
-            let mut lock = self.log_level.write_lock_variables().await;
-            match **self.log_level.data(&mut lock) {
-                LogLevel::Warn => warn!("{}", self.msg.data(&mut lock)),
-                LogLevel::Info => info!("{}", self.msg.data(&mut lock)),
-                LogLevel::Error => error!("{}", self.msg.data(&mut lock)),
+            match self.log_level.data() {
+                LogLevel::Warn => warn!("{}", self.msg.data()),
+                LogLevel::Info => info!("{}", self.msg.data()),
+                LogLevel::Error => error!("{}", self.msg.data()),
             };
         }
 
