@@ -3,7 +3,7 @@ use std::{process::{Command, Child}, sync::Arc, io, thread, time::Duration};
 use async_trait::async_trait;
 use tokio::{sync::RwLock};
 
-use crate::OrLog;
+use crate::{OrLog, layout::Variable};
 
 use super::{Function, FunctionInterface, ReturnCommand, FunctionType, FunctionConfig, FunctionConfigData, State, StateHelpers};
 
@@ -62,14 +62,14 @@ impl CommandPool {
 
 /// Bash Function, runs bash command
 pub struct Bash {
-    command: String,
+    command: Variable<String>,
     prev_state: u16,
     command_pool: Arc<RwLock<CommandPool>>,
 }
 
 impl Bash {
     /// New
-    pub fn new(command: String, command_pool: Arc<RwLock<CommandPool>>) -> Function {
+    pub fn new(command: Variable<String>, command_pool: Arc<RwLock<CommandPool>>) -> Function {
         Some(Box::new(Bash{command, prev_state: 0, command_pool}))
     }
 }
@@ -78,7 +78,8 @@ impl Bash {
 impl FunctionInterface for Bash {
     async fn event(&mut self, state: State) -> ReturnCommand {
         if state.rising(self.prev_state) {
-            exec(&self.command, &self.command_pool).await;
+            let mut lock = self.command.write_lock_variables().await;
+            exec(&self.command.data(&mut lock), &self.command_pool).await;
         }
 
         self.prev_state = state;
@@ -86,20 +87,20 @@ impl FunctionInterface for Bash {
     }
 
     fn ftype(&self) -> FunctionType {
-        FunctionType::Bash(self.command.clone())
+        FunctionType::Bash(self.command.into_data())
     }
 }
 
 /// Pipe Function, pipes bash command into kout
 pub struct Pipe {
-    command: String,
+    command: Variable<String>,
     prev_state: u16,
     command_pool: Arc<RwLock<CommandPool>>,
 }
 
 impl Pipe {
     /// New
-    pub fn new(command: String, command_pool: Arc<RwLock<CommandPool>>) -> Function {
+    pub fn new(command: Variable<String>, command_pool: Arc<RwLock<CommandPool>>) -> Function {
         Some(Box::new(Pipe{command, prev_state: 0, command_pool}))
     }
 }
@@ -108,7 +109,8 @@ impl Pipe {
 impl FunctionInterface for Pipe {
     async fn event(&mut self, state: State) -> ReturnCommand {
         if state.rising(self.prev_state) {
-            pipe(&self.command, &self.command_pool).await;
+            let mut lock = self.command.write_lock_variables().await;
+            pipe(&self.command.data(&mut lock), &self.command_pool).await;
         }
 
         self.prev_state = state;
@@ -116,7 +118,7 @@ impl FunctionInterface for Pipe {
     }
 
     fn ftype(&self) -> FunctionType {
-        FunctionType::Pipe(self.command.clone())
+        FunctionType::Pipe(self.command.into_data())
     }
 }
 

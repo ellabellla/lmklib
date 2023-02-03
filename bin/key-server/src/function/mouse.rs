@@ -1,20 +1,22 @@
 use std::{sync::{Arc}, time::{Instant, Duration}};
 
 use async_trait::async_trait;
-use tokio::sync::RwLock;
+use tokio::{sync::RwLock, runtime::Handle};
 use virt_hid::mouse::{MouseDir, MouseButton};
+
+use crate::layout::{Variable, Data, Variables};
 
 use super::{FunctionInterface, HID, ReturnCommand, FunctionType, Function, State, StateHelpers};
 
 /// Immediate Move function, move the mouse a set amount on press
 pub struct ImmediateMove {
-    amount: (i8, i8),
+    amount: (Variable<i8>, Variable<i8>),
     prev_state: u16,
     hid: Arc<RwLock<HID>>
 }
 
 impl ImmediateMove {
-    pub fn new(x: i8, y: i8, hid: Arc<RwLock<HID>>) -> Function {
+    pub fn new(x: Variable<i8>, y: Variable<i8>, hid: Arc<RwLock<HID>>) -> Function {
         Some(Box::new(ImmediateMove{amount: (x, y), prev_state: 0, hid}))
     }
 }
@@ -22,11 +24,12 @@ impl ImmediateMove {
 #[async_trait]
 impl FunctionInterface for ImmediateMove {
     async fn event(&mut self, state: State) -> super::ReturnCommand {
+        let mut lock = self.amount.0.write_lock_variables().await;
         if state.rising(self.prev_state) {
             let hid = self.hid.read().await;
 
-            hid.move_mouse(self.amount.0, MouseDir::X).await;
-            hid.move_mouse(self.amount.1, MouseDir::Y).await;
+            hid.move_mouse(**self.amount.0.data(&mut lock), MouseDir::X).await;
+            hid.move_mouse(**self.amount.1.data(&mut lock), MouseDir::Y).await;
 
             hid.send_mouse();
         }
@@ -36,20 +39,20 @@ impl FunctionInterface for ImmediateMove {
     }
 
     fn ftype(&self) -> FunctionType {
-        return FunctionType::ImmediateMove{ x: self.amount.0, y: self.amount.1}
+        return FunctionType::ImmediateMove{ x: self.amount.0.into_data(), y: self.amount.1.into_data()}
     }
 }
 
 /// Immediate Scroll function, scroll the mouse a set amount on press
 pub struct ImmediateScroll {
-    amount: i8,
+    amount: Variable<i8>,
     prev_state: u16,
     hid: Arc<RwLock<HID>>
 }
 
 impl ImmediateScroll {
     // New
-    pub fn new(amount: i8, hid: Arc<RwLock<HID>>) -> Function {
+    pub fn new(amount: Variable<i8>, hid: Arc<RwLock<HID>>) -> Function {
         Some(Box::new(ImmediateScroll{amount, prev_state: 0, hid}))
     }
 }
@@ -57,10 +60,11 @@ impl ImmediateScroll {
 #[async_trait]
 impl FunctionInterface for ImmediateScroll {
     async fn event(&mut self, state: State) -> super::ReturnCommand {
+        let mut lock = self.amount.write_lock_variables().await;
         if state.rising(self.prev_state) {
             let hid = self.hid.read().await;
 
-            hid.scroll_wheel(self.amount).await;
+            hid.scroll_wheel(**self.amount.data(&mut lock)).await;
             hid.send_mouse();
         }
 
@@ -69,19 +73,19 @@ impl FunctionInterface for ImmediateScroll {
     }
 
     fn ftype(&self) -> FunctionType {
-        return FunctionType::ImmediateScroll(self.amount)
+        return FunctionType::ImmediateScroll(self.amount.into_data())
     }
 }
 
 /// Const Move function, move the mouse a set amount whilst pressed
 pub struct ConstMove {
-    amount: (i8, i8),
+    amount: (Variable<i8>, Variable<i8>),
     hid: Arc<RwLock<HID>>
 }
 
 impl ConstMove {
     /// New
-    pub fn new(x: i8, y: i8, hid: Arc<RwLock<HID>>) -> Function {
+    pub fn new(x: Variable<i8>, y: Variable<i8>, hid: Arc<RwLock<HID>>) -> Function {
         Some(Box::new(ConstMove{amount: (x, y), hid}))
     }
 }
@@ -90,10 +94,11 @@ impl ConstMove {
 impl FunctionInterface for ConstMove {
     async fn event(&mut self, state: State) -> super::ReturnCommand {
         let hid = self.hid.read().await;
+        let mut lock = self.amount.0.write_lock_variables().await;
 
         if state.high() {
-            hid.move_mouse(self.amount.0, MouseDir::X).await;
-            hid.move_mouse(self.amount.1, MouseDir::Y).await;
+            hid.move_mouse(**self.amount.0.data(&mut lock), MouseDir::X).await;
+            hid.move_mouse(**self.amount.1.data(&mut lock), MouseDir::Y).await;
 
             hid.send_mouse();
         }
@@ -102,22 +107,24 @@ impl FunctionInterface for ConstMove {
     }
 
     fn ftype(&self) -> FunctionType {
-        return FunctionType::ConstMove{ x: self.amount.0, y: self.amount.1}
+        return FunctionType::ConstMove{ x: self.amount.0.into_data(), y: self.amount.1.into_data()}
     }
 }
 
 /// Const Scroll function, scroll the mouse a set amount whilst pressed
 pub struct ConstScroll {
-    amount: i8,
-    period: Duration,
+    amount: Variable<i8>,
+    period: Variable<Duration>,
     prev_time: Instant,
     hid: Arc<RwLock<HID>>
 }
 
 impl ConstScroll {
     /// New
-    pub fn new(amount: i8, period: u64, hid: Arc<RwLock<HID>>) -> Function {
-        Some(Box::new(ConstScroll{amount, period: Duration::from_millis(period), hid, prev_time: Instant::now()}))
+    pub fn new(amount: Variable<i8>, period: Variable<u64>, hid: Arc<RwLock<HID>>, variables: Arc<RwLock<Variables>>) -> Function {
+        let mut lock = Handle::current().block_on(variables.write());
+        let period: Variable<Duration> = period.map(|period| Box::new(Duration::from_millis(*period)), &mut lock);
+        Some(Box::new(ConstScroll{amount, period, hid, prev_time: Instant::now()}))
     }
 }
 
@@ -126,13 +133,14 @@ impl FunctionInterface for ConstScroll {
     async fn event(&mut self, state: State) -> super::ReturnCommand {
 
         let hid = self.hid.read().await;
+        let mut lock = self.period.write_lock_variables().await;
 
         if state.high() {
             let now = Instant::now();
-            if now.duration_since(self.prev_time) > self.period {
+            if now.duration_since(self.prev_time) > **self.period.data(&mut lock) {
                 self.prev_time = now;
 
-                hid.scroll_wheel(self.amount).await;
+                hid.scroll_wheel(**self.amount.data(&mut lock)).await;
     
                 hid.send_mouse();
             }
@@ -142,7 +150,8 @@ impl FunctionInterface for ConstScroll {
     }
 
     fn ftype(&self) -> FunctionType {
-        return FunctionType::ConstScroll{amount: self.amount, period: self.period.as_millis() as u64}
+        let period: Data<Duration> = self.period.into_data();
+        return FunctionType::ConstScroll{amount: self.amount.into_data(), period: period.map(|period| period.as_millis() as u64)}
     }
 }
 
@@ -150,15 +159,15 @@ impl FunctionInterface for ConstScroll {
 /// Move function, move the mouse in a direction based on the state
 pub struct Move {
     dir: MouseDir,
-    invert: bool,
-    threshold: u16,
-    scale: f64,
+    invert: Variable<bool>,
+    threshold: Variable<u16>,
+    scale: Variable<f64>,
     hid: Arc<RwLock<HID>>,
 }
 
 impl Move {
     /// New
-    pub fn new(dir: MouseDir, invert: bool, threshold: u16, scale: f64, hid: Arc<RwLock<HID>>) -> Function {
+    pub fn new(dir: MouseDir, invert: Variable<bool>, threshold: Variable<u16>, scale: Variable<f64>, hid: Arc<RwLock<HID>>) -> Function {
         Some(Box::new(Move{dir, invert, threshold, scale, hid}))
     }
 }
@@ -167,15 +176,16 @@ impl Move {
 impl FunctionInterface for Move {
     async fn event(&mut self, state: State) -> ReturnCommand {
         let hid = self.hid.read().await;
+        let mut lock = self.invert.write_lock_variables().await;
 
-        if state > self.threshold {
+        if state > **self.threshold.data(&mut lock) {
             let mut val = (state as f64) / (u16::MAX as f64);
 
-            if self.invert {
+            if **self.invert.data(&mut lock) {
                 val = -val;
             }
 
-            val *= self.scale;
+            val *= **self.scale.data(&mut lock);
             val = if val > 1.0 {
                 1.0
             } else if val < -1.0 {
@@ -199,25 +209,27 @@ impl FunctionInterface for Move {
     }
 
     fn ftype(&self) -> FunctionType {
-        FunctionType::Move{dir: self.dir.clone(), invert: self.invert, threshold: self.threshold, scale: self.scale}
+        FunctionType::Move{dir: self.dir.clone(), invert: self.invert.into_data(), threshold: self.threshold.into_data(), scale: self.scale.into_data()}
     }
 }
 
 
 /// Scroll function, move the scroll in a direction based on the state
 pub struct Scroll {
-    period: Duration,
-    invert: bool,
-    threshold: u16,
-    scale: f64,
+    period: Variable<Duration>,
+    invert: Variable<bool>,
+    threshold: Variable<u16>,
+    scale: Variable<f64>,
     prev_time: Instant,
     hid: Arc<RwLock<HID>>,
 }
 
 impl Scroll {
     /// New
-    pub fn new(period: u64, invert: bool, threshold: u16, scale: f64, hid: Arc<RwLock<HID>>) -> Function {
-        Some(Box::new(Scroll{period: Duration::from_millis(period), invert, threshold, scale, prev_time: Instant::now(), hid}))
+    pub fn new(period: Variable<u64>, invert: Variable<bool>, threshold: Variable<u16>, scale: Variable<f64>, hid: Arc<RwLock<HID>>, variables: Arc<RwLock<Variables>>) -> Function {
+        let mut lock = Handle::current().block_on(variables.write());
+        let period: Variable<Duration> = period.map(|period| Box::new(Duration::from_millis(*period)), &mut lock);
+        Some(Box::new(Scroll{period, invert, threshold, scale, prev_time: Instant::now(), hid}))
     }
 }
 
@@ -225,17 +237,18 @@ impl Scroll {
 impl FunctionInterface for Scroll {
     async fn event(&mut self, state: State) -> ReturnCommand {
         let hid = self.hid.read().await;
+        let mut lock = self.period.write_lock_variables().await;
 
         let now = Instant::now();
-        if state > self.threshold && now.duration_since(self.prev_time) > self.period {
+        if state > **self.threshold.data(&mut lock) && now.duration_since(self.prev_time) > **self.period.data(&mut lock) {
             self.prev_time = now;
             let mut val = (state as f64) / (u16::MAX as f64);
 
-            if self.invert {
+            if **self.invert.data(&mut lock) {
                 val = -val;
             }
 
-            val *= self.scale;
+            val *= **self.scale.data(&mut lock);
             val = if val > 1.0 {
                 1.0
             } else if val < -1.0 {
@@ -259,7 +272,8 @@ impl FunctionInterface for Scroll {
     }
 
     fn ftype(&self) -> FunctionType {
-        FunctionType::Scroll{period: self.period.as_millis() as u64, invert: self.invert, threshold: self.threshold, scale: self.scale}
+        let period: Data<Duration> = self.period.into_data();
+        FunctionType::Scroll{period: period.map(|period| period.as_millis() as u64), invert: self.invert.into_data(), threshold: self.threshold.into_data(), scale: self.scale.into_data()}
     }
 }
 

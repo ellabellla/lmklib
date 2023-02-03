@@ -3,7 +3,7 @@ use std::sync::{Arc};
 use async_trait::async_trait;
 use tokio::sync::RwLock;
 
-use crate::driver::DriverManager;
+use crate::{driver::DriverManager, layout::Variable};
 
 use super::{FunctionInterface, ReturnCommand, FunctionType, Function, State, StateHelpers};
 
@@ -11,13 +11,13 @@ use super::{FunctionInterface, ReturnCommand, FunctionType, Function, State, Sta
 
 pub struct Output {
     name: String,
-    idx: usize,
-    state: u16,
+    idx: Variable<usize>,
+    state: Variable<u16>,
     prev_state: u16,
     driver_manager: Arc<RwLock<DriverManager>>,
 }
 impl Output {
-    pub fn new(driver_name: String, idx: usize, state: u16, driver_manager: Arc<RwLock<DriverManager>>) -> Function {
+    pub fn new(driver_name: String, idx: Variable<usize>, state: Variable<u16>, driver_manager: Arc<RwLock<DriverManager>>) -> Function {
         Some(Box::new(Output{name: driver_name, idx, state, prev_state: 0, driver_manager}))
     }
 }
@@ -26,9 +26,10 @@ impl Output {
 impl FunctionInterface for Output {
     async fn event(&mut self, state: State) -> ReturnCommand {
         if state.rising(self.prev_state) {
+            let mut lock = self.idx.write_lock_variables().await;
             let mut driver_manager = self.driver_manager.write().await;
             if let Some(driver) = driver_manager.get_mut(&self.name) {
-                driver.set(self.idx, self.state).await;
+                driver.set(**self.idx.data(&mut lock), **self.state.data(&mut lock)).await;
             }
         }
 
@@ -36,18 +37,18 @@ impl FunctionInterface for Output {
         ReturnCommand::None
     }
     fn ftype(&self) -> FunctionType {
-        FunctionType::Output{driver_name: self.name.clone(), idx: self.idx, state: self.state}
+        FunctionType::Output{driver_name: self.name.clone(), idx: self.idx.into_data(), state: self.state.into_data()}
     }
 }
 
 pub struct Flip {
     name: String,
-    idx: usize,
+    idx: Variable<usize>,
     prev_state: u16,
     driver_manager: Arc<RwLock<DriverManager>>,
 }
 impl Flip {
-    pub fn new(driver_name: String, idx: usize, driver_manager: Arc<RwLock<DriverManager>>) -> Function {
+    pub fn new(driver_name: String, idx: Variable<usize>, driver_manager: Arc<RwLock<DriverManager>>) -> Function {
         Some(Box::new(Flip{name: driver_name, idx, prev_state: 0, driver_manager}))
     }
 }
@@ -56,9 +57,10 @@ impl Flip {
 impl FunctionInterface for Flip {
     async fn event(&mut self, state: State) -> ReturnCommand {
         if state.rising(self.prev_state) {
+            let mut lock = self.idx.write_lock_variables().await;
             let mut driver_manager = self.driver_manager.write().await;
             if let Some(driver) = driver_manager.get_mut(&self.name) {
-                let mut state = driver.poll(self.idx);
+                let mut state = driver.poll(**self.idx.data(&mut lock));
                 
                 if state == 0 {
                     state = 1;
@@ -66,7 +68,7 @@ impl FunctionInterface for Flip {
                     state = 0;
                 }                
                 
-                driver.set(self.idx, state).await;
+                driver.set(**self.idx.data(&mut lock), state).await;
             }
         }
 
@@ -74,6 +76,6 @@ impl FunctionInterface for Flip {
         ReturnCommand::None
     }
     fn ftype(&self) -> FunctionType {
-        FunctionType::Flip{driver_name: self.name.clone(), idx: self.idx}
+        FunctionType::Flip{driver_name: self.name.clone(), idx: self.idx.into_data()}
     }
 }

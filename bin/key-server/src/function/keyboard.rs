@@ -1,8 +1,10 @@
 use std::{sync::{Arc}};
 
 use async_trait::async_trait;
-use tokio::sync::RwLock;
+use tokio::{sync::RwLock, runtime::Handle};
 use virt_hid::key::{BasicKey, SpecialKey, Modifier};
+
+use crate::layout::{Variable, Variables};
 
 use super::{FunctionInterface, ReturnCommand, FunctionType, hid::HID, Function, State, StateHelpers};
 
@@ -122,14 +124,18 @@ impl FunctionInterface for ModifierKey {
 
 /// Basic String function, types a string
 pub struct BasicString {
-    string: std::string::String,
+    string: Variable<String>,
     prev_state: u16,
     hid: Arc<RwLock<HID>>,
 }
 
 impl BasicString {
     /// New
-    pub fn new(string: std::string::String, hid: Arc<RwLock<HID>>) -> Function {
+    pub fn new(mut string: Variable<String>, nl: bool, hid: Arc<RwLock<HID>>, variables: Arc<RwLock<Variables>>) -> Function {
+        if nl {
+            let mut lock = Handle::current().block_on(variables.write());
+            string = string.map(|s| Box::new(format!("{}\n", *s)), &mut lock);
+        }
         Some(Box::new(BasicString { string, prev_state: 0, hid }))
     }
 }
@@ -139,8 +145,9 @@ impl FunctionInterface for BasicString {
     async fn event(&mut self, state: State) -> ReturnCommand {
         if state.rising(self.prev_state) {
             let hid = self.hid.read().await;
+            let mut lock = self.string.write_lock_variables().await;
 
-            hid.press_basic_string(&self.string).await;
+            hid.press_basic_string(self.string.data(&mut lock)).await;
             hid.send_keyboard();
         }
 
@@ -149,21 +156,25 @@ impl FunctionInterface for BasicString {
     }
 
     fn ftype(&self) -> FunctionType {
-        FunctionType::String(self.string.clone())
+        FunctionType::String(self.string.into_data())
     }
 }
 
 /// Complex string function, types a string based on a keyboard layout
 pub struct ComplexString {
-    string: std::string::String,
-    layout: std::string::String,
+    string: Variable<String>,
+    layout: Variable<String>,
     prev_state: u16,
     hid: Arc<RwLock<HID>>,
 }
 
 impl ComplexString {
     /// New
-    pub fn new(string: std::string::String, layout: std::string::String, hid: Arc<RwLock<HID>>) -> Function {
+    pub fn new(mut string: Variable<String>, nl: bool, layout: Variable<String>, hid: Arc<RwLock<HID>>, variables: Arc<RwLock<Variables>>) -> Function {
+        if nl {
+            let mut lock = Handle::current().block_on(variables.write());
+            string = string.map(|s| Box::new(format!("{}\n", *s)), &mut lock);
+        }
         Some(Box::new(ComplexString { string, layout, prev_state: 0, hid }))
     }
 }
@@ -174,7 +185,14 @@ impl FunctionInterface for ComplexString {
         if state.rising(self.prev_state) {
             let hid = self.hid.read().await;
 
-            hid.press_string(&self.layout, &self.string).await;
+            let mut lock = self.string.write_lock_variables().await;
+            self.string.validate(&mut lock);
+            self.layout.validate(&mut lock);
+            drop(lock);
+            
+            let lock = self.string.read_lock_variables().await;
+
+            hid.press_string(self.layout.read_data(&lock), self.string.read_data(&lock)).await;
             hid.send_keyboard();
         }
 
@@ -183,7 +201,7 @@ impl FunctionInterface for ComplexString {
     }
 
     fn ftype(&self) -> FunctionType {
-        FunctionType::ComplexString{str: self.string.clone(), layout: self.layout.clone()}
+        FunctionType::ComplexString{str: self.string.into_data(), layout: self.layout.into_data()}
     }
 }
 

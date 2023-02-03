@@ -6,7 +6,7 @@ use tokio::{sync::{RwLock, mpsc::{UnboundedSender, self}, oneshot}, runtime::Han
 use uinput::{event::{self, controller::Mouse, relative::{Position, Wheel}, keyboard::{Key, Misc, KeyPad, InputAssist}}, Device};
 use virt_hid::{key::{self, BasicKey, KeyOrigin, SpecialKey, Modifier}, mouse::{self, MouseDir, MouseButton}};
 
-use crate::{OrLogIgnore, OrLog, modules::ModuleManager};
+use crate::{OrLogIgnore, OrLog, modules::ModuleManager, layout::Variable};
 
 use super::{Function, FunctionInterface, ReturnCommand, FunctionType, FunctionConfig, FunctionConfigData, State, StateHelpers};
 
@@ -36,14 +36,14 @@ impl Display for HIDError {
 
 /// Switch hid mode (uinput, usb hid)
 pub struct SwitchHid {
-    name: String,
+    name: Variable<String>,
     prev_state: u16,
     hid: Arc<RwLock<HID>>,
 }
 
 impl SwitchHid {
     /// new
-    pub fn new(name: String, hid: Arc<RwLock<HID>>) -> Function {
+    pub fn new(name: Variable<String>, hid: Arc<RwLock<HID>>) -> Function {
         Some(Box::new(SwitchHid{name, prev_state: 0, hid}))
     }
 }
@@ -52,7 +52,8 @@ impl SwitchHid {
 impl FunctionInterface for SwitchHid {
     async fn event(&mut self, state: State) -> ReturnCommand {
         if state.rising(self.prev_state) {
-            self.hid.read().await.switch(self.name.clone());
+            let mut lock = self.name.write_lock_variables().await;
+            self.hid.read().await.switch(*self.name.data(&mut lock).clone());
         }
 
         self.prev_state = state;
@@ -60,7 +61,7 @@ impl FunctionInterface for SwitchHid {
     }
 
     fn ftype(&self) -> FunctionType {
-        FunctionType::SwitchHid{name:self.name.clone()}
+        FunctionType::SwitchHid{name:self.name.into_data()}
     }
 }
 

@@ -1,11 +1,11 @@
-use std::{ops::Range, fmt::Display, sync::Arc};
+use std::{ops::{Range}, fmt::Display, sync::Arc, collections::HashMap, any::Any };
 
 use itertools::Itertools;
 use serde::{Serialize, Deserialize, de};
 use slab::Slab;
-use tokio::sync::RwLock;
+use tokio::{sync::{RwLock, RwLockWriteGuard, RwLockReadGuard}};
 
-use crate::{function::{Function, ReturnCommand, FunctionType, FunctionBuilder}, driver::DriverManager};
+use crate::{function::{Function, ReturnCommand, FunctionType, FunctionBuilder}, driver::DriverManager, OrLogIgnore};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// Driver state address. Used to index a state/s of a driver
@@ -220,6 +220,144 @@ impl<'de> Deserialize<'de> for LayoutBuilder {
     }
 }
 
+pub struct Variables {
+    pub data: HashMap<String, Box<dyn Any + Send + Sync>>
+}
+
+impl Variables {
+    pub fn new() -> Arc<RwLock<Variables>> {
+        Arc::new(RwLock::new(Variables{ data: HashMap::new() }))
+    }
+
+    pub fn get_or_insert<T>(&mut self, name: &str, value: &Box<T>) -> Option<&Box<T>> 
+    where
+        T: Any + Clone + Send + Sync
+    {
+        self.data.entry(name.to_string()).or_insert(value.clone()).downcast_ref()
+    }
+
+    pub fn get<T>(&self, name: &str) -> Option<&Box<T>> 
+    where
+        T: Any + Clone + Send + Sync
+    {
+        self.data.get(name)?.downcast_ref()
+    }
+
+    pub fn set<T>(&mut self, name: &str, value: Box<T>)
+    where
+        T: Any + Clone + Send + Sync
+    {
+        self.data.insert(name.to_string(), value);
+    }
+}
+
+pub struct Variable<T> 
+where
+    T: Any + Clone + Send + Sync
+{
+    var_name: Option<String>,
+    data: Box<T>,
+    variables: Arc<RwLock<Variables>>,
+}
+
+
+impl<T> Variable<T>
+where
+    T: Any + Clone + Send + Sync,
+{
+    pub fn into_data(&self) -> Data<T> {
+        match self.var_name.clone() {
+            Some(name) => Data::VarDef { name, default: (*self.data).to_owned() },
+            None => Data::Const((*self.data).to_owned()),
+        }
+    }
+
+    pub fn from_data(data: Data<T>, variables: Arc<RwLock<Variables>>) -> Self 
+    {
+        match data {
+            Data::Const(data) => Variable { var_name: None, data: Box::new(data), variables},
+            Data::VarDef { name, default } => Variable { var_name: Some(name), data: Box::new(default), variables},
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn name(&self) -> Option<&String> {
+        self.var_name.as_ref()
+    }
+
+    pub async fn write_lock_variables(&self) -> RwLockWriteGuard<Variables> {
+        self.variables.write().await
+    }
+
+
+    pub async fn read_lock_variables(&self) -> RwLockReadGuard<Variables> {
+        self.variables.read().await
+    }
+
+    pub fn validate(&self, variables: &mut RwLockWriteGuard<Variables>) {
+        if let Some(name) = &self.var_name {
+            variables.set(name, self.data.clone());
+        }
+    }
+
+    pub fn data<'a>(&'a self, variables: &'a mut RwLockWriteGuard<Variables>) -> &'a Box<T> {
+        match &self.var_name {
+            Some(name) => {
+                variables.get_or_insert(name, &self.data).or_log_ignore(&format!("Unable to get variable {:?} (Probably due to a type issue)", self.var_name)).unwrap_or(&self.data)
+            },
+            None => &self.data,
+        }
+    }
+
+    pub fn read_data<'a>(&'a self, variables: &'a RwLockReadGuard<Variables>) -> &'a Box<T> {
+        match &self.var_name {
+            Some(name) => {
+                variables.get(name).or_log_ignore(&format!("Unable to get variable {:?} (Probably due to a type issue)", self.var_name)).unwrap_or(&self.data)
+            },
+            None => &self.data,
+        }
+    }
+
+    pub fn map<T2>(self, func: impl FnOnce(Box<T>) -> Box<T2>, variables: &mut RwLockWriteGuard<Variables>) -> Variable<T2>
+    where
+        T2: Any + Clone + Send + Sync,
+    {
+        let data = func(self.data);
+        if let Some(name) = &self.var_name {
+            variables.set(name, data.clone())
+        }
+        Variable{var_name: self.var_name, data, variables: self.variables }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Data<T> 
+where
+    T: Any + Clone + Send + Sync
+{
+    Const(T),
+    VarDef{name: String, default: T},
+}
+
+impl<T> Data<T> 
+where
+    T: Any + Clone + Send + Sync
+{
+    pub fn into_variable(self, variables: Arc<RwLock<Variables>>) -> Variable<T> {
+        Variable::from_data(self, variables)
+    }
+
+    pub fn map<T2>(self, func: impl FnOnce(T) -> T2) -> Data<T2>
+    where
+        T2: Any + Clone + Send + Sync,
+    {
+        match self {
+            Data::Const(data) => Data::Const(func(data)),
+            Data::VarDef { name, default } => Data::VarDef { name, default: func(default) },
+        }
+    }
+}
+ 
 
 /// Layout
 pub struct Layout {

@@ -6,7 +6,7 @@ use key_module::Data;
 use serde::{Serialize, Deserialize};
 use tokio::sync::RwLock;
 use virt_hid::{key::{SpecialKey, Modifier, BasicKey}, mouse::{MouseDir}};
-use crate::{layout::{Layout}, OrLogIgnore, driver::DriverManager, modules::{ModuleManager, ExternalFunction}};
+use crate::{layout::{Layout, self, Variable, Variables}, OrLogIgnore, driver::DriverManager, modules::{ModuleManager, ExternalFunction}};
 
 /// Keyboard functions
 pub mod keyboard;
@@ -156,38 +156,38 @@ impl ReturnCommand {
 /// Function type, used for serializing functions
 pub enum FunctionType {
     Key(char),
-    ConstMove{x: i8, y: i8},
+    ConstMove{x: layout::Data<i8>, y: layout::Data<i8>},
     Up,
     Down,
-    Switch(usize),
-    Shift(usize),
+    Switch(layout::Data<usize>),
+    Shift(layout::Data<usize>),
     None,
     LeftClick,
     RightClick,
-    ConstScroll{amount: i8, period: u64},
-    String(String),
-    ComplexString { str: String, layout: String },
+    ConstScroll{amount: layout::Data<i8>, period: layout::Data<u64>},
+    String(layout::Data<String>),
+    ComplexString { str: layout::Data<String>, layout: layout::Data<String> },
     Special(SpecialKey),
     Shortcut { modifiers: Vec<Modifier>, keys: Vec<BasicKey> },
     Modifier(Modifier),
-    StringLn(String),
-    ComplexStringLn { str: String, layout: String },
-    Move { dir: MouseDir, invert: bool, threshold: u16, scale: f64 },
-    Scroll { period: u64, invert: bool, threshold: u16, scale: f64 },
-    ImmediateMove { x: i8, y: i8 },
-    ImmediateScroll(i8),
-    Note{channel: Channel, note: note_param::Note, velocity: u8},
-    ConstPitchBend{channel: Channel, bend: u16},
-    PitchBend { channel: Channel, invert: bool, threshold: u16, scale: f64 },
-    Instrument { channel: Channel, instrument: GMSoundSet },
-    Bash(String),
-    Pipe(String),
-    SwitchHid{name: String},
-    Log(LogLevel, String),
+    StringLn(layout::Data<String>),
+    ComplexStringLn { str: layout::Data<String>, layout: layout::Data<String> },
+    Move { dir: MouseDir, invert: layout::Data<bool>, threshold: layout::Data<u16>, scale: layout::Data<f64> },
+    Scroll { period: layout::Data<u64>, invert: layout::Data<bool>, threshold: layout::Data<u16>, scale: layout::Data<f64> },
+    ImmediateMove { x: layout::Data<i8>, y: layout::Data<i8> },
+    ImmediateScroll(layout::Data<i8>),
+    Note{channel: layout::Data<Channel>, note: layout::Data<note_param::Note>, velocity: layout::Data<u8>},
+    ConstPitchBend{channel: layout::Data<Channel>, bend: layout::Data<u16>},
+    PitchBend { channel: layout::Data<Channel>, invert: layout::Data<bool>, threshold: layout::Data<u16>, scale: layout::Data<f64> },
+    Instrument { channel: layout::Data<Channel>, instrument: layout::Data<GMSoundSet> },
+    Bash(layout::Data<String>),
+    Pipe(layout::Data<String>),
+    SwitchHid{name: layout::Data<String>},
+    Log(layout::Data<LogLevel>, layout::Data<String>),
     NanoMsg { topic: u8, format: String, driver_data: Vec<DriverData> },
     External{ module: String, func: Data },
-    Output { driver_name: String, idx: usize, state: u16 },
-    Flip { driver_name: String, idx: usize },
+    Output { driver_name: String, idx: layout::Data<usize>, state: layout::Data<u16> },
+    Flip { driver_name: String, idx: layout::Data<usize>},
 }
 
 impl FunctionType  {
@@ -208,6 +208,7 @@ pub struct FunctionBuilder {
     driver_manager: Arc<RwLock<DriverManager>>,
     nano_messenger: Arc<RwLock<NanoMessenger>>,
     module_manager: Arc<ModuleManager>,
+    variables: Arc<RwLock<Variables>>,
 }
 
 impl FunctionBuilder {
@@ -219,8 +220,9 @@ impl FunctionBuilder {
         driver_manager: Arc<RwLock<DriverManager>>,
         nano_messenger: Arc<RwLock<NanoMessenger>>,
         module_manager: Arc<ModuleManager>,
+        variables: Arc<RwLock<Variables>>,
     ) -> Arc<RwLock<FunctionBuilder>> {
-        Arc::new(RwLock::new(FunctionBuilder { hid, midi_controller, command_pool, driver_manager, nano_messenger, module_manager}))
+        Arc::new(RwLock::new(FunctionBuilder { hid, midi_controller, command_pool, driver_manager, nano_messenger, module_manager, variables}))
     }
 
 
@@ -231,36 +233,36 @@ impl FunctionBuilder {
             FunctionType::Key(key) => Key::new(key, self.hid.clone()),
             FunctionType::Special(special) => Special::new(special, self.hid.clone()),
             FunctionType::Modifier(modifier) => ModifierKey::new(modifier, self.hid.clone()),
-            FunctionType::String(str) => BasicString::new(str, self.hid.clone()),
-            FunctionType::ComplexString { str, layout } => ComplexString::new(str, layout, self.hid.clone()),
-            FunctionType::StringLn(string) => BasicString::new(format!("{}\n", string), self.hid.clone()),
-            FunctionType::ComplexStringLn { str, layout } => ComplexString::new(format!("{}\n", str), layout, self.hid.clone()),
+            FunctionType::String(str) => BasicString::new(str.into_variable(self.variables.clone()), false, self.hid.clone(), self.variables.clone()),
+            FunctionType::ComplexString { str, layout } => ComplexString::new(str.into_variable(self.variables.clone()), false, layout.into_variable(self.variables.clone()), self.hid.clone(), self.variables.clone()),
+            FunctionType::StringLn(string) => BasicString::new( string.into_variable(self.variables.clone()), true, self.hid.clone(), self.variables.clone()),
+            FunctionType::ComplexStringLn { str, layout } => ComplexString::new(str.into_variable(self.variables.clone()), true, layout.into_variable(self.variables.clone()), self.hid.clone(), self.variables.clone()),
             FunctionType::Shortcut { modifiers, keys } => Shortcut::new(modifiers, keys, self.hid.clone()),
             FunctionType::Up => Up::new(),
             FunctionType::Down => Down::new(),
-            FunctionType::Switch(id) => Switch::new(id),
-            FunctionType::Scroll { period, invert, threshold, scale } => Scroll::new(period, invert, threshold, scale, self.hid.clone()),
-            FunctionType::Move { dir, invert, threshold, scale } => Move::new(dir, invert, threshold, scale, self.hid.clone()),
-            FunctionType::ImmediateMove { x, y } => ImmediateMove::new(x, y, self.hid.clone()),
-            FunctionType::ImmediateScroll(amount) => ImmediateScroll::new(amount, self.hid.clone()),
-            FunctionType::ConstMove{x, y} => ConstMove::new(x, y, self.hid.clone()),
-            FunctionType::ConstScroll{amount, period} => ConstScroll::new(amount, period, self.hid.clone()),
+            FunctionType::Switch(id) => Switch::new(id.into_variable(self.variables.clone())),
+            FunctionType::Scroll { period, invert, threshold, scale } => Scroll::new(period.into_variable(self.variables.clone()), invert.into_variable(self.variables.clone()), threshold.into_variable(self.variables.clone()), scale.into_variable(self.variables.clone()), self.hid.clone(), self.variables.clone()),
+            FunctionType::Move { dir, invert, threshold, scale } => Move::new(dir, invert.into_variable(self.variables.clone()), threshold.into_variable(self.variables.clone()), scale.into_variable(self.variables.clone()), self.hid.clone()),
+            FunctionType::ImmediateMove { x, y } => ImmediateMove::new(x.into_variable(self.variables.clone()), y.into_variable(self.variables.clone()), self.hid.clone()),
+            FunctionType::ImmediateScroll(amount) => ImmediateScroll::new(amount.into_variable(self.variables.clone()), self.hid.clone()),
+            FunctionType::ConstMove{x, y} => ConstMove::new(x.into_variable(self.variables.clone()), y.into_variable(self.variables.clone()), self.hid.clone()),
+            FunctionType::ConstScroll{amount, period} => ConstScroll::new(amount.into_variable(self.variables.clone()), period.into_variable(self.variables.clone()), self.hid.clone(), self.variables.clone()),
             FunctionType::LeftClick => LeftClick::new(self.hid.clone()),
             FunctionType::RightClick => RightClick::new(self.hid.clone()),
             FunctionType::None => None,
-            FunctionType::Note{channel, note, velocity} => Note::new(channel, note, velocity, self.midi_controller.clone()),
-            FunctionType::ConstPitchBend{channel, bend} => ConstPitchBend::new(channel, bend, self.midi_controller.clone()),
-            FunctionType::PitchBend { channel, invert, threshold, scale } => PitchBend::new(channel, invert, threshold, scale, self.midi_controller.clone()),
-            FunctionType::Instrument { channel, instrument } => Instrument::new(channel, instrument.into(), self.midi_controller.clone()),
-            FunctionType::Bash(command) => Bash::new(command, self.command_pool.clone()),
-            FunctionType::Pipe(command) => Pipe::new(command, self.command_pool.clone()),
-            FunctionType::SwitchHid{name} => SwitchHid::new(name, self.hid.clone()),
-            FunctionType::Log(log_level, msg) => Log::new(log_level, msg),
+            FunctionType::Note{channel, note, velocity} => Note::new(channel.into_variable(self.variables.clone()), note.into_variable(self.variables.clone()), velocity.into_variable(self.variables.clone()), self.midi_controller.clone(), self.variables.clone()),
+            FunctionType::ConstPitchBend{channel, bend} => ConstPitchBend::new(channel.into_variable(self.variables.clone()), bend.into_variable(self.variables.clone()), self.midi_controller.clone(), self.variables.clone()),
+            FunctionType::PitchBend { channel, invert, threshold, scale } => PitchBend::new(channel.into_variable(self.variables.clone()), invert.into_variable(self.variables.clone()), threshold.into_variable(self.variables.clone()), scale.into_variable(self.variables.clone()), self.midi_controller.clone(), self.variables.clone()),
+            FunctionType::Instrument { channel, instrument } => Instrument::new(channel.into_variable(self.variables.clone()), instrument.into_variable(self.variables.clone()), self.midi_controller.clone(), self.variables.clone()),
+            FunctionType::Bash(command) => Bash::new(command.into_variable(self.variables.clone()), self.command_pool.clone()),
+            FunctionType::Pipe(command) => Pipe::new(command.into_variable(self.variables.clone()), self.command_pool.clone()),
+            FunctionType::SwitchHid{name} => SwitchHid::new(name.into_variable(self.variables.clone()), self.hid.clone()),
+            FunctionType::Log(log_level, msg) => Log::new(log_level.into_variable(self.variables.clone()), msg.into_variable(self.variables.clone())),
             FunctionType::NanoMsg { topic, format: msg, driver_data } => NanoMsg::new(topic, msg, driver_data, self.nano_messenger.clone(), self.driver_manager.clone()),
             FunctionType::External { module, func } => ExternalFunction::new(module, self.module_manager.clone(), func).await,
-            FunctionType::Output { driver_name, idx, state } => Output::new(driver_name, idx, state, self.driver_manager.clone()),
-            FunctionType::Flip { driver_name, idx } => Flip::new(driver_name, idx, self.driver_manager.clone()),
-            FunctionType::Shift(id) => Shift::new(id),
+            FunctionType::Output { driver_name, idx, state } => Output::new(driver_name, idx.into_variable(self.variables.clone()), state.into_variable(self.variables.clone()), self.driver_manager.clone()),
+            FunctionType::Flip { driver_name, idx } => Flip::new(driver_name, idx.into_variable(self.variables.clone()), self.driver_manager.clone()),
+            FunctionType::Shift(id) => Shift::new(id.into_variable(self.variables.clone())),
         }.or_log_ignore(&format!("Unable to build function (Function Builder), {}", debug))
     }
 }
@@ -321,36 +323,43 @@ impl FunctionInterface for Down {
 
 /// Switch function
 pub struct Switch {
-    id: usize
+    id: Variable<usize>,
+    prev_state: u16,
 }
 
 impl Switch {
     /// New
-    pub fn new(id: usize) -> Function {
-        Some(Box::new(Switch{id}))
+    pub fn new(id: Variable<usize>) -> Function {
+        Some(Box::new(Switch{id, prev_state: 0}))
     }
 }
 
 #[async_trait]
 impl FunctionInterface for Switch {
-    async fn event(&mut self, _state: State) -> ReturnCommand {
-        return ReturnCommand::Switch(self.id)
+    async fn event(&mut self, state: State) -> ReturnCommand {
+        if state.rising(self.prev_state) {
+            let mut lock = self.id.write_lock_variables().await;
+
+            return ReturnCommand::Switch(**self.id.data(&mut lock))
+        }
+
+        return ReturnCommand::None
     }
 
     fn ftype(&self) -> FunctionType {
-        FunctionType::Switch(self.id)
+        FunctionType::Switch(self.id.into_data())
     }
 }
 
 /// Shift function
 pub struct Shift {
-    id: usize,
+    id: Variable<usize>,
     prev_state: u16,
 }
 
 impl Shift {
     /// New
-    pub fn new(id: usize) -> Function {
+    pub fn new(id: Variable<usize>) -> Function {
         Some(Box::new(Shift{id, prev_state: 0}))
     }
 }
@@ -358,16 +367,17 @@ impl Shift {
 #[async_trait]
 impl FunctionInterface for Shift {
     async fn event(&mut self, state: State) -> ReturnCommand {
+        let mut lock = self.id.write_lock_variables().await;
         if state.rising(self.prev_state) {
-            return ReturnCommand::Shift(self.id)
+            return ReturnCommand::Shift(**self.id.data(&mut lock))
         } else if state.falling(self.prev_state) {
-            return ReturnCommand::UnShift(self.id)
+            return ReturnCommand::UnShift(**self.id.data(&mut lock))
         }
 
         ReturnCommand::None
     }
 
     fn ftype(&self) -> FunctionType {
-        FunctionType::Shift(self.id)
+        FunctionType::Shift(self.id.into_data())
     }
 }

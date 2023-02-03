@@ -6,7 +6,7 @@ use function::{FunctionBuilder};
 use log::{error};
 use tokio::sync::RwLock;
 
-use crate::{function::{midi::MidiController, cmd::CommandPool, hid::HID, FunctionConfiguration, FunctionConfig, nng::NanoMessenger}, modules::ModuleManager, config_rpc::ConfigRPC};
+use crate::{function::{midi::MidiController, cmd::CommandPool, hid::HID, FunctionConfiguration, FunctionConfig, nng::NanoMessenger}, modules::ModuleManager, config_rpc::ConfigRPC, layout::Variables};
 
 /// Driver module
 mod driver;
@@ -219,13 +219,15 @@ async fn main() {
     let hid = HID::from_config(&function_config).await.or_exit("Unable to create hid");
     let nano_messanger = NanoMessenger::from_config(&function_config).await.or_exit("Unable to create nano messange");
     let midi_controller = MidiController::from_config(&function_config).await.or_exit("Unable to create midi controller");
+    let variables = Variables::new();
     let func_builder = FunctionBuilder::new(
         hid, 
         midi_controller, 
         command_pool, 
         driver_manager.clone(), 
         nano_messanger, 
-        module_manager.clone()
+        module_manager.clone(),
+        variables
     );
 
     let builder: layout::LayoutBuilder = serde_json::from_reader(fs::File::open(config.join(LAYOUT_JSON))

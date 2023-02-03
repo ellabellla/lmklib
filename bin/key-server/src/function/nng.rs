@@ -89,9 +89,9 @@ impl FunctionConfig for NanoMessenger {
 
 impl NanoMessenger {
     /// Create a device connection
-    fn device_connection(addr: &str, protocal: Protocol) -> nanomsg::Result<(Socket, Endpoint)> {
-        let mut socket = Socket::new_for_device(protocal)?;
-        if matches!(protocal, Protocol::Sub) {
+    fn device_connection(addr: &str, protocol: Protocol) -> nanomsg::Result<(Socket, Endpoint)> {
+        let mut socket = Socket::new_for_device(protocol)?;
+        if matches!(protocol, Protocol::Sub) {
             socket.subscribe(&vec![])?;
         }
         let endpoint = socket.bind(addr)?;
@@ -99,8 +99,8 @@ impl NanoMessenger {
     }
 
     /// Create a client connection
-    fn connect(addr: &str, protocal: Protocol) -> nanomsg::Result<(Socket, Endpoint)> {
-        let mut socket = Socket::new(protocal)?;
+    fn connect(addr: &str, protocol: Protocol) -> nanomsg::Result<(Socket, Endpoint)> {
+        let mut socket = Socket::new(protocol)?;
         let endpoint = socket.connect(addr)?;
         Ok((socket, endpoint))
     }
