@@ -1,7 +1,7 @@
 use std::{any::Any, sync::Arc, collections::{HashMap, hash_map::Keys}};
 
 use serde::{Deserialize, Serialize};
-use tokio::{sync::{RwLock, watch}, runtime::Handle};
+use tokio::{sync::{RwLock, watch}};
 
 use crate::OrLog;
 
@@ -85,7 +85,7 @@ where
         }
     }
 
-    pub fn from_data(data: Data<T>, default: T, variables: Arc<RwLock<Variables>>) -> Self 
+    pub async fn from_data(data: Data<T>, default: T, variables: Arc<RwLock<Variables>>) -> Self 
     {   
         match data {
             Data::Const(data) => {
@@ -95,14 +95,14 @@ where
                 let (send, mut updates) = watch::channel(serde_json::to_string(&default).unwrap_or_else(|_| "".to_string()));
                 updates.borrow_and_update();
                  
-                Handle::current().block_on(variables.write()).set(&name, (send, updates.clone()));
+                variables.write().await.set(&name, (send, updates.clone()));
 
                 Variable {data: VariableData::Var { name, data: default, updates: updates }, variables }
             },
             Data::Var(name) => {
                 let (send, mut updates) = watch::channel(serde_json::to_string(&default).unwrap_or_else(|_| "".to_string()));
                 updates.borrow_and_update();
-                Handle::current().block_on(variables.write()).set(&name, (send, updates.clone()));
+                variables.write().await.set(&name, (send, updates.clone()));
 
                 let data = serde_json::from_str(&updates.borrow()).unwrap_or(default);
 
@@ -166,8 +166,8 @@ impl<T> Data<T>
 where
     T: Any + Clone + Send + Sync + for<'a> Deserialize<'a> + Serialize
 {
-    pub fn into_variable(self, default: T, variables: Arc<RwLock<Variables>>) -> Variable<T> {
-        Variable::from_data(self, default, variables)
+    pub async fn into_variable(self, default: T, variables: Arc<RwLock<Variables>>) -> Variable<T> {
+        Variable::from_data(self, default, variables).await
     }
 
     pub fn map<T2>(self, func: impl FnOnce(T) -> T2) -> Data<T2>

@@ -347,25 +347,25 @@ impl FunctionBuilder {
             FunctionType::Special(special) => Special::new(special, self.hid.clone()),
             FunctionType::Modifier(modifier) => ModifierKey::new(modifier, self.hid.clone()),
             FunctionType::String(str) => BasicString::new(
-                str.into_variable(String::default(), self.variables.clone()),
+                str.into_variable(String::default(), self.variables.clone()).await,
                 false,
                 self.hid.clone(),
             ),
             FunctionType::ComplexString { str, layout } => ComplexString::new(
-                str.into_variable(String::default(), self.variables.clone()),
+                str.into_variable(String::default(), self.variables.clone()).await,
                 false,
-                layout.into_variable(String::default(), self.variables.clone()),
+                layout.into_variable(String::default(), self.variables.clone()).await,
                 self.hid.clone(),
             ),
             FunctionType::StringLn(string) => BasicString::new(
-                string.into_variable(String::default(), self.variables.clone()),
+                string.into_variable(String::default(), self.variables.clone()).await,
                 true,
                 self.hid.clone(),
             ),
             FunctionType::ComplexStringLn { str, layout } => ComplexString::new(
-                str.into_variable(String::default(), self.variables.clone()),
+                str.into_variable(String::default(), self.variables.clone()).await,
                 true,
-                layout.into_variable(String::default(), self.variables.clone()),
+                layout.into_variable(String::default(), self.variables.clone()).await,
                 self.hid.clone(),
             ),
             FunctionType::Shortcut { modifiers, keys } => {
@@ -374,7 +374,7 @@ impl FunctionBuilder {
             FunctionType::Up => Up::new(),
             FunctionType::Down => Down::new(),
             FunctionType::Switch(id) => {
-                Switch::new(id.into_variable(usize::default(), self.variables.clone()))
+                Switch::new(id.into_variable(usize::default(), self.variables.clone()).await)
             }
             FunctionType::Scroll {
                 period,
@@ -382,10 +382,10 @@ impl FunctionBuilder {
                 threshold,
                 scale,
             } => Scroll::new(
-                period.into_variable(u64::default(), self.variables.clone()),
-                invert.into_variable(bool::default(), self.variables.clone()),
-                threshold.into_variable(u16::default(), self.variables.clone()),
-                scale.into_variable(f64::default(), self.variables.clone()),
+                period.into_variable(u64::default(), self.variables.clone()).await,
+                invert.into_variable(bool::default(), self.variables.clone()).await,
+                threshold.into_variable(u16::default(), self.variables.clone()).await,
+                scale.into_variable(f64::default(), self.variables.clone()).await,
                 self.hid.clone(),
             ),
             FunctionType::Move {
@@ -395,28 +395,28 @@ impl FunctionBuilder {
                 scale,
             } => Move::new(
                 dir,
-                invert.into_variable(bool::default(), self.variables.clone()),
-                threshold.into_variable(u16::default(), self.variables.clone()),
-                scale.into_variable(f64::default(), self.variables.clone()),
+                invert.into_variable(bool::default(), self.variables.clone()).await,
+                threshold.into_variable(u16::default(), self.variables.clone()).await,
+                scale.into_variable(f64::default(), self.variables.clone()).await,
                 self.hid.clone(),
             ),
             FunctionType::ImmediateMove { x, y } => ImmediateMove::new(
-                x.into_variable(i8::default(), self.variables.clone()),
-                y.into_variable(i8::default(), self.variables.clone()),
+                x.into_variable(i8::default(), self.variables.clone()).await,
+                y.into_variable(i8::default(), self.variables.clone()).await,
                 self.hid.clone(),
             ),
             FunctionType::ImmediateScroll(amount) => ImmediateScroll::new(
-                amount.into_variable(i8::default(), self.variables.clone()),
+                amount.into_variable(i8::default(), self.variables.clone()).await,
                 self.hid.clone(),
             ),
             FunctionType::ConstMove { x, y } => ConstMove::new(
-                x.into_variable(i8::default(), self.variables.clone()),
-                y.into_variable(i8::default(), self.variables.clone()),
+                x.into_variable(i8::default(), self.variables.clone()).await,
+                y.into_variable(i8::default(), self.variables.clone()).await,
                 self.hid.clone(),
             ),
             FunctionType::ConstScroll { amount, period } => ConstScroll::new(
-                amount.into_variable(i8::default(), self.variables.clone()),
-                period.into_variable(u64::default(), self.variables.clone()),
+                amount.into_variable(i8::default(), self.variables.clone()).await,
+                period.into_variable(u64::default(), self.variables.clone()).await,
                 self.hid.clone(),
             ),
             FunctionType::LeftClick => LeftClick::new(self.hid.clone()),
@@ -427,14 +427,14 @@ impl FunctionBuilder {
                 note,
                 velocity,
             } => Note::new(
-                channel.into_variable(Channel::Ch1, self.variables.clone()),
-                note.into_variable(note_param::Note::C4, self.variables.clone()),
-                velocity.into_variable(u8::default(), self.variables.clone()),
+                channel.into_variable(Channel::Ch1, self.variables.clone()).await,
+                note.into_variable(note_param::Note::C4, self.variables.clone()).await,
+                velocity.into_variable(u8::default(), self.variables.clone()).await,
                 self.midi_controller.clone(),
             ),
             FunctionType::ConstPitchBend { channel, bend } => ConstPitchBend::new(
-                channel.into_variable(Channel::Ch1, self.variables.clone()),
-                bend.into_variable(u16::default(), self.variables.clone()),
+                channel.into_variable(Channel::Ch1, self.variables.clone()).await,
+                bend.into_variable(u16::default(), self.variables.clone()).await,
                 self.midi_controller.clone(),
             ),
             FunctionType::PitchBend {
@@ -443,35 +443,35 @@ impl FunctionBuilder {
                 threshold,
                 scale,
             } => PitchBend::new(
-                channel.into_variable(Channel::Ch1, self.variables.clone()),
-                invert.into_variable(bool::default(), self.variables.clone()),
-                threshold.into_variable(u16::default(), self.variables.clone()),
-                scale.into_variable(f64::default(), self.variables.clone()),
+                channel.into_variable(Channel::Ch1, self.variables.clone()).await,
+                invert.into_variable(bool::default(), self.variables.clone()).await,
+                threshold.into_variable(u16::default(), self.variables.clone()).await,
+                scale.into_variable(f64::default(), self.variables.clone()).await,
                 self.midi_controller.clone(),
             ),
             FunctionType::Instrument {
                 channel,
                 instrument,
             } => Instrument::new(
-                channel.into_variable(Channel::Ch1, self.variables.clone()),
-                instrument.into_variable(GMSoundSet::ElectricPiano1, self.variables.clone()),
+                channel.into_variable(Channel::Ch1, self.variables.clone()).await,
+                instrument.into_variable(GMSoundSet::ElectricPiano1, self.variables.clone()).await,
                 self.midi_controller.clone(),
             ),
             FunctionType::Bash(command) => Bash::new(
-                command.into_variable(String::default(), self.variables.clone()),
+                command.into_variable(String::default(), self.variables.clone()).await,
                 self.command_pool.clone(),
             ),
             FunctionType::Pipe(command) => Pipe::new(
-                command.into_variable(String::default(), self.variables.clone()),
+                command.into_variable(String::default(), self.variables.clone()).await,
                 self.command_pool.clone(),
             ),
             FunctionType::SwitchHid { name } => SwitchHid::new(
-                name.into_variable(String::default(), self.variables.clone()),
+                name.into_variable(String::default(), self.variables.clone()).await,
                 self.hid.clone(),
             ),
             FunctionType::Log(log_level, msg) => Log::new(
-                log_level.into_variable(LogLevel::Info, self.variables.clone()),
-                msg.into_variable(String::default(), self.variables.clone()),
+                log_level.into_variable(LogLevel::Info, self.variables.clone()).await,
+                msg.into_variable(String::default(), self.variables.clone()).await,
             ),
             FunctionType::NanoMsg {
                 topic,
@@ -493,17 +493,17 @@ impl FunctionBuilder {
                 state,
             } => Output::new(
                 driver_name,
-                idx.into_variable(usize::default(), self.variables.clone()),
-                state.into_variable(u16::default(), self.variables.clone()),
+                idx.into_variable(usize::default(), self.variables.clone()).await,
+                state.into_variable(u16::default(), self.variables.clone()).await,
                 self.driver_manager.clone(),
             ),
             FunctionType::Flip { driver_name, idx } => Flip::new(
                 driver_name,
-                idx.into_variable(usize::default(), self.variables.clone()),
+                idx.into_variable(usize::default(), self.variables.clone()).await,
                 self.driver_manager.clone(),
             ),
             FunctionType::Shift(id) => {
-                Shift::new(id.into_variable(usize::default(), self.variables.clone()))
+                Shift::new(id.into_variable(usize::default(), self.variables.clone()).await)
             }
         }
         .or_log_ignore(&format!(
