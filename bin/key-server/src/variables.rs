@@ -50,6 +50,8 @@ impl Variables {
             self.data.insert(name.to_string(), vec![value]);
         } else {
             if let Some(watching) = self.data.get_mut(name) {
+                value.0.send(watching.first().expect("Should have atleast one entry").1.borrow().to_string())
+                    .or_log("Unable to update variable watch channel");
                 watching.push(value)
             }
         }
