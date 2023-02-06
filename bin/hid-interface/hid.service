@@ -1,12 +1,12 @@
 [Unit]
 Description=Hid Interface
+After=gadget.service
 
 [Service]
 Type=exec
 ExecStart=hid-interface /lmk/hid
 ExecStop=fusermount -u /lmk/hid
 Restart=on-failure
-After=gadget.service
 
 [Install]
 WantedBy=multi-user.target
