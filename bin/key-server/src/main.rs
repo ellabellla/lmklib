@@ -229,9 +229,9 @@ async fn main() {
 
     let variables = Variables::new();
     let default_variables: Vec<VarDef> = serde_json::from_str(
-        &read_to_string(&VARIABLES_JSON).await
+        &read_to_string(config.join(VARIABLES_JSON)).await
         .or_exit("Unable to load variables config")
-    ).unwrap_or_else(|_| Vec::<VarDef>::new());
+    ).or_log("Unable to parse variables, continuing anyway").unwrap_or_else(|| Vec::<VarDef>::new());
     variables.write().await.create_many(default_variables);
     
     let command_pool = CommandPool::from_config(&function_config).await.or_exit("Unable to create command pool");
