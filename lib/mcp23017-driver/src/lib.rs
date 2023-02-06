@@ -142,7 +142,7 @@ trait PinConfiguration {
 /// Convert bool to int
 fn bool_int(bool: bool) -> u16 {
     if bool {
-        1
+        u16::MAX
     } else {
         0
     }
