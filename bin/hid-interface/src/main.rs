@@ -1,4 +1,4 @@
-use std::{time::Duration, path::PathBuf, str::FromStr, sync::Arc, io, thread, process::exit, fmt::Display};
+use std::{time::Duration, path::{PathBuf, Path}, str::FromStr, sync::Arc, io, thread, process::exit, fmt::Display};
 
 use clap::Parser;
 use configfs::{BasicConfigHook, async_trait, Result, Mount, Configuration, FS};
@@ -159,10 +159,19 @@ async fn main() {
         mount.mount("/led", led).unwrap();
     }
 
-    FS::mount("Virtual HID Interface", &args.mount, mount)
+    let fs_thread = FS::mount("Virtual HID Interface", &args.mount, mount)
         .await
-        .or_exit("Error creating mount")
-        .await
-        .or_exit("Thread Error")
-        .or_exit("Mount Error")
+        .or_exit("Error creating mount");
+    
+    let mouse_path = Path::new(&args.mount).join("mouse");
+    loop {
+        if !mouse_path.exists() {
+            println!("Hid was unexpectedly unmounted");
+            fs_thread.abort();
+            std::process::abort();
+        }
+
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+
 }

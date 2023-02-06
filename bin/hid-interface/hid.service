@@ -4,8 +4,9 @@ Description=Hid Interface
 [Service]
 Type=exec
 ExecStart=hid-interface /lmk/hid
-ExecStop=umount /lmk/hid
+ExecStop=fusermount -u /lmk/hid
 Restart=on-failure
+After=gadget.service
 
 [Install]
 WantedBy=multi-user.target
