@@ -35,7 +35,7 @@ pub mod output;
 
 use self::{
     cmd::{Bash, CommandPool, Pipe},
-    hid::{SwitchHid, HID},
+    hid::{SwitchHid, HID, ToggleHid},
     keyboard::{BasicString, ComplexString, Key, ModifierKey, Shortcut, Special},
     log::{Log, LogLevel},
     midi::{
@@ -294,6 +294,7 @@ pub enum FunctionType {
         driver_name: String,
         idx: variables::Data<usize>,
     },
+    ToggleHid { modes: variables::Data<Vec<String>> },
 }
 
 impl FunctionType {
@@ -505,6 +506,7 @@ impl FunctionBuilder {
             FunctionType::Shift(id) => {
                 Shift::new(id.into_variable(usize::default(), self.variables.clone()).await)
             }
+            FunctionType::ToggleHid { modes } => ToggleHid::new(modes.into_variable(vec![], self.variables.clone()).await, self.hid.clone()),
         }
         .or_log_ignore(&format!(
             "Unable to build function (Function Builder), {}",

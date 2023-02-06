@@ -34,7 +34,7 @@ impl Display for HIDError {
     }
 }
 
-/// Switch hid mode (uinput, usb hid)
+/// Switch hid mode
 pub struct SwitchHid {
     name: Variable<String>,
     prev_state: u16,
@@ -61,6 +61,50 @@ impl FunctionInterface for SwitchHid {
 
     fn ftype(&self) -> FunctionType {
         FunctionType::SwitchHid{name:self.name.into_data()}
+    }
+}
+
+/// Toggle hid mode
+pub struct ToggleHid {
+    modes: Variable<Vec<String>>,
+    hid_idx: usize,
+    prev_state: u16,
+    hid: Arc<RwLock<HID>>,
+}
+
+impl ToggleHid {
+    /// new
+    pub fn new(modes: Variable<Vec<String>>, hid: Arc<RwLock<HID>>) -> Function {
+        Some(Box::new(ToggleHid{modes, hid_idx: 0, prev_state: 0, hid}))
+    }
+}
+
+#[async_trait]
+impl FunctionInterface for ToggleHid {
+    async fn event(&mut self, state: State) -> ReturnCommand {
+        let modes = self.modes.data();
+
+        if modes.len() == 0 {
+            return ReturnCommand::None
+        }
+
+        let name = &modes[self.hid_idx];
+
+        if state.rising(self.prev_state) {
+            self.hid.read().await.switch(name.to_string());
+        }
+
+        self.hid_idx += 1;
+        if self.hid_idx >= modes.len() {
+            self.hid_idx = 0;
+        }
+
+        self.prev_state = state;
+        ReturnCommand::None
+    }
+
+    fn ftype(&self) -> FunctionType {
+        FunctionType::ToggleHid{modes:self.modes.into_data()}
     }
 }
 
