@@ -32,6 +32,9 @@ pub enum Command {
     UpLayer,
     DownLayer,
     SaveLayout,
+    Variables,
+    SetVariable(String, String),
+    GetVariable(String),
 }
 
 

@@ -1,11 +1,11 @@
-use std::{ops::{Range}, fmt::Display, sync::Arc, collections::{HashMap, hash_map::Keys}, any::Any };
+use std::{ops::{Range}, fmt::Display, sync::Arc };
 
 use itertools::Itertools;
 use serde::{Serialize, Deserialize, de};
 use slab::Slab;
-use tokio::{sync::{RwLock, watch}, runtime::Handle};
+use tokio::{sync::{RwLock}};
 
-use crate::{function::{Function, ReturnCommand, FunctionType, FunctionBuilder}, driver::DriverManager, OrLog};
+use crate::{function::{Function, ReturnCommand, FunctionType, FunctionBuilder}, driver::DriverManager};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// Driver state address. Used to index a state/s of a driver
@@ -219,141 +219,6 @@ impl<'de> Deserialize<'de> for LayoutBuilder {
         Ok(builder)
     }
 }
-
-pub struct Variables {
-    pub data: HashMap<String, (watch::Sender<String>, watch::Receiver<String>)>
-}
-
-impl Variables {
-    pub fn new() -> Arc<RwLock<Variables>> {
-        Arc::new(RwLock::new(Variables{ data: HashMap::new() }))
-    }
-
-    pub fn update(&self, name: &str, value: String) {
-        if let Some((send, _)) = self.data.get(name) {
-            send.send_replace(value);
-        }
-    }
-    
-    pub fn variables(&self) -> Keys<String, (watch::Sender<String>, watch::Receiver<String>)>{
-        self.data.keys()
-    }
-
-    pub fn get(&self, name: &str) -> Option<watch::Receiver<String>> {
-        self.data.get(name).map(|(_, updates)| updates.to_owned())
-    }
-
-    pub fn set(&mut self, name: &str, value: (watch::Sender<String>, watch::Receiver<String>)) -> Option<watch::Receiver<String>>{
-        if !self.data.contains_key(name) {
-            self.data.insert(name.to_string(), value);
-            None
-        } else {
-            self.data.get(name).map(|(_, updates)| updates.to_owned())
-        }
-    }
-}
-
-#[derive(Clone)]
-pub struct Variable<T> 
-where
-    T: Any + Clone + Send + Sync + for<'a> Deserialize<'a>  + Serialize 
-{
-    var_name: Option<String>,
-    data: T,
-    updates: watch::Receiver<String>,
-    variables: Arc<RwLock<Variables>>
-}
-
-impl<T> Variable<T>
-where
-    T: Any + Clone + Send + Sync + for<'a> Deserialize<'a> + Serialize,
-{
-    pub fn into_data(&self) -> Data<T> {
-        match self.var_name.clone() {
-            Some(name) => Data::VarDef { name, default: self.data.clone() },
-            None => Data::Const(self.data.clone()),
-        }
-    }
-
-    pub fn from_data(data: Data<T>, variables: Arc<RwLock<Variables>>) -> Self 
-    {   
-        let (var_name, data) = match data {
-            Data::Const(data) => (None, data),
-            Data::VarDef { name, default } => (Some(name), default),
-        };
-        let (send, mut updates) = watch::channel("".to_string());
-        updates.borrow();
-
-        if let Some(name) = &var_name {
-            if let Some(preexisting_updates) = Handle::current().block_on(variables.write()).set(name, (send, updates.clone())) {
-                updates = preexisting_updates;
-            }
-        }
-
-        Variable { var_name, data: data, updates, variables }
-    }
-
-    #[allow(dead_code)]
-    pub fn name(&self) -> Option<&String> {
-        self.var_name.as_ref()
-    }
-
-    pub fn data<'a>(&'a mut self) -> &'a T {
-        match &self.var_name {
-            Some(_) => {
-                if self.updates.has_changed().unwrap_or(false) {
-                    let data: Option<VariableUpdate<T>> = serde_json::from_str(&self.updates.borrow_and_update())
-                        .or_log(&format!("Unable to deserialize variable update (type issue?) (VAR {:?})", self.var_name));
-                    if let Some(data) = data {
-                        self.data = data.0;
-                    }
-                }
-                &self.data
-            },
-            None => &self.data,
-        }
-    }
-
-    pub fn map<T2>(self, func: impl FnOnce(T) -> T2) -> Variable<T2>
-    where
-        T2: Any + Clone + Send + Sync + for<'a> Deserialize<'a> + Serialize ,
-    {
-        let data = func(self.data);
-        Variable{var_name: self.var_name, data, updates: self.updates, variables: self.variables }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum Data<T> 
-where
-    T: Any + Clone + Send + Sync
-{
-    Const(T),
-    VarDef{name: String, default: T},
-}
-
-impl<T> Data<T> 
-where
-    T: Any + Clone + Send + Sync + for<'a> Deserialize<'a> + Serialize
-{
-    pub fn into_variable(self, variables: Arc<RwLock<Variables>>) -> Variable<T> {
-        Variable::from_data(self, variables)
-    }
-
-    pub fn map<T2>(self, func: impl FnOnce(T) -> T2) -> Data<T2>
-    where
-        T2: Any + Clone + Send + Sync,
-    {
-        match self {
-            Data::Const(data) => Data::Const(func(data)),
-            Data::VarDef { name, default } => Data::VarDef { name, default: func(default) },
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct VariableUpdate<T>(T);
- 
 
 /// Layout
 pub struct Layout {

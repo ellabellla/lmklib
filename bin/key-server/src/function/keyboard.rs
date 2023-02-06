@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use tokio::{sync::RwLock};
 use virt_hid::key::{BasicKey, SpecialKey, Modifier};
 
-use crate::layout::{Variable};
+use crate::variables::{Variable};
 
 use super::{FunctionInterface, ReturnCommand, FunctionType, hid::HID, Function, State, StateHelpers};
 

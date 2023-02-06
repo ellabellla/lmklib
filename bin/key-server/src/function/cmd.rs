@@ -3,7 +3,7 @@ use std::{process::{Command, Child}, sync::Arc, io, thread, time::Duration};
 use async_trait::async_trait;
 use tokio::{sync::RwLock};
 
-use crate::{OrLog, layout::Variable};
+use crate::{OrLog, variables::Variable};
 
 use super::{Function, FunctionInterface, ReturnCommand, FunctionType, FunctionConfig, FunctionConfigData, State, StateHelpers};
 

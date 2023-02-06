@@ -6,7 +6,7 @@ use tokio::{sync::{RwLock, mpsc::{UnboundedSender, self}, oneshot}, runtime::Han
 use uinput::{event::{self, controller::Mouse, relative::{Position, Wheel}, keyboard::{Key, Misc, KeyPad, InputAssist}}, Device};
 use virt_hid::{key::{self, BasicKey, KeyOrigin, SpecialKey, Modifier}, mouse::{self, MouseDir, MouseButton}};
 
-use crate::{OrLogIgnore, OrLog, modules::ModuleManager, layout::Variable};
+use crate::{OrLogIgnore, OrLog, modules::ModuleManager, variables::Variable};
 
 use super::{Function, FunctionInterface, ReturnCommand, FunctionType, FunctionConfig, FunctionConfigData, State, StateHelpers};
 

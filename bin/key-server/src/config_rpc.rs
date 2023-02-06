@@ -1,17 +1,18 @@
 use std::{sync::Arc, thread, time::Duration, io::{Read, Write}, path::PathBuf, fs};
 
+use itertools::Itertools;
 use nanomsg::{Socket, Protocol};
 use tokio::{sync::{RwLock, oneshot}, task::JoinHandle};
 use key_rpc::Command;
 
-use crate::{layout::Layout, OrLogIgnore, function::FunctionType, OrLog};
+use crate::{layout::{Layout}, OrLogIgnore, function::FunctionType, OrLog, variables::Variables};
 
 
 pub struct ConfigRPC {
 }
 
 impl ConfigRPC {
-    pub async fn start(front: String, back: String, layout: Arc<RwLock<Layout>>, layout_path: PathBuf) -> Result<JoinHandle<()>, nanomsg::Error> {
+    pub async fn start(front: String, back: String, layout: Arc<RwLock<Layout>>, layout_path: PathBuf, variables: Arc<RwLock<Variables>>) -> Result<JoinHandle<()>, nanomsg::Error> {
         let (device_tx, mut device_rx) = oneshot::channel();
         {
             let back = back.clone();
@@ -147,6 +148,26 @@ impl ConfigRPC {
                         )
                         .map(|_| "true".as_bytes().to_owned())
                         .unwrap_or_else(|| "false".as_bytes().to_owned()),
+                    Command::Variables => serde_json::to_string(
+                            &variables.blocking_read()
+                            .variables()
+                            .collect_vec()
+                        ).unwrap_or_else(|_| "false".to_string())
+                        .as_bytes()
+                        .to_owned(),
+                    Command::SetVariable(name, value) => bool_to_str(
+                            variables.blocking_read()
+                            .update(&name, value)
+                            .is_some()
+                        )
+                        .as_bytes()
+                        .to_owned(),
+                    Command::GetVariable(name) => variables.blocking_read()
+                        .get(&name)
+                        .map(|updates|
+                            updates.as_bytes().to_owned()
+                        )
+                        .unwrap_or_else(|| "false".to_string().into_bytes()),
                 }).or_log_ignore("Socket error (Config RPC)");    
             }
         }))

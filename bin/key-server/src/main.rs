@@ -4,9 +4,10 @@ use clap::Parser;
 use driver::{DriverManager};
 use function::{FunctionBuilder};
 use log::{error};
-use tokio::sync::RwLock;
+use tokio::{sync::RwLock, fs::read_to_string};
+use variables::VarDef;
 
-use crate::{function::{midi::MidiController, cmd::CommandPool, hid::HID, FunctionConfiguration, FunctionConfig, nng::NanoMessenger}, modules::ModuleManager, config_rpc::ConfigRPC, layout::Variables};
+use crate::{function::{midi::MidiController, cmd::CommandPool, hid::HID, FunctionConfiguration, FunctionConfig, nng::NanoMessenger}, modules::ModuleManager, config_rpc::ConfigRPC, variables::Variables};
 
 /// Driver module
 mod driver;
@@ -18,6 +19,8 @@ mod function;
 mod modules;
 /// Config rpc modules
 mod config_rpc;
+/// Variable module
+mod variables;
 
 #[derive(Parser)]
 /// Cli Args
@@ -144,6 +147,7 @@ impl<T> OrExit<T> for Option<T> {
 async fn main() {
     /// Config files and folders
     const DRIVERS: &str = "drivers";
+    const VARIABLES_JSON: &str = "variables.json";
     const LAYOUT_JSON: &str = "layout.json";
     const FRONTEND_JSON: &str = "frontend.json";
     const MODULES: &str = "modules";
@@ -192,6 +196,14 @@ async fn main() {
             )
             .or_exit("Unable to create default layout config");
         
+        fs::File::create(config.join(VARIABLES_JSON))
+            .or_exit("Unable to create default variables config")
+            .write_all(&serde_json::to_string_pretty(&Vec::<VarDef>::new())
+                .or_exit("Unable to create default variables config")
+                .as_bytes()
+            )
+            .or_exit("Unable to create default variables config");
+        
         fs::File::create(config.join(FRONTEND_JSON))
             .or_exit("Unable to create default frontend config")
             .write_all(FunctionConfiguration::create_config()
@@ -215,11 +227,18 @@ async fn main() {
         .or_exit("Unable to read frontend config"), module_manager.clone())
         .or_exit("Unable to parse frontend config");
 
+    let variables = Variables::new();
+    let default_variables: Vec<VarDef> = serde_json::from_str(
+        &read_to_string(&VARIABLES_JSON).await
+        .or_exit("Unable to load variables config")
+    ).unwrap_or_else(|_| Vec::<VarDef>::new());
+    variables.write().await.create_many(default_variables);
+    
     let command_pool = CommandPool::from_config(&function_config).await.or_exit("Unable to create command pool");
     let hid = HID::from_config(&function_config).await.or_exit("Unable to create hid");
     let nano_messanger = NanoMessenger::from_config(&function_config).await.or_exit("Unable to create nano messange");
     let midi_controller = MidiController::from_config(&function_config).await.or_exit("Unable to create midi controller");
-    let variables = Variables::new();
+    
     let func_builder = FunctionBuilder::new(
         hid, 
         midi_controller, 
@@ -227,7 +246,7 @@ async fn main() {
         driver_manager.clone(), 
         nano_messanger, 
         module_manager.clone(),
-        variables
+        variables.clone()
     );
 
     let builder: layout::LayoutBuilder = serde_json::from_reader(fs::File::open(config.join(LAYOUT_JSON))
@@ -240,7 +259,8 @@ async fn main() {
         CONFIG_FRONT.to_string(), 
         CONFIG_BACK.to_string(), 
         layout.clone(), 
-        config.join(LAYOUT_JSON)
+        config.join(LAYOUT_JSON),
+        variables
     ).await.or_exit("Unable to start Config RPC");
 
     // event loop

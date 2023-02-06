@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use tokio::{sync::RwLock};
 use virt_hid::mouse::{MouseDir, MouseButton};
 
-use crate::layout::{Variable, Data};
+use crate::variables::{Variable, Data};
 
 use super::{FunctionInterface, HID, ReturnCommand, FunctionType, Function, State, StateHelpers};
 

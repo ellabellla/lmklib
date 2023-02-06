@@ -6,7 +6,7 @@ use midir::{MidiOutput};
 use serde::{Serialize, Deserialize};
 use tokio::{sync::{RwLock, mpsc::{UnboundedSender, self}, oneshot}};
 
-use crate::{OrLogIgnore, OrLog, layout::{Variable}};
+use crate::{OrLogIgnore, OrLog, variables::{Variable}};
 
 use super::{Function, FunctionInterface, ReturnCommand, FunctionType, FunctionConfig, FunctionConfigData, FunctionConfiguration, State, StateHelpers};
 
