@@ -8,9 +8,9 @@ pub trait OrExit<T> {
 }
 
 /// Implementation for Result
-impl<T, E> OrExit<T> for std::result::Result<T, E> 
+impl<T, E> OrExit<T> for std::result::Result<T, E>
 where
-    E: Display
+    E: Display,
 {
     fn or_exit(self, msg: &str) -> T {
         match self {
@@ -50,18 +50,15 @@ enum Command {
     Layer,
     LayerIdx,
     NumLayers,
-    AddLayer {
-        json: String,
-    },
-    RemoveLayer {
-        idx: usize,
-    },
-    SwitchLayer {
-        idx: usize,
-    },
+    AddLayer { json: String },
+    RemoveLayer { idx: usize },
+    SwitchLayer { idx: usize },
     UpLayer,
     DownLayer,
     SaveLayout,
+    Variables,
+    SetVariable { name: String, data: String },
+    GetVariable{ name:String },
 }
 
 fn main() {
@@ -79,5 +76,13 @@ fn main() {
         Command::UpLayer => client.up_layer().or_exit("Unable to switch layer"),
         Command::DownLayer => client.down_layer().or_exit("Unable to switch layer"),
         Command::SaveLayout => client.save_layer().or_exit("Unable to save layout"),
+        Command::Variables => println!("{}", client.variables().or_exit("Unable to get variables")),
+        Command::SetVariable{name, data} => client
+            .set_variable(name, data)
+            .or_exit("Unable to set variable"),
+        Command::GetVariable{name} => println!(
+            "{}",
+            client.get_variable(name).or_exit("Unable to get variable")
+        ),
     }
 }

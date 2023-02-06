@@ -3,7 +3,7 @@ use std::{sync::Arc, thread, time::Duration, io::{Read, Write}, path::PathBuf, f
 use itertools::Itertools;
 use nanomsg::{Socket, Protocol};
 use tokio::{sync::{RwLock, oneshot}, task::JoinHandle};
-use key_rpc::Command;
+use key_rpc::{Command, FallibleRet};
 
 use crate::{layout::{Layout}, OrLogIgnore, function::FunctionType, OrLog, variables::Variables};
 
@@ -152,7 +152,7 @@ impl ConfigRPC {
                             &variables.blocking_read()
                             .variables()
                             .collect_vec()
-                        ).unwrap_or_else(|_| "false".to_string())
+                        ).unwrap_or_else(|_| "".to_string())
                         .as_bytes()
                         .to_owned(),
                     Command::SetVariable(name, value) => bool_to_str(
@@ -162,12 +162,13 @@ impl ConfigRPC {
                         )
                         .as_bytes()
                         .to_owned(),
-                    Command::GetVariable(name) => variables.blocking_read()
-                        .get(&name)
-                        .map(|updates|
-                            updates.as_bytes().to_owned()
-                        )
-                        .unwrap_or_else(|| "false".to_string().into_bytes()),
+                    Command::GetVariable(name) => serde_json::to_string(
+                        &FallibleRet{
+                            ret: variables.blocking_read().get(&name)
+                        }
+                    ).unwrap_or_else(|_| "".to_string())
+                    .as_bytes()
+                    .to_owned(),
                 }).or_log_ignore("Socket error (Config RPC)");    
             }
         }))
