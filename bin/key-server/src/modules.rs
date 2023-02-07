@@ -166,6 +166,7 @@ enum HidCommand {
     MoveMouse(i8, MouseDir),
     HoldButton(MouseButton),
     ReleaseButton(MouseButton),
+    SendCommand(String),
     SendKeyboard,
     SendMouse
 }
@@ -281,6 +282,7 @@ const PY_MOVE_MOUSE_Y: &'static str = "move_mouse_y";
 const PY_SCROLL_WHEEL: &'static str = "scroll_wheel";
 const PY_HOLD_BUTTON: &'static str = "hold_button";
 const PY_RELEASE_BUTTON: &'static str = "release_button";
+const PY_SEND_COMMAND: &'static str = "send_command";
 const PY_SEND_KEYBOARD: &'static str = "send_keyboard";
 const PY_SEND_MOUSE: &'static str = "send_mouse";
 
@@ -359,6 +361,7 @@ impl ModuleManager {
                     },
                     HidCommand::HoldButton(button) => hid.hold_button(button as usize),
                     HidCommand::ReleaseButton(button) => hid.release_button(button as usize),
+                    HidCommand::SendCommand(command) => hid.send_command(command.into()),
                     HidCommand::SendKeyboard => hid.send_keyboard(),
                     HidCommand::SendMouse => hid.send_mouse(),
                 };
@@ -410,6 +413,8 @@ impl ModuleManager {
                             .call1(py, (button as usize,))?,
                         HidCommand::ReleaseButton(button) => interface.getattr(py, PY_RELEASE_BUTTON)?
                             .call1(py, (button as usize,))?,
+                        HidCommand::SendCommand(command) => interface.getattr(py, PY_SEND_COMMAND)?
+                            .call1(py, (command,))?,
                         HidCommand::SendKeyboard => interface.getattr(py, PY_SEND_KEYBOARD)?
                             .call0(py)?,
                         HidCommand::SendMouse => interface.getattr(py, PY_SEND_MOUSE)?
@@ -755,6 +760,12 @@ impl ModuleManager {
     pub async fn release_button(&self, module_name: &str, button: MouseButton) -> Result<(), ModError> {
         let module = self.find_hid_module(module_name)?;
         module.send(HidCommand::ReleaseButton(button)).map_err(|e| ModError::Channel(e.to_string()))?;
+        Ok(())
+    }
+
+    pub async fn send_command(&self, module_name: &str, data: String) -> Result<(), ModError> {
+        let module = self.find_hid_module(module_name)?;
+        module.send(HidCommand::SendCommand(data)).map_err(|e| ModError::Channel(e.to_string()))?;
         Ok(())
     }
     

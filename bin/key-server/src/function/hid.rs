@@ -34,6 +34,37 @@ impl Display for HIDError {
     }
 }
 
+/// Send a command to a hid
+pub struct SendHidCommand {
+    name: Variable<String>,
+    command: Variable<String>,
+    prev_state: u16,
+    hid: Arc<RwLock<HID>>,
+}
+
+impl SendHidCommand {
+    /// new
+    pub fn new(name: Variable<String>, command: Variable<String>, hid: Arc<RwLock<HID>>) -> Function {
+        Some(Box::new(SendHidCommand{name, command, prev_state: 0, hid}))
+    }
+}
+
+#[async_trait]
+impl FunctionInterface for SendHidCommand {
+    async fn event(&mut self, state: State) -> ReturnCommand {
+        if state.rising(self.prev_state) {
+            self.hid.read().await.send_command(self.name.data().clone(), self.command.data().clone());
+        }
+
+        self.prev_state = state;
+        ReturnCommand::None
+    }
+
+    fn ftype(&self) -> FunctionType {
+        FunctionType::SendHidCommand{name:self.name.into_data(), command:self.command.into_data()}
+    }
+}
+
 /// Switch hid mode
 pub struct SwitchHid {
     name: Variable<String>,
@@ -123,6 +154,7 @@ enum Command {
     MoveMouse(i8, MouseDir),
     HoldButton(MouseButton),
     ReleaseButton(MouseButton),
+    SendCommand(String,String),
     SendKeyboard,
     SendMouse,
     Switch(String),
@@ -372,6 +404,11 @@ impl HID {
                             error!("Could not switch to hid (HID Driver), Unable to find hid module, {}", name)
                         },
                     },
+                    Command::SendCommand(name, data) => match name.as_ref() {
+                        "usb" => (),
+                        "uinput" => (),
+                        _ => {Handle::current().block_on(module_manager.send_command(&cur_hid, data)).or_log("Unable to process hid input (HID Driver)");},
+                    },
                 }
             }
         });
@@ -446,6 +483,11 @@ impl HID {
     /// Send key strokes to interface (does nothing for uinput)
     pub fn send_keyboard(&self) {
         self.tx.send(Command::SendKeyboard).or_log_ignore("Broken Channel (HID Driver)");
+    }
+    
+    /// Send a command to a hid
+    pub fn send_command(&self, name: String, data: String) {
+        self.tx.send(Command::SendCommand(name, data)).or_log_ignore("Broken Channel (HID Driver)");
     }
     
     /// Send mouse packets to interface (does nothing for uinput)

@@ -38,6 +38,7 @@ pub trait HID {
     fn move_mouse_y(&mut self, amount: i8);
     fn hold_button(&mut self, button: usize);
     fn release_button(&mut self, button: usize);
+    fn send_command(&mut self, data: RString);
     fn send_keyboard(&mut self);
     fn send_mouse(&mut self);
 }
