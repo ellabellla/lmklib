@@ -407,7 +407,7 @@ impl HID {
                     Command::SendCommand(name, data) => match name.as_ref() {
                         "usb" => (),
                         "uinput" => (),
-                        _ => {Handle::current().block_on(module_manager.send_command(&cur_hid, data)).or_log("Unable to process hid input (HID Driver)");},
+                        _ => {Handle::current().block_on(module_manager.send_command(&name, data)).or_log("Unable to process hid input (HID Driver)");},
                     },
                 }
             }
