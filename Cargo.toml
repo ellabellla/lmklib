@@ -6,6 +6,8 @@ members = [
     "lib/key-module/example/driver",
     "lib/key-module/example/func",
     "lib/mcp23017-driver",
+    "lib/ws-1in5-i2c",
+    "lib/ws-1in5-driver",
     "bin/key-server",
     "bin/key-server-cli",
     "bin/gadget-service",
@@ -28,3 +30,4 @@ keyboard-layouts = { path= "external/keyboard-layouts" }
 gen_layouts_sys = { path= "external/keyboard-layouts/gen_layouts_sys" }
 configfs = { path = "external/configfs" }
 mcp23017-rpi-lib = { path = "external/mcp23017-rpi-libg" }
+ws-1in5-i2c = { path = "lib/ws-1in5-i2c" }
