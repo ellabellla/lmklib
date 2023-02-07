@@ -76,7 +76,7 @@ fn main() {
         Command::UpLayer => client.up_layer().or_exit("Unable to switch layer"),
         Command::DownLayer => client.down_layer().or_exit("Unable to switch layer"),
         Command::SaveLayout => client.save_layer().or_exit("Unable to save layout"),
-        Command::Variables => println!("{}", client.variables().or_exit("Unable to get variables")),
+        Command::Variables => println!("{:?}", client.variables().or_exit("Unable to get variables")),
         Command::SetVariable{name, data} => client
             .set_variable(name, data)
             .or_exit("Unable to set variable"),

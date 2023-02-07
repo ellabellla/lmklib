@@ -14,7 +14,7 @@ impl Display for ClientError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ClientError::Return(ret) => f.write_fmt(format_args!("Unexpected return, {}", ret)),
-            ClientError::Serde(e) => f.write_fmt(format_args!("Unable to serialize command, {}", e)),
+            ClientError::Serde(e) => f.write_fmt(format_args!("Unable to serialize/deserialize, {}", e)),
             ClientError::IO(e) => f.write_fmt(format_args!("IO error, {}", e)),
         }
     }
@@ -136,8 +136,8 @@ impl Client {
         self.call_no_ret(Command::SaveLayout)
     }
 
-    pub fn variables(&mut self) -> Result<String, ClientError> {
-        self.call_infallible(Command::Variables)
+    pub fn variables(&mut self) -> Result<Vec<String>, ClientError> {
+        self.call_infallible(Command::Variables).and_then(|str| serde_json::from_str(&str).map_err(|e| ClientError::Serde(e)))
     }
 
     pub fn get_variable(&mut self, name: String) -> Result<String, ClientError> {
