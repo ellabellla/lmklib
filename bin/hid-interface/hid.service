@@ -9,4 +9,4 @@ ExecStop=fusermount -u /lmk/hid
 Restart=on-failure
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=default.target
