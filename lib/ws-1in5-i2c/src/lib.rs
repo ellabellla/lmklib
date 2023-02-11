@@ -211,6 +211,22 @@ impl WS1in5 {
         (DynamicImage::ImageLuma8(image).rotate180().to_luma8(), width as usize, height as usize)
     }
 
+    pub fn draw_text(&mut self, x: usize, y: usize, text: &str, scale: &Scale, font: &Font) -> Result<(usize, usize), Error> {
+        let (image, width, height) = self.create_text(text, scale, font);
+        let buffer = self.get_buffer(image.enumerate_pixels(), width, height)?;
+        self.show_image(buffer, OLED_WIDTH - width - x, OLED_HEIGHT - height - y, width, height)?;
+
+        Ok((width, height))
+    }
+
+    pub fn draw_centered_text(&mut self, x: usize, y: usize, text: &str, scale: &Scale, font: &Font) -> Result<(usize, usize), Error> {
+        let (image, width, height) = self.create_text(text, scale, font);
+        let buffer = self.get_buffer(image.enumerate_pixels(), width, height)?;
+        self.show_image(buffer, OLED_WIDTH - width - (OLED_WIDTH / 2 - width / 2 - x), OLED_HEIGHT - height - (OLED_HEIGHT / 2 - height / 2 - y), width, height)?;
+
+        Ok((width, height))
+    }
+
     pub fn draw_paragraph(&mut self, text: &str, scale: &Scale, font: &Font) -> Result<(usize, usize), Error> {
         let (mut x, mut y): (usize, usize) = (0, 0);
 
