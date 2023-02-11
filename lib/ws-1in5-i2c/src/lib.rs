@@ -29,6 +29,8 @@ pub const OLED_HEIGHT: usize = 128;
 pub struct WS1in5 {
     reset_pin: OutputPin,
     i2c_bus: I2c,
+
+    cleared: bool,
 }
 
 impl WS1in5 {
@@ -40,7 +42,7 @@ impl WS1in5 {
         let mut i2c_bus = I2c::with_bus(bus).map_err(|e| Error::I2C(e))?;
         i2c_bus.set_slave_address(address).map_err(|e| Error::I2C(e))?;
 
-        let mut this = WS1in5 { reset_pin, i2c_bus };
+        let mut this = WS1in5 { reset_pin, i2c_bus, cleared: true };
         this.init()?;
 
         Ok(this)
@@ -115,6 +117,8 @@ impl WS1in5 {
         thread::sleep(Duration::from_millis(100));
         self.reset_pin.set_high();
         thread::sleep(Duration::from_millis(100));
+        
+        self.cleared = true;
     }
 
     fn set_windows(&self, xstart: u8, ystart: u8, xend: u8, yend: u8) -> Result<(), Error>{
@@ -133,12 +137,18 @@ impl WS1in5 {
         Ok(())
     }
 
-    pub fn clear(&self, x: usize, y: usize, width: usize, height: usize) -> Result<(), Error> {
+    pub fn has_cleared(&self) -> bool {
+        self.cleared
+    }
+
+    pub fn clear(&mut self, x: usize, y: usize, width: usize, height: usize) -> Result<(), Error> {
+        self.cleared = true;
+
         let buffer: Vec<u8> = vec![0x00; (width  /2) * height];
         self.show_image(buffer, x, y, width, height)
     }
 
-    pub fn clear_all(&self) -> Result<(), Error> {
+    pub fn clear_all(&mut self) -> Result<(), Error> {
         self.clear(0, 0, OLED_WIDTH, OLED_HEIGHT)
     }
 
@@ -161,11 +171,13 @@ impl WS1in5 {
         Ok(buf)   
     }
 
-    pub fn show_image(&self, buffer: Vec<u8>, x: usize, y: usize, width: usize, height: usize) -> Result<(), Error> {
+    pub fn show_image(&mut self, buffer: Vec<u8>, x: usize, y: usize, width: usize, height: usize) -> Result<(), Error> {
         self.set_windows(x as u8, y as u8, x as u8 + width as u8, y as u8 + height as u8)?;
         if buffer.len() > (width /2) * height {
             return Err(Error::OutOfBounds)
         }
+
+        self.cleared = false;
 
         for i in 0..height {
             for j in 0..(width/2) {
@@ -187,6 +199,11 @@ impl WS1in5 {
         size
     }
 
+    pub fn get_text_size(&self, text: &str, scale: &Scale, font: &Font) -> (usize, usize) {
+        let (w, h) = WS1in5::size_to_pow_2(drawing::text_size(*scale, font, text));
+        (w as usize, h as usize)
+    }
+
     pub fn create_text(&self, text: &str, scale: &Scale, font: &Font) -> (ImageBuffer<Luma<u8>, Vec<u8>>, usize, usize) {
         let (width, height) = WS1in5::size_to_pow_2(drawing::text_size(*scale, font, text));
         let image = GrayImage::new(width as u32, height as u32);
@@ -194,9 +211,9 @@ impl WS1in5 {
         (DynamicImage::ImageLuma8(image).rotate180().to_luma8(), width as usize, height as usize)
     }
 
-    pub fn draw_paragraph(&self, text: &str, scale: &Scale, font: &Font) -> Result<(), Error> {
+    pub fn draw_paragraph(&mut self, text: &str, scale: &Scale, font: &Font) -> Result<(usize, usize), Error> {
         let (mut x, mut y): (usize, usize) = (0, 0);
-        
+
         for char in text.chars() {
             let (image, width, height) = self.create_text(&format!("{}", char), scale, font);
 
@@ -210,7 +227,7 @@ impl WS1in5 {
             }
         }
 
-        Ok(())
+        Ok((x, y))
     }
 }
 
