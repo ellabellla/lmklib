@@ -1,16 +1,17 @@
 #![warn(missing_docs)]
 use std::{io::{self}};
 
-use num_enum::IntoPrimitive;
+use num_enum::{IntoPrimitive, FromPrimitive};
 use serde::{Serialize, Deserialize};
 
 use crate::HID;
 
-#[derive(Debug, Clone, Serialize, Deserialize, IntoPrimitive)]
+#[derive(Debug, Clone, Serialize, Deserialize, IntoPrimitive, FromPrimitive)]
 #[repr(usize)]
 /// Mouse Button
 pub enum MouseButton {
  ///   Left
+    #[num_enum(default)]
     Left,
  ///   Right
     Right,
@@ -29,11 +30,12 @@ impl MouseButton {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, IntoPrimitive)]
+#[derive(Debug, Clone, Serialize, Deserialize, IntoPrimitive, FromPrimitive)]
 #[repr(usize)]
 /// Mouse movement direction
 pub enum MouseDir {
     /// X
+    #[num_enum(default)]
     X,
     /// Y
     Y
