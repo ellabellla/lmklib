@@ -214,22 +214,26 @@ impl WS1in5 {
     pub fn draw_text(&mut self, x: usize, y: usize, text: &str, scale: &Scale, font: &Font) -> Result<(usize, usize), Error> {
         let (image, width, height) = self.create_text(text, scale, font);
         let buffer = self.get_buffer(image.enumerate_pixels(), width, height)?;
-        self.show_image(buffer, OLED_WIDTH - width - x, OLED_HEIGHT - height - y, width, height)?;
+        let (x,y) = (OLED_WIDTH - width - x, OLED_HEIGHT - height - y);
+        self.show_image(buffer, x, y, width, height)?;
 
-        Ok((width, height))
+        Ok((x + width, y + height))
     }
 
     pub fn draw_centered_text(&mut self, x: usize, y: usize, text: &str, scale: &Scale, font: &Font) -> Result<(usize, usize), Error> {
         let (image, width, height) = self.create_text(text, scale, font);
         let buffer = self.get_buffer(image.enumerate_pixels(), width, height)?;
-        self.show_image(buffer, OLED_WIDTH - width - (OLED_WIDTH / 2 - width / 2 - x), OLED_HEIGHT - height - (OLED_HEIGHT / 2 - height / 2 - y), width, height)?;
+        let (x, y) = (OLED_WIDTH - width - (OLED_WIDTH / 2 - width / 2 - x), OLED_HEIGHT - height - (OLED_HEIGHT / 2 - height / 2 - y));
+        self.show_image(buffer, x, y, width, height)?;
 
-        Ok((width, height))
+        Ok((x + width, y + height))
     }
 
     pub fn draw_paragraph(&mut self, text: &str, scale: &Scale, font: &Font) -> Result<(usize, usize), Error> {
-        let (mut x, mut y): (usize, usize) = (0, 0);
+        self.draw_paragraph_at(0, 0, text, scale, font)
+    }
 
+    pub fn draw_paragraph_at(&mut self, mut x: usize, mut y: usize, text: &str, scale: &Scale, font: &Font) -> Result<(usize, usize), Error> {
         for char in text.chars() {
             let (image, width, height) = self.create_text(&format!("{}", char), scale, font);
 
