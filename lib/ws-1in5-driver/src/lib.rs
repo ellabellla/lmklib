@@ -1017,16 +1017,30 @@ impl State for TermState {
                             .arg("-c")
                             .arg(&self.command)
                             .stdout(Stdio::piped())
+                            .stderr(Stdio::piped())
                             .spawn()
                             .ok();
 
                         *self.stdout.blocking_lock() = String::new();
                         if let Some(child) = &mut self.process {
                             let stdout = self.stdout.clone();
-                            if let Some(child_stdout) = child.stdout.take() {
-                                self.process_out = Some(rt.spawn(async move {
-                                    let buf = BufReader::new(child_stdout);
-                                    for line in buf.lines() {
+                            let child_stdout = child.stdout.take().expect("Pipe was created for stdout");
+                            let child_stderr = child.stderr.take().expect("Pipe was created for stderr");
+                            self.process_out = Some(rt.spawn(async move {
+                                let mut buf_out = BufReader::new(child_stdout).lines();
+                                let mut buf_err = BufReader::new(child_stderr).lines();
+                                loop {
+                                    if let Some(line) = buf_out.next() {
+                                        if let Ok(line) = line {
+                                            let mut stdout = stdout.lock().await;
+                                            stdout.push_str(&line);
+                                            stdout.push('\n');
+                                            drop(stdout)
+                                        }
+                                    }
+
+
+                                    if let Some(line) = buf_err.next() {
                                         let Ok(line) = line else {
                                             break;
                                         };
@@ -1036,8 +1050,8 @@ impl State for TermState {
                                         stdout.push('\n');
                                         drop(stdout)
                                     }
-                                }));
-                            }
+                                }
+                            }));
                         }
                         
                         thread::sleep(Duration::from_millis(30));
