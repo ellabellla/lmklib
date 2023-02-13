@@ -8,6 +8,7 @@ pub enum ClientError {
     Return(String),
     Serde(serde_json::Error),
     IO(std::io::Error),
+    NNG(nanomsg::Error),
 }
 
 impl Display for ClientError {
@@ -16,6 +17,7 @@ impl Display for ClientError {
             ClientError::Return(ret) => f.write_fmt(format_args!("Unexpected return, {}", ret)),
             ClientError::Serde(e) => f.write_fmt(format_args!("Unable to serialize/deserialize, {}", e)),
             ClientError::IO(e) => f.write_fmt(format_args!("IO error, {}", e)),
+            ClientError::NNG(e) => f.write_fmt(format_args!("Nanomsg error, {}", e)),
         }
     }
 }
@@ -50,12 +52,12 @@ pub struct Client {
 }
 
 impl Client {
-    pub fn new(socket_str: &str) -> Result<Client, nanomsg::Error>{
-        let mut socket = Socket::new(Protocol::Req)?;
-        let _endpoint = socket.connect(socket_str)?;
+    pub fn new(socket_str: &str) -> Result<Client, ClientError>{
+        let mut socket = Socket::new(Protocol::Req).map_err(|e| ClientError::NNG(e))?;
+        let _endpoint = socket.connect(socket_str).map_err(|e| ClientError::NNG(e))?;
 
-        socket.set_receive_timeout(10)?;
-        socket.set_send_timeout(10)?;
+        socket.set_receive_timeout(10).map_err(|e| ClientError::NNG(e))?;
+        socket.set_send_timeout(10).map_err(|e| ClientError::NNG(e))?;
 
         Ok(Client { socket, _endpoint })
     }
