@@ -3,7 +3,7 @@ use std::{fmt::{Display}, thread, time::Duration};
 use image::{buffer::{EnumeratePixels}, Luma, GrayImage, DynamicImage, ImageBuffer};
 use imageproc::drawing;
 use rppal::{gpio::{Gpio, OutputPin, self}, i2c::{I2c, self}};
-use rusttype::{Scale, Font};
+use rusttype::{Scale, Font, point};
 
 #[derive(Debug)]
 pub enum Error {
@@ -173,7 +173,7 @@ impl WS1in5 {
 
     pub fn show_image(&mut self, buffer: Vec<u8>, x: usize, y: usize, width: usize, height: usize) -> Result<(), Error> {
         self.set_windows(x as u8, y as u8, x as u8 + width as u8, y as u8 + height as u8)?;
-        if buffer.len() > (width /2) * height {
+        if buffer.len() < (width /2) * height {
             return Err(Error::OutOfBounds)
         }
 
@@ -199,23 +199,43 @@ impl WS1in5 {
         size
     }
 
+    pub fn get_text_size_full(&self, text: &str, scale: &Scale, font: &Font) -> (usize, usize, usize) {
+        let v_metrics = font.v_metrics(*scale);
+        let height = (v_metrics.ascent - v_metrics.descent).ceil() as i32;
+
+        let layout = font.layout("_", *scale,  point(0.0, 0.0));
+        let min_x = layout.clone()
+            .next()
+            .map(|g| g.pixel_bounding_box().unwrap().min.x)
+            .unwrap();
+        let max_x = layout.clone()
+            .last()
+            .map(|g| g.pixel_bounding_box().unwrap().max.x)
+            .unwrap();
+        let width = max_x - min_x;
+
+        let (w, h) = WS1in5::size_to_pow_2((width, height));
+        (w as usize * text.chars().count(), h as usize, w as usize)
+    }
+
     pub fn get_text_size(&self, text: &str, scale: &Scale, font: &Font) -> (usize, usize) {
-        let (w, h) = WS1in5::size_to_pow_2(drawing::text_size(*scale, font, text));
-        (w as usize, h as usize)
+        let (w, h, _) =self.get_text_size_full(text, scale, font);
+        (w, h)
     }
 
     pub fn create_text(&self, text: &str, scale: &Scale, font: &Font) -> (ImageBuffer<Luma<u8>, Vec<u8>>, usize, usize) {
-        let (width, height) = WS1in5::size_to_pow_2(drawing::text_size(*scale, font, text));
-        let image = GrayImage::new(width as u32, height as u32);
-        let image = drawing::draw_text(&image, Luma([15]), 0, 0, *scale, font, text);
+        let (width, height, char_width) = self.get_text_size_full(text, scale, font);
+        let mut image = GrayImage::new(width as u32, height as u32);
+        for (i, char) in text.chars().enumerate() {
+            image = drawing::draw_text(&image, Luma([15]), (i * char_width) as i32, 0, *scale, font, &char.to_string());
+        }
         (DynamicImage::ImageLuma8(image).rotate180().to_luma8(), width as usize, height as usize)
     }
 
     pub fn draw_text(&mut self, x: usize, y: usize, text: &str, scale: &Scale, font: &Font) -> Result<(usize, usize), Error> {
         let (image, width, height) = self.create_text(text, scale, font);
         let buffer = self.get_buffer(image.enumerate_pixels(), width, height)?;
-        let (x,y) = (OLED_WIDTH - width - x, OLED_HEIGHT - height - y);
-        self.show_image(buffer, x, y, width, height)?;
+        self.show_image(buffer, OLED_WIDTH - width - x, OLED_HEIGHT - height - y, width, height)?;
 
         Ok((x + width, y + height))
     }
@@ -223,8 +243,7 @@ impl WS1in5 {
     pub fn draw_centered_text(&mut self, x: usize, y: usize, text: &str, scale: &Scale, font: &Font) -> Result<(usize, usize), Error> {
         let (image, width, height) = self.create_text(text, scale, font);
         let buffer = self.get_buffer(image.enumerate_pixels(), width, height)?;
-        let (x, y) = (OLED_WIDTH - width - (OLED_WIDTH / 2 - width / 2 - x), OLED_HEIGHT - height - (OLED_HEIGHT / 2 - height / 2 - y));
-        self.show_image(buffer, x, y, width, height)?;
+        self.show_image(buffer, OLED_WIDTH - width - (OLED_WIDTH / 2 - width / 2 - x), OLED_HEIGHT - height - (OLED_HEIGHT / 2 - height / 2 - y), width, height)?;
 
         Ok((x + width, y + height))
     }
@@ -235,10 +254,17 @@ impl WS1in5 {
 
     pub fn draw_paragraph_at(&mut self, mut x: usize, mut y: usize, text: &str, scale: &Scale, font: &Font) -> Result<(usize, usize), Error> {
         for char in text.chars() {
-            let (image, width, height) = self.create_text(&format!("{}", char), scale, font);
+             let (image, width, height) = if char.is_whitespace() {
+                self.create_text("_", scale, font)
+            } else {
+                self.create_text(&format!("{}", char), scale, font)
+            };
 
             let buffer = self.get_buffer(image.enumerate_pixels(), width, height)?;
-            self.show_image(buffer, OLED_WIDTH - width - x, OLED_HEIGHT - height - y, width, height)?;
+            if !char.is_whitespace() {
+                self.show_image(buffer, OLED_WIDTH - width - x, OLED_HEIGHT - height - y, width, height)?;
+            }
+
             x += width;
 
             if x+width > OLED_WIDTH {
