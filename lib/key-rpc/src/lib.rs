@@ -26,6 +26,7 @@ impl Display for ClientError {
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Command {
     Layer,
+    GetLayer(usize),
     LayerIdx,
     NumLayers,
     AddLayer(String),
@@ -104,6 +105,10 @@ impl Client {
 
     pub fn layer(&mut self) -> Result<String, ClientError>{
         self.call_infallible(Command::Layer)
+    }
+
+    pub fn get_layer(&mut self, index: usize) -> Result<String, ClientError> {
+        self.call_fallible(Command::GetLayer(index))
     }
 
     pub fn layer_idx(&mut self) -> Result<String, ClientError>{

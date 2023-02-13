@@ -82,6 +82,14 @@ impl ConfigRPC {
                         .unwrap_or("".to_string())
                         .as_bytes()
                         .to_owned(),
+                    Command::GetLayer(index) => serde_json::to_string(
+                            &FallibleRet{
+                                ret: layout.blocking_read()
+                                    .layout_string_at(index)
+                            }
+                        ).unwrap_or_else(|_| "".to_string())
+                        .as_bytes()
+                        .to_owned(),
                     Command::LayerIdx => layout.blocking_read()
                         .curr_layer()
                         .to_string()

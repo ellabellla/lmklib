@@ -381,6 +381,19 @@ impl Layout {
         ).ok()
     }
 
+    pub fn layout_string_at(&self, index: usize) -> Option<String> {
+        serde_json::to_string(
+            &self.layer_stack.get(index)?.iter()
+                .map(|func| {
+                    func.as_ref().map(|func| func.ftype())
+                })
+                .chunks(self.width)
+                .into_iter()
+                .map(|chunk| chunk.collect_vec())
+                .collect_vec()
+        ).ok()
+    }
+
     /// Poll the layout states and call corresponding functions
     pub async fn poll(&mut self) {
         if self.layer_stack.len() == 0 {
