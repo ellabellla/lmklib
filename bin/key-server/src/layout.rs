@@ -272,7 +272,7 @@ impl Layout {
 
 
     pub fn shift(&mut self, index: usize) -> Option<()> {
-        if index >= self.layer_stack.len() || self.cur_layer == index  || self.shift_from.len() == 0 {
+        if index >= self.layer_stack.len() || self.cur_layer == index {
             None
         } else {
             self.shift_from.push((self.cur_layer, index));
