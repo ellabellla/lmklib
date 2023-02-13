@@ -6,15 +6,22 @@ use tokio::{sync::{RwLock, watch}};
 use crate::OrLog;
 
 pub struct Variables {
-    pub data: HashMap<String, Vec<(watch::Sender<String>, watch::Receiver<String>)>>
+    pub data: HashMap<String, Vec<(watch::Sender<String>, watch::Receiver<String>)>>,
+    savable: Vec<VarDef>,
 }
 
 impl Variables {
     pub fn new() -> Arc<RwLock<Variables>> {
-        Arc::new(RwLock::new(Variables{ data: HashMap::new() }))
+        Arc::new(RwLock::new(Variables{ data: HashMap::new(), savable: Vec::new() }))
+    }
+
+    pub fn to_json(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string_pretty(&self.savable)
     }
 
     pub fn create_many(&mut self, variables: Vec<VarDef>) {
+        self.savable.extend(variables.clone());
+        
         for definition in variables {
             if !self.data.contains_key(&definition.name) {
                 self.data.insert(definition.name, vec![watch::channel(definition.default)]);

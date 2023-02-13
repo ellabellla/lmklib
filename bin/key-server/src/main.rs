@@ -260,7 +260,8 @@ async fn main() {
         CONFIG_BACK.to_string(), 
         layout.clone(), 
         config.join(LAYOUT_JSON),
-        variables
+        variables,
+        config.join(VARIABLES_JSON)
     ).await.or_exit("Unable to start Config RPC");
 
     // event loop

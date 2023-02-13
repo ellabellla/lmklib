@@ -35,6 +35,7 @@ pub enum Command {
     Variables,
     SetVariable(String, String),
     GetVariable(String),
+    SaveVariables,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -146,5 +147,9 @@ impl Client {
 
     pub fn set_variable(&mut self, name: String, data: String) -> Result<(), ClientError> {
         self.call_no_ret(Command::SetVariable(name, data))
+    }
+
+    pub fn save_variables(&mut self) -> Result<(), ClientError>{
+        self.call_no_ret(Command::SaveVariables)
     }
 }

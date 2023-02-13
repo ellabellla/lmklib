@@ -12,7 +12,7 @@ pub struct ConfigRPC {
 }
 
 impl ConfigRPC {
-    pub async fn start(front: String, back: String, layout: Arc<RwLock<Layout>>, layout_path: PathBuf, variables: Arc<RwLock<Variables>>) -> Result<JoinHandle<()>, nanomsg::Error> {
+    pub async fn start(front: String, back: String, layout: Arc<RwLock<Layout>>, layout_path: PathBuf, variables: Arc<RwLock<Variables>>, variables_path: PathBuf) -> Result<JoinHandle<()>, nanomsg::Error> {
         let (device_tx, mut device_rx) = oneshot::channel();
         {
             let back = back.clone();
@@ -169,6 +169,18 @@ impl ConfigRPC {
                     ).unwrap_or_else(|_| "".to_string())
                     .as_bytes()
                     .to_owned(),
+                    Command::SaveVariables => variables.blocking_read().to_json().or_log("Unable to serialize layout")
+                    .and_then(|json| 
+                        fs::File::create(&variables_path)
+                        .or_log("Unable to open variables")
+                        .map(|file| (json, file))
+                    )
+                    .and_then(|(json, mut file)| 
+                        file.write_all(&json.as_bytes())
+                        .or_log("Unable to write to variables")
+                    )
+                    .map(|_| "true".as_bytes().to_owned())
+                    .unwrap_or_else(|| "false".as_bytes().to_owned()),
                 }).or_log_ignore("Socket error (Config RPC)");    
             }
         }))
