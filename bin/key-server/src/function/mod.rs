@@ -694,11 +694,14 @@ impl Shift {
 impl FunctionInterface for Shift {
     async fn event(&mut self, state: State) -> ReturnCommand {
         if state.rising(self.prev_state) {
+            self.prev_state = state;
             return ReturnCommand::Shift(*self.id.data());
         } else if state.falling(self.prev_state) {
+            self.prev_state = state;
             return ReturnCommand::UnShift(*self.id.data());
         }
 
+        self.prev_state = state;
         ReturnCommand::None
     }
 
