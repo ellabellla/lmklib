@@ -119,15 +119,15 @@ impl FunctionInterface for ToggleHid {
             return ReturnCommand::None
         }
 
-        let name = &modes[self.hid_idx];
-
         if state.rising(self.prev_state) {
+            let name = &modes[self.hid_idx];
+            
             self.hid.read().await.switch(name.to_string());
-        }
 
-        self.hid_idx += 1;
-        if self.hid_idx >= modes.len() {
-            self.hid_idx = 0;
+            self.hid_idx += 1;
+            if self.hid_idx >= modes.len() {
+                self.hid_idx = 0;
+            }
         }
 
         self.prev_state = state;
