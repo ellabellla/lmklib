@@ -1,5 +1,6 @@
 use std::{any::Any, sync::Arc, collections::{HashMap, hash_map::Keys}};
 
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use tokio::{sync::{RwLock, watch}};
 
@@ -16,12 +17,20 @@ impl Variables {
     }
 
     pub fn to_json(&self) -> Result<String, serde_json::Error> {
-        serde_json::to_string_pretty(&self.savable)
+        serde_json::to_string_pretty(
+            &self.savable.iter()
+                .map(|vardef| VarDef {
+                    name: vardef.name.clone(), 
+                    default: self.get(&vardef.name)
+                        .unwrap_or_else(|| vardef.default.clone())
+                }
+            ).collect_vec()
+        )
     }
 
     pub fn create_many(&mut self, variables: Vec<VarDef>) {
         self.savable.extend(variables.clone());
-        
+
         for definition in variables {
             if !self.data.contains_key(&definition.name) {
                 self.data.insert(definition.name, vec![watch::channel(definition.default)]);
