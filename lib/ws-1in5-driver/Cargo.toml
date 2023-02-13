@@ -8,6 +8,7 @@ edition = "2021"
 crate-type = ["cdylib",'rlib']
 
 [dependencies]
+virt-hid = { workspace = true }
 key-rpc = { workspace = true }
 key-module = { workspace = true }
 ws-1in5-i2c = { workspace = true }
@@ -18,3 +19,4 @@ image = "0.24.5"
 rusttype = "0.9.3"
 nanomsg = {version = "0.7.2"}
 chrono = "0.4.23"
+itertools = "0.10.5"
