@@ -51,7 +51,7 @@ pub struct LayoutBuilder {
     none: usize,
     addresses: Slab<Address>,
     layout: Vec<usize>,
-    layers: Vec<Vec<FunctionType>>
+    layers: Vec<Vec<Option<FunctionType>>>
 }
 
 impl LayoutBuilder {
@@ -130,7 +130,11 @@ impl LayoutBuilder {
         for layer in self.layers.into_iter() {
             let mut built_layer = Vec::new();
             for entry in layer.into_iter() {
-                built_layer.push(function_builder.read().await.build(entry).await)
+                if let Some(entry) = entry {
+                    built_layer.push(function_builder.read().await.build(entry).await)
+                } else {
+                    built_layer.push(None);
+                }
             }
             layer_stack.push(built_layer);
         }
@@ -158,16 +162,16 @@ impl Serialize for LayoutBuilder {
             width: usize,
             height: usize,
             bound: Vec<&'a Address>,
-            layers: Vec<Vec<Vec<FunctionType>>>,
+            layers: Vec<Vec<Vec<Option<FunctionType>>>>,
         }
-        let layers: Vec<Vec<Vec<FunctionType>>> = self.layers.iter()
+        let layers: Vec<Vec<Vec<Option<FunctionType>>>> = self.layers.iter()
             .map(|layer| {
                 layer.clone()
                 .into_iter()
-                .collect::<Vec<FunctionType>>()
+                .collect::<Vec<Option<FunctionType>>>()
                 .chunks(self.width)
                 .map(|a| a.to_vec())
-                .collect::<Vec<Vec<FunctionType>>>()
+                .collect::<Vec<Vec<Option<FunctionType>>>>()
         }).collect();
         let bound = self.addresses.iter().map(|(_, a)| a).collect::<Vec<&Address>>();    
         Layout{width: self.width, height: self.height, bound, layers: layers}.serialize(serializer)
@@ -184,7 +188,7 @@ impl<'de> Deserialize<'de> for LayoutBuilder {
             width: usize,
             height: usize,
             bound: Vec<Address>,
-            layers: Vec<Vec<Vec<FunctionType>>>,
+            layers: Vec<Vec<Vec<Option<FunctionType>>>>,
         }
         let layout = Layout::deserialize(deserializer)?;
         let mut builder = LayoutBuilder::new(layout.width, layout.height);
@@ -203,7 +207,7 @@ impl<'de> Deserialize<'de> for LayoutBuilder {
             }
         }
         for (i, layer) in layout.layers.into_iter().enumerate() {
-            let mut new_layer: Vec<FunctionType> = vec![];
+            let mut new_layer: Vec<Option<FunctionType>> = vec![];
             if layer.len() != layout.height {
                 return Err(de::Error::custom(format!("Layer {} should have the same height as the layout.", i)))
             }
