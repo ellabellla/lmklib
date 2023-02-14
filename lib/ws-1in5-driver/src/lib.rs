@@ -17,6 +17,7 @@ use itertools::Itertools;
 use key_module::hid::{HIDBox, HidModule, HidModuleRef, HID};
 use key_rpc::{Client, ClientError};
 use rusttype::{Font, Scale};
+use serde_json::Value;
 use tokio::{runtime::Runtime, sync::Mutex, task::JoinHandle};
 use virt_hid::key::{Modifier, SpecialKey};
 use ws_1in5_i2c::{WS1in5, OLED_HEIGHT, OLED_WIDTH};
@@ -71,6 +72,27 @@ where
     F: FnOnce(Client) -> Result<U, ClientError>,
 {
     Client::new("ipc:///lmk/ksf.ipc").and_then(f)
+}
+
+fn get_key(coord: (usize, usize), layer: String) -> Result<String, String> {
+    let value: Value = serde_json::from_str(&layer).map_err(|e| e.to_string())?;
+    let Value::Array(y_axis) = value else {
+        return Err("Malformed layer rpc response".to_string())
+    };
+
+    let Some(row) = y_axis.get(coord.1) else {
+        return Err("Malformed layer rpc response".to_string())
+    };
+
+    let Value::Array(row) = row else {
+        return Err("Malformed layer rpc response".to_string())
+    };
+
+    let Some(func) = row.get(coord.0) else {
+        return Err("Malformed layer rpc response".to_string())
+    };
+
+    serde_json::to_string(func).map_err(|e| e.to_string())
 }
 
 pub struct Resources {
@@ -152,7 +174,7 @@ impl ScreenHid {
         };
 
         let mut states: HashMap<StateType, Box<dyn State>> = HashMap::new();
-        states.insert(StateType::Home, Box::new(HomeState {}));
+        states.insert(StateType::Home, Box::new(HomeState::new()));
         states.insert(
             StateType::Variables,
             Box::new(VariablesState::new(screen.clone(), &resources)),
@@ -501,28 +523,141 @@ impl State for EmptyState {
     
 }
 
-pub struct HomeState {}
+pub struct HomeState {
+    coord: (usize, usize),
+    layer: usize,
+
+    focus_x: bool,
+
+    key: Option<String>
+}
+
+impl HomeState {
+    pub fn new() -> HomeState {
+        HomeState { coord: (0,0), layer: 0, focus_x: true, key: None }
+    }
+}
+
 impl State for HomeState {
+    fn enter(
+        &mut self,
+        _prev: StateType,
+        _screen: Arc<Mutex<WS1in5>>,
+        _resources: &Resources,
+        _rt: &Runtime,
+    ) {
+        self.coord = (0,0);
+        self.key = None;
+    }
     fn draw(&mut self, screen: Arc<Mutex<WS1in5>>, resources: &Resources, _rt: &Runtime) {
         let mut screen = screen.blocking_lock();
         screen.clear_all().ok();
 
-        (|| -> Result<(), ws_1in5_i2c::Error> {
-            let time = Utc::now();
-            let (time_image, width, height) = screen.create_text(
-                &time.format("%H:%M").to_string(),
-                &resources.scale30,
-                &resources.font,
-            );
-            let buffer = screen.get_buffer(time_image.enumerate_pixels(), width, height)?;
-            screen.show_image(
-                buffer,
-                OLED_WIDTH - (OLED_WIDTH / 2 + width / 2),
-                OLED_HEIGHT - height - (OLED_HEIGHT / 2 - height / 2),
-                width,
-                height,
-            )
-        })().or_log("Failed to draw to screen");
+        match &self.key {
+            Some(key) => (|| -> Result<(), ws_1in5_i2c::Error> {
+                let (_, y) = screen.draw_text(0, 0, "KEY (ESC)", &resources.scale12, &resources.font)?;
+                screen.draw_paragraph_at(0, y, &key, &resources.scale10, &resources.font)?;
+    
+                Ok(())
+            })().or_log("Failed to draw to screen"),
+            None => (|| -> Result<(), ws_1in5_i2c::Error> {
+                let time = Utc::now();
+                screen.draw_centered_text(
+                    0,
+                    0,
+                    &time.format("%H:%M").to_string(),
+                    &resources.scale30,
+                    &resources.font,
+                )?;
+    
+                screen.draw_text(0, 0, &format!("Lookup: {},{}:{} ", self.coord.0, self.coord.1, self.layer), &resources.scale10, &resources.font)?;
+                Ok(())
+            })().or_log("Failed to draw to screen"),
+        };
+    }
+
+    fn hold_key(
+        &mut self,
+        key: usize,
+        screen: Arc<Mutex<WS1in5>>,
+        resources: &Resources,
+        _rt: &Runtime,
+    ) {
+        let Some(key) = char::from_u32(key as u32).and_then(|key| parse_index(key)) else {
+            return;
+        };
+
+        if self.key.is_none() {
+            if self.focus_x {
+                self.coord = (self.coord.0 * 10 + key, self.coord.1);
+            } else {
+                self.coord = (self.coord.0, self.coord.1 * 10 + key);
+            }
+            screen.blocking_lock().draw_text(0, 0, &format!("Lookup: {},{}:{} ", self.coord.0, self.coord.1, self.layer), &resources.scale10, &resources.font)
+                .or_log("Failed to draw to screen");
+        }
+    }
+
+    fn hold_special(
+        &mut self,
+        special: usize,
+        screen: Arc<Mutex<WS1in5>>,
+        resources: &Resources,
+        rt: &Runtime,
+    ) {
+        let mut lock_screen = screen.blocking_lock();
+        let special = SpecialKey::from(special);
+
+        match self.key {
+            Some(_) => match special {
+                SpecialKey::Escape => {
+                    self.key = None;
+                    self.focus_x = true;
+
+                    drop(lock_screen);
+                    self.draw(screen, resources, rt);
+                },
+                _ => (),
+            },
+            None => match special {
+                SpecialKey::Escape => if !self.focus_x {
+                    self.focus_x = true
+                },
+                SpecialKey::ReturnEnter => if self.focus_x {
+                    self.focus_x = false
+                } else {
+                    self.key = rpc(|mut client| client.get_layer(self.layer))
+                        .map_err(|e| e.to_string())
+                        .and_then(|layer| get_key(self.coord, layer))
+                        .or_log("RPC Failed");
+
+                    drop(lock_screen);
+                    self.draw(screen, resources, rt);
+                },
+                SpecialKey::Backspace => {
+                    if self.focus_x {
+                        self.coord = (self.coord.0 / 10, self.coord.1);
+                    } else {
+                        self.coord = (self.coord.0, self.coord.1 / 10);
+                    }
+                    lock_screen.draw_text(0, 0, &format!("Lookup: {},{}:{} ", self.coord.0, self.coord.1, self.layer), &resources.scale10, &resources.font)
+                        .or_log("Failed to draw to screen");
+                }
+                SpecialKey::UpArrow => {
+                    self.layer += 1;
+                    lock_screen.draw_text(0, 0, &format!("Lookup: {},{}:{} ", self.coord.0, self.coord.1, self.layer), &resources.scale10, &resources.font)
+                        .or_log("Failed to draw to screen");
+                },
+                SpecialKey::DownArrow => {
+                    if self.layer != 0 {
+                        self.layer -= 1;
+                    }
+                    lock_screen.draw_text(0, 0, &format!("Lookup: {},{}:{} ", self.coord.0, self.coord.1, self.layer), &resources.scale10, &resources.font)
+                        .or_log("Failed to draw to screen");
+                },
+                _ => (),
+            },
+        }
     }
 }
 
