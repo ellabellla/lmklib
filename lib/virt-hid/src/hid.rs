@@ -67,7 +67,7 @@ mod hid {
         /// Send raw mouse packet to HID interface. [crate::mouse::Mouse] provides an abstractions for raw mouse packets.
         pub fn send_mouse_packet(&mut self, data: &[u8]) -> io::Result<()> {
             self.mouse_hid.write_all(data)?;
-            self.keyboard_hid.sync_all()
+            self.mouse_hid.sync_all()
         }
     }
     
