@@ -12,8 +12,6 @@ members = [
     "bin/key-server-cli",
     "bin/gadget-service",
     "bin/kout",
-    "bin/quack",
-    "bin/bork",
     "bin/hid-interface",
     "external/keyboard-layouts",
     "external/fschema/fschema",
