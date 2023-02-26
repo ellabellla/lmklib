@@ -18,6 +18,18 @@ members = [
     "external/ws-1in5-i2c",
 ]
 
+default-members = [
+    "lib/key-rpc",
+    "lib/key-module",
+    "lib/mcp23017-driver",
+    "lib/ws-1in5-driver",
+    "bin/key-server",
+    "bin/key-server-cli",
+    "bin/gadget-service",
+    "bin/kout",
+    "bin/hid-interface",
+]
+
 [workspace.dependencies]
 virt-hid = { path = "external/virt-hid" }
 key-module = { path = "lib/key-module" }
@@ -26,3 +38,4 @@ fschema-lib = { path = "external/fschema/fschema-lib" }
 configfs = { path = "external/configfs" }
 mcp23017-rpi-lib = { path = "external/mcp23017-rpi-libg" }
 ws-1in5-i2c = { path = "external/ws-1in5-i2c" }
+
