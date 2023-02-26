@@ -557,8 +557,8 @@ impl State for HomeState {
 
         match &self.key {
             Some(key) => (|| -> Result<(), ws_1in5_i2c::Error> {
-                let (_, y) = screen.draw_text(0, 0, "KEY (ESC)", &resources.scale12, &resources.font)?;
-                screen.draw_paragraph_at(0, y, &key, &resources.scale10, &resources.font)?;
+                let (_, y) = screen.draw_text(0, 0, "KEY (ESC)", &resources.scale12, &resources.font, true)?;
+                screen.draw_paragraph_at(0, y, &key, &resources.scale10, &resources.font, true)?;
     
                 Ok(())
             })().or_log("Failed to draw to screen"),
@@ -570,9 +570,17 @@ impl State for HomeState {
                     &time.format("%H:%M").to_string(),
                     &resources.scale30,
                     &resources.font,
+                    true
                 )?;
     
-                screen.draw_text(0, 0, &format!("Lookup: {},{}:{} ", self.coord.0, self.coord.1, self.layer), &resources.scale10, &resources.font)?;
+                screen.draw_text(
+                    0, 
+                    0, 
+                    &format!("Lookup: {},{}:{} ", self.coord.0, self.coord.1, self.layer), 
+                    &resources.scale10, 
+                    &resources.font, 
+                    true
+                )?;
                 Ok(())
             })().or_log("Failed to draw to screen"),
         };
@@ -595,8 +603,15 @@ impl State for HomeState {
             } else {
                 self.coord = (self.coord.0, self.coord.1 * 10 + key);
             }
-            screen.blocking_lock().draw_text(0, 0, &format!("Lookup: {},{}:{} ", self.coord.0, self.coord.1, self.layer), &resources.scale10, &resources.font)
-                .or_log("Failed to draw to screen");
+            screen.blocking_lock().draw_text(
+                0, 
+                0, 
+                &format!("Lookup: {},{}:{} ", self.coord.0, self.coord.1, self.layer), 
+                &resources.scale10, 
+                &resources.font,
+                true
+            )
+            .or_log("Failed to draw to screen");
         }
     }
 
@@ -642,19 +657,38 @@ impl State for HomeState {
                     } else {
                         self.coord = (self.coord.0, self.coord.1 / 10);
                     }
-                    lock_screen.draw_text(0, 0, &format!("Lookup: {},{}:{} ", self.coord.0, self.coord.1, self.layer), &resources.scale10, &resources.font)
-                        .or_log("Failed to draw to screen");
+                    lock_screen.draw_text(
+                        0, 
+                        0, 
+                        &format!("Lookup: {},{}:{} ", self.coord.0, self.coord.1, self.layer), 
+                        &resources.scale10, 
+                        &resources.font,
+                        true
+                    ).or_log("Failed to draw to screen");
                 }
                 SpecialKey::UpArrow => {
                     self.layer += 1;
-                    lock_screen.draw_text(0, 0, &format!("Lookup: {},{}:{} ", self.coord.0, self.coord.1, self.layer), &resources.scale10, &resources.font)
-                        .or_log("Failed to draw to screen");
+                    lock_screen.draw_text(
+                        0, 
+                        0, 
+                        &format!("Lookup: {},{}:{} ", self.coord.0, self.coord.1, self.layer), 
+                        &resources.scale10, 
+                        &resources.font,
+                        true
+                    ).or_log("Failed to draw to screen");
                 },
                 SpecialKey::DownArrow => {
                     if self.layer != 0 {
                         self.layer -= 1;
                     }
-                    lock_screen.draw_text(0, 0, &format!("Lookup: {},{}:{} ", self.coord.0, self.coord.1, self.layer), &resources.scale10, &resources.font)
+                    lock_screen.draw_text(
+                        0, 
+                        0, 
+                        &format!("Lookup: {},{}:{} ", self.coord.0, self.coord.1, self.layer), 
+                        &resources.scale10, 
+                        &resources.font,
+                        true
+                    )
                         .or_log("Failed to draw to screen");
                 },
                 _ => (),
@@ -710,8 +744,22 @@ impl State for VariablesState {
 
         match &self.selected {
             Some((_, variable)) =>  (|| -> Result<(), ws_1in5_i2c::Error> {
-                let (_, y) = screen.draw_text(0, 0, "EDIT (ETR: Save, ESC)", &resources.scale12, &resources.font)?;
-                let xy = screen.draw_paragraph_at(0, y, variable, &resources.scale10, &resources.font)?;
+                let (_, y) = screen.draw_text(
+                    0, 
+                    0, 
+                    "EDIT (ETR: Save, ESC)", 
+                    &resources.scale12, 
+                    &resources.font,
+                    true,
+                )?;
+                let xy = screen.draw_paragraph_at(
+                    0, 
+                    y, 
+                    variable, 
+                    &resources.scale10, 
+                    &resources.font,
+                    true
+                )?;
 
                 (self.writing_x, self.writing_y) = xy;
 
@@ -724,7 +772,8 @@ impl State for VariablesState {
                     0, 
                     &format!("VARS {} (ETR: Save)", self.page),
                     &resources.scale12,
-                    &resources.font
+                    &resources.font,
+                    true
                 )?;
 
                 for (i, variable) in self
@@ -762,6 +811,7 @@ impl State for VariablesState {
                     "LEFT: <, RIGHT: >",
                     &resources.scale12,
                     &resources.font,
+                    true
                 )?;
 
                 Ok(())
@@ -786,7 +836,15 @@ impl State for VariablesState {
 
                 (|| -> Result<(), ws_1in5_i2c::Error> {
                     let (width, height) = screen.get_text_size("_", &resources.scale10, &resources.font);
-                    (self.writing_x, _) = screen.draw_text(self.writing_x, self.writing_y, &key.to_string(), &resources.scale10, &resources.font)?;
+                    (self.writing_x, _) = screen.draw_text(
+                        self.writing_x, 
+                        self.writing_y, 
+                        &key.to_string(), 
+                        &resources.scale10, 
+                        &resources.font,
+                        true
+                    )?;
+
                     if self.writing_x + width > OLED_WIDTH {
                         self.writing_x = 0;
                         self.writing_y += height;
@@ -977,6 +1035,7 @@ impl State for TermState {
                     "RUNNING",
                     &resources.scale12,
                     &resources.font,
+                    true
                 )?;
 
                 screen.draw_centered_text(
@@ -985,6 +1044,7 @@ impl State for TermState {
                     "ESC: kill, ENTR: poll",
                     &resources.scale12,
                     &resources.font,
+                    true
                 )?;
 
                 Ok(())
@@ -997,6 +1057,7 @@ impl State for TermState {
                             &format!("OUTPUT ({}) (ESC)", exit),
                             &resources.scale12,
                             &resources.font,
+                            true
                         )?;
 
                         let (mut x, mut y) = (0, y);
@@ -1012,6 +1073,7 @@ impl State for TermState {
                                 &line.collect::<String>(),
                                 &resources.scale10,
                                 &resources.font,
+                                true
                             )?;
                         }
 
@@ -1021,6 +1083,7 @@ impl State for TermState {
                             "LEFT: <, RIGHT: >",
                             &resources.scale10,
                             &resources.font,
+                            true
                         )?;
                         
         
@@ -1033,6 +1096,7 @@ impl State for TermState {
                             "TERM (ETR: run)",
                             &resources.scale12,
                             &resources.font,
+                            true
                         )?;
         
                         (self.writing_x, self.writing_y) = screen.draw_paragraph_at(
@@ -1041,6 +1105,7 @@ impl State for TermState {
                             &self.command,
                             &resources.scale12,
                             &resources.font,
+                            true
                         )?;
         
                         Ok(())
@@ -1073,7 +1138,14 @@ impl State for TermState {
             let mut screen = screen.blocking_lock();
             (|| -> Result<(), ws_1in5_i2c::Error> {
                 let (width, height) = screen.get_text_size("_", &resources.scale12, &resources.font);
-                (self.writing_x, _) = screen.draw_text(self.writing_x, self.writing_y, &key.to_string(), &resources.scale12, &resources.font)?;
+                (self.writing_x, _) = screen.draw_text(
+                    self.writing_x, 
+                    self.writing_y, 
+                    &key.to_string(), 
+                    &resources.scale12, 
+                    &resources.font,
+                    true
+                )?;
                 if self.writing_x + width > OLED_WIDTH {
                     self.writing_x = 0;
                     self.writing_y += height;
