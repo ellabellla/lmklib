@@ -233,7 +233,7 @@ impl ScreenHid {
 }
 
 impl HID for ScreenHid {
-    fn hold_key(&mut self, mut key: usize) {
+    fn hold_key(&mut self, mut key: u32) {
         *self.last_interact.blocking_lock() = Instant::now();
 
         if self.shift {
@@ -266,7 +266,7 @@ impl HID for ScreenHid {
                         _ => char,
                     };
                 }
-                key = char as usize;
+                key = char as u32;
             };
         }
 
@@ -274,17 +274,17 @@ impl HID for ScreenHid {
             Some(state.hold_key(key, self.screen.clone(), &self.resources, &self.rt))
         });
     }
-    fn hold_special(&mut self, special: usize) {
+    fn hold_special(&mut self, special: u32) {
         *self.last_interact.blocking_lock() = Instant::now();
 
         self.states.get_mut(&self.curr_state).and_then(|state| {
             Some(state.hold_special(special, self.screen.clone(), &self.resources, &self.rt))
         });
     }
-    fn hold_modifier(&mut self, modifier: usize) {
+    fn hold_modifier(&mut self, modifier: u32) {
         *self.last_interact.blocking_lock() = Instant::now();
 
-        if modifier == Modifier::LeftShift as usize || modifier == Modifier::RightShift as usize {
+        if modifier == Modifier::LeftShift as u32 || modifier == Modifier::RightShift as u32 {
             self.shift = true;
         }
 
@@ -293,22 +293,22 @@ impl HID for ScreenHid {
         });
     }
 
-    fn release_key(&mut self, key: usize) {
+    fn release_key(&mut self, key: u32) {
         *self.last_interact.blocking_lock() = Instant::now();
 
         self.states.get_mut(&self.curr_state).and_then(|state| {
             Some(state.release_key(key, self.screen.clone(), &self.resources, &self.rt))
         });
     }
-    fn release_special(&mut self, special: usize) {
+    fn release_special(&mut self, special: u32) {
         self.states.get_mut(&self.curr_state).and_then(|state| {
             Some(state.release_special(special, self.screen.clone(), &self.resources, &self.rt))
         });
     }
-    fn release_modifier(&mut self, modifier: usize) {
+    fn release_modifier(&mut self, modifier: u32) {
         *self.last_interact.blocking_lock() = Instant::now();
 
-        if modifier == Modifier::LeftShift as usize || modifier == Modifier::RightShift as usize {
+        if modifier == Modifier::LeftShift as u32 || modifier == Modifier::RightShift as u32 {
             self.shift = false;
         }
 
@@ -352,14 +352,14 @@ impl HID for ScreenHid {
         });
     }
 
-    fn hold_button(&mut self, button: usize) {
+    fn hold_button(&mut self, button: u32) {
         *self.last_interact.blocking_lock() = Instant::now();
 
         self.states.get_mut(&self.curr_state).and_then(|state| {
             Some(state.hold_button(button, self.screen.clone(), &self.resources, &self.rt))
         });
     }
-    fn release_button(&mut self, button: usize) {
+    fn release_button(&mut self, button: u32) {
         *self.last_interact.blocking_lock() = Instant::now();
 
         self.states.get_mut(&self.curr_state).and_then(|state| {
@@ -424,7 +424,7 @@ pub trait State {
 
     fn hold_key(
         &mut self,
-        _key: usize,
+        _key: u32,
         _screen: Arc<Mutex<WS1in5>>,
         _resources: &Resources,
         _rt: &Runtime,
@@ -432,7 +432,7 @@ pub trait State {
     }
     fn hold_special(
         &mut self,
-        _special: usize,
+        _special: u32,
         _screen: Arc<Mutex<WS1in5>>,
         _resources: &Resources,
         _rt: &Runtime,
@@ -440,7 +440,7 @@ pub trait State {
     }
     fn hold_modifier(
         &mut self,
-        _modifier: usize,
+        _modifier: u32,
         _screen: Arc<Mutex<WS1in5>>,
         _resources: &Resources,
         _rt: &Runtime,
@@ -448,7 +448,7 @@ pub trait State {
     }
     fn release_key(
         &mut self,
-        _key: usize,
+        _key: u32,
         _screen: Arc<Mutex<WS1in5>>,
         _resources: &Resources,
         _rt: &Runtime,
@@ -456,7 +456,7 @@ pub trait State {
     }
     fn release_special(
         &mut self,
-        _special: usize,
+        _special: u32,
         _screen: Arc<Mutex<WS1in5>>,
         _resources: &Resources,
         _rt: &Runtime,
@@ -464,7 +464,7 @@ pub trait State {
     }
     fn release_modifier(
         &mut self,
-        _modifier: usize,
+        _modifier: u32,
         _screen: Arc<Mutex<WS1in5>>,
         _resources: &Resources,
         _rt: &Runtime,
@@ -504,7 +504,7 @@ pub trait State {
     }
     fn hold_button(
         &mut self,
-        _button: usize,
+        _button: u32,
         _screen: Arc<Mutex<WS1in5>>,
         _resources: &Resources,
         _rt: &Runtime,
@@ -512,7 +512,7 @@ pub trait State {
     }
     fn release_button(
         &mut self,
-        _button: usize,
+        _button: u32,
         _screen: Arc<Mutex<WS1in5>>,
         _resources: &Resources,
         _rt: &Runtime,
@@ -588,7 +588,7 @@ impl State for HomeState {
 
     fn hold_key(
         &mut self,
-        key: usize,
+        key: u32,
         screen: Arc<Mutex<WS1in5>>,
         resources: &Resources,
         _rt: &Runtime,
@@ -617,7 +617,7 @@ impl State for HomeState {
 
     fn hold_special(
         &mut self,
-        special: usize,
+        special: u32,
         screen: Arc<Mutex<WS1in5>>,
         resources: &Resources,
         rt: &Runtime,
@@ -821,7 +821,7 @@ impl State for VariablesState {
 
     fn hold_key(
         &mut self,
-        key: usize,
+        key: u32,
         screen: Arc<Mutex<WS1in5>>,
         resources: &Resources,
         rt: &Runtime,
@@ -875,7 +875,7 @@ impl State for VariablesState {
 
     fn hold_special(
         &mut self,
-        special: usize,
+        special: u32,
         screen: Arc<Mutex<WS1in5>>,
         resources: &Resources,
         rt: &Runtime,
@@ -1116,7 +1116,7 @@ impl State for TermState {
 
     fn hold_key(
         &mut self,
-        key: usize,
+        key: u32,
         screen: Arc<Mutex<WS1in5>>,
         resources: &Resources,
         rt: &Runtime,
@@ -1158,7 +1158,7 @@ impl State for TermState {
 
     fn hold_special(
         &mut self,
-        special: usize,
+        special: u32,
         screen: Arc<Mutex<WS1in5>>,
         resources: &Resources,
         rt: &Runtime,
@@ -1324,7 +1324,7 @@ impl State for TermState {
 
     fn hold_modifier(
         &mut self,
-        modifier: usize,
+        modifier: u32,
         _screen: Arc<Mutex<WS1in5>>,
         _resources: &Resources,
         _rt: &Runtime,
@@ -1340,7 +1340,7 @@ impl State for TermState {
 
     fn release_modifier(
         &mut self,
-        modifier: usize,
+        modifier: u32,
         _screen: Arc<Mutex<WS1in5>>,
         _resources: &Resources,
         _rt: &Runtime,

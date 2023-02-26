@@ -25,19 +25,19 @@ impl RootModule for HidModuleRef {
 #[sabi(impl_InterfaceType(Sync, Send, Debug, Display))]
 /// HID interface
 pub trait HID {
-    fn hold_key(&mut self, key: usize);
-    fn hold_special(&mut self, special: usize);
-    fn hold_modifier(&mut self, modifier: usize);
-    fn release_key(&mut self, key: usize);
-    fn release_special(&mut self, special: usize);
-    fn release_modifier(&mut self, modifier: usize);
+    fn hold_key(&mut self, key: u32);
+    fn hold_special(&mut self, special: u32);
+    fn hold_modifier(&mut self, modifier: u32);
+    fn release_key(&mut self, key: u32);
+    fn release_special(&mut self, special: u32);
+    fn release_modifier(&mut self, modifier: u32);
     fn press_basic_str(&mut self, str: RString);
     fn press_str(&mut self, layout: RString, str: RString);
     fn scroll_wheel(&mut self, amount: i8);
     fn move_mouse_x(&mut self, amount: i8);
     fn move_mouse_y(&mut self, amount: i8);
-    fn hold_button(&mut self, button: usize);
-    fn release_button(&mut self, button: usize);
+    fn hold_button(&mut self, button: u32);
+    fn release_button(&mut self, button: u32);
     fn send_command(&mut self, data: RString);
     fn send_keyboard(&mut self);
     fn send_mouse(&mut self);
