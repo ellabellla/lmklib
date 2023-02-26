@@ -34,6 +34,7 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           toolchain: nightly
+      - run: git submodule update --init --recursive
       - run: RUSTDOCFLAGS="--enable-index-page -Zunstable-options" cargo +nightly doc --no-deps
       - name: Setup Pages
         uses: actions/configure-pages@v2
