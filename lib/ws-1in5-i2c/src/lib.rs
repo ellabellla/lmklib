@@ -1,3 +1,5 @@
+#![doc = include_str!("../README.md")]
+
 use std::{fmt::{Display}, thread, time::Duration};
 
 use image::{buffer::{EnumeratePixels}, Luma, GrayImage, DynamicImage, ImageBuffer};

@@ -1,3 +1,5 @@
+#![doc = include_str!("../README.md")]
+
 use std::{process::exit, thread, time::Duration, path::PathBuf, str::FromStr, fmt::Display, fs, io::Write, sync::Arc};
 
 use clap::Parser;

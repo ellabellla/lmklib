@@ -1,3 +1,5 @@
+#![doc = include_str!("../README.md")]
+
 use std::{io::{Write, Read}, fmt::{Debug, Display}};
 
 use nanomsg::{Socket, Endpoint, Protocol};

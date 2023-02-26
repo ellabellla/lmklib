@@ -1,3 +1,5 @@
+#![doc = include_str!("../README.md")]
+
 use std::{collections::{HashSet}, ops::Range, fmt::Display, hash::Hash};
 
 use abi_stable::{std_types::{RVec, RString, RResult::{RErr, ROk, self}}, traits::IntoReprC, export_root_module, sabi_extern_fn, prefix_type::PrefixTypeTrait, sabi_trait::TD_Opaque};

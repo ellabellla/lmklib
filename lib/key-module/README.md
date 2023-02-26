@@ -117,3 +117,182 @@ def event(func_id, state):
     """
     pass
 ```
+
+### HID Module
+```python
+def hold_key(key):
+    """Hold key event
+
+    Args:
+        key (int): char as integer of held key
+
+    Returns:
+        None
+    """
+    pass
+
+def hold_special(special):
+    """Hold special key  event
+
+    Args:
+        special (int): special key id
+
+    Returns:
+        None
+    """
+    pass
+
+def hold_modifier(modifier):
+    """Hold modifier key  event
+
+    Args:
+        modifier (int): modifier key id
+
+    Returns:
+        None
+    """
+    pass
+
+def release_key(key):
+    """Release key event
+
+    Args:
+        key (int): char as integer of released key
+
+    Returns:
+        None
+    """
+    pass
+
+def release_special(special):
+    """Release special key  event
+
+    Args:
+        special (int): special key id
+
+    Returns:
+        None
+    """
+    pass
+
+def release_modifier(modifier):
+    """Release modifier key  event
+
+    Args:
+        modifier (int): modifier key id
+
+    Returns:
+        None
+    """
+    pass
+
+def press_basic_str(str):
+    """Type string event
+
+    Args:
+        str (str): string to type
+
+    Returns:
+        None
+    """
+    pass
+
+def press_str(layout, str):
+    """Type string based on layout event
+
+    Args:
+        layout (str): layout name
+        str (str): string to type
+
+    Returns:
+        None
+    """
+    pass
+
+def scroll_wheel(amount):
+    """Scroll wheel by amount
+
+    Args:
+        amount (int): amount to move
+
+    Returns:
+        None
+    """
+    pass
+
+def move_mouse_x(amount):
+    """Move mouse in x direction by amount
+
+    Args:
+        amount (int): amount to move
+
+    Returns:
+        None
+    """
+    pass
+
+def move_mouse_y(amount):
+    """Move mouse in y direction by amount
+
+    Args:
+        amount (int): amount to move
+
+    Returns:
+        None
+    """
+    pass
+
+def hold_button(button):
+    """Hold mouse button event
+
+    Args:
+        button (int): mouse button id
+
+    Returns:
+        None
+    """
+    pass
+
+def release_button(button):
+    """Release mouse button event
+
+    Args:
+        button (int): mouse button id
+
+    Returns:
+        None
+    """
+    pass
+
+def send_command(data):
+    """Command sent event (used to send custom commands to a hid)
+
+    Args:
+        data (str): command data
+
+    Returns:
+        None
+    """
+    pass
+
+def send_keyboard():
+    """Send buffered keyboard data
+
+    Args:
+
+    Returns:
+        None
+    """
+    pass
+
+def send_mouse():
+    """Send buffered mouse data
+
+    Args:
+
+    Returns:
+        None
+    """
+    pass
+
+```
