@@ -1,6 +1,9 @@
 # LMK Lib
 A software suite for using a Raspberry Pi Zero as a smart mechanical keyboard. Used by Lynn Mechanical Keyboard, a raspberry pi zero based mechanical keyboard named after Lynn Ann Conway.
 
+## [Docs](https://ellabellla.github.io/lmklib/target/doc/)
+Rust documentation is available [here](https://ellabellla.github.io/lmklib/target/doc/).
+
 ## The Suite
 
 ### Binaries
