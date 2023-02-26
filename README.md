@@ -20,4 +20,3 @@ A software suite for using a Raspberry Pi Zero as a smart mechanical keyboard. U
 |mcp3008-driver|[link](lib/mcp23017-driver/)| A key-server driver module for driving a MCP3008 ic.|
 |mcp23017-driver|[link](lib/mcp23017-driver/)| A key-server driver module for driving a MCP23017 ic.|
 |ws-1inch5-driver|[link](lib/ws-1in5-driver/)| A key-server driver module for driving a Waveshare 1.5 Inch OLED.|
-|Virt-HID|[link](lib/virt-hid/)|A hid interface library.|

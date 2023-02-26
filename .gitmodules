@@ -1,12 +1,15 @@
 [submodule "external/fschema"]
 	path = external/fschema
 	url = git@github.com:ellabellla/fschema.git
-[submodule "external/keyboard-layouts"]
-	path = external/keyboard-layouts
-	url = git@github.com:ellabellla/keyboard-layouts.git
 [submodule "external/configfs"]
 	path = external/configfs
 	url = git@github.com:ellabellla/configfs.git
 [submodule "external/mcp23017-rpi-libg"]
 	path = external/mcp23017-rpi-libg
 	url = git@github.com:ellabellla/mcp23017-rpi-lib.git
+[submodule "external/virt-hid"]
+	path = external/virt-hid
+	url = git@github.com:ellabellla/virt-hid.git
+[submodule "external/ws-1in5-i2c"]
+	path = external/ws-1in5-i2c
+	url = git@github.com:ellabellla/ws-1in5-i2c.git
