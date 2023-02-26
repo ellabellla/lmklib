@@ -33,8 +33,7 @@ jobs:
       - name: Cargo
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: stable
-      - run: rustup toolchain install nightly
+          toolchain: nightly
       - run: RUSTDOCFLAGS="--enable-index-page -Zunstable-options" cargo +nightly doc --no-deps
       - name: Setup Pages
         uses: actions/configure-pages@v2
