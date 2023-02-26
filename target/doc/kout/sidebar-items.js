@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":[["kout_stdin",""],["main",""]],"struct":[["Cli",""]]};

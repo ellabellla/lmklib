@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"mod":[["driver",""],["function",""],["hid",""]],"struct":[["Data","Config data passed from the key server to the module"]]};

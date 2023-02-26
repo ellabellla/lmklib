@@ -1,0 +1,3 @@
+(function() {var implementors = {
+"hid_interface":[["impl BasicConfigHook for <a class=\"struct\" href=\"hid_interface/struct.LEDState.html\" title=\"struct hid_interface::LEDState\">LEDState</a>"],["impl BasicConfigHook for <a class=\"struct\" href=\"hid_interface/struct.Writable.html\" title=\"struct hid_interface::Writable\">Writable</a>"]]
+};if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"struct":[["DriverData","Driver Type, used to serialize driver configs"],["DriverError","Driver error"],["DriverManager","Driver Manager"]],"trait":[["DriverInterface","Driver interface"]],"type":[["Driver","Driver Object"]]};

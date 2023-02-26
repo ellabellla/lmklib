@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":[["LogLevel","Log level"]],"struct":[["Log","Log function, logs a message"]]};

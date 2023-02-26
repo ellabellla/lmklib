@@ -1,0 +1,3 @@
+(function() {var implementors = {
+"key_module":[["impl RootModule for <a class=\"struct\" href=\"key_module/function/struct.FunctionModuleRef.html\" title=\"struct key_module::function::FunctionModuleRef\">FunctionModuleRef</a>"],["impl RootModule for <a class=\"struct\" href=\"key_module/driver/struct.DriverModuleRef.html\" title=\"struct key_module::driver::DriverModuleRef\">DriverModuleRef</a>"],["impl RootModule for <a class=\"struct\" href=\"key_module/hid/struct.HidModuleRef.html\" title=\"struct key_module::hid::HidModuleRef\">HidModuleRef</a>"]]
+};if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

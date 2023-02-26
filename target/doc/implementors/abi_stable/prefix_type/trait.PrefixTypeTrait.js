@@ -1,0 +1,3 @@
+(function() {var implementors = {
+"key_module":[["impl PrefixTypeTrait for <a class=\"struct\" href=\"key_module/function/struct.FunctionModule.html\" title=\"struct key_module::function::FunctionModule\">FunctionModule</a>"],["impl PrefixTypeTrait for <a class=\"struct\" href=\"key_module/driver/struct.DriverModule.html\" title=\"struct key_module::driver::DriverModule\">DriverModule</a>"],["impl PrefixTypeTrait for <a class=\"struct\" href=\"key_module/hid/struct.HidModule.html\" title=\"struct key_module::hid::HidModule\">HidModule</a>"]]
+};if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

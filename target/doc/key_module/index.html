@@ -1,0 +1,271 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Key-module"><meta name="keywords" content="rust, rustlang, rust-lang, key_module"><title>key_module - Rust</title><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/SourceSerif4-Regular-1f7d512b176f0f72.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/FiraSans-Regular-018c141bf0843ffd.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/FiraSans-Medium-8f9a781e4970d388.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/SourceSerif4-Bold-124a1ca42af929b6.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2"><link rel="stylesheet" href="../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../static.files/rustdoc-b826345d929eb323.css" id="mainThemeStyle"><link rel="stylesheet" id="themeStyle" href="../static.files/light-87108236bf50c158.css"><link rel="stylesheet" disabled href="../static.files/dark-839c5fb8722cb456.css"><link rel="stylesheet" disabled href="../static.files/ayu-d48ac194417684c8.css"><script id="default-settings" ></script><script src="../static.files/storage-d43fa987303ecbbb.js"></script><script defer src="../crates.js"></script><script defer src="../static.files/main-0dede64717b247ca.js"></script><noscript><link rel="stylesheet" href="../static.files/noscript-201a7e04dc4c6fce.css"></noscript><link rel="alternate icon" type="image/png" href="../static.files/favicon-16x16-8b506e7a72182f1c.png"><link rel="alternate icon" type="image/png" href="../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc mod crate"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="mobile-topbar"><button class="sidebar-menu-toggle">&#9776;</button><a class="sidebar-logo" href="../key_module/index.html"><div class="logo-container"><img class="rust-logo" src="../static.files/rust-logo-151179464ae7ed46.svg" alt="logo"></div></a><h2></h2></nav><nav class="sidebar"><a class="sidebar-logo" href="../key_module/index.html"><div class="logo-container"><img class="rust-logo" src="../static.files/rust-logo-151179464ae7ed46.svg" alt="logo"></div></a><h2 class="location"><a href="#">Crate key_module</a></h2><div class="sidebar-elems"><ul class="block"><li class="version">Version 0.1.0</li><li><a id="all-types" href="all.html">All Items</a></li></ul><section><ul class="block"><li><a href="#modules">Modules</a></li><li><a href="#structs">Structs</a></li></ul></section></div></nav><main><div class="width-limiter"><nav class="sub"><form class="search-form"><span></span><input class="search-input" name="search" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"><div id="help-button" title="help" tabindex="-1"><a href="../help.html">?</a></div><div id="settings-menu" tabindex="-1"><a href="../settings.html" title="settings"><img width="22" height="22" alt="Change settings" src="../static.files/wheel-5ec35bf9ca753509.svg"></a></div></form></nav><section id="main-content" class="content"><div class="main-heading"><h1 class="fqn">Crate <a class="mod" href="#">key_module</a><button id="copy-path" onclick="copy_path(this)" title="Copy item path to clipboard"><img src="../static.files/clipboard-7571035ce49a181d.svg" width="19" height="18" alt="Copy item path"></button></h1><span class="out-of-band"><a class="srclink" href="../src/key_module/lib.rs.html#1-20">source</a> · <button id="toggle-all-docs" title="collapse all docs">[<span>&#x2212;</span>]</button></span></div><details class="rustdoc-toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><h2 id="key-module"><a href="#key-module">Key-module</a></h2>
+<p>A library for creating modules for Key-server in rust and python. A module can provide either a HID output, external functions or drivers to the key server.</p>
+<p>Rust modules are written using abi_stable and are dynamically linked. Python modules are loaded and interpreted at runtime using Pyo3.</p>
+<p>This crate contains the abi_stable interfaces for rust modules and some template files for python modules.</p>
+<h3 id="anatomy-of-a-module"><a href="#anatomy-of-a-module">Anatomy of a Module</a></h3>
+<p>Modules are folders containing:</p>
+<ul>
+<li>module.py(Python)/module.so(Rust): The module to be loaded</li>
+<li>meta.json: The meta data of the module</li>
+</ul>
+<p>All modules are placed in the modules folder inside the key-server config folder.</p>
+<h3 id="metajson"><a href="#metajson">Meta.json</a></h3><div class="example-wrap"><pre class="language-json"><code>{
+  &quot;name&quot;: &quot;&quot;,
+  &quot;interface&quot;:&quot;&quot;,
+  &quot;module_type&quot;:&quot;&quot;
+}</code></pre></div>
+<p>A json file containing an object with the items:</p>
+<ul>
+<li>name: The name of the module</li>
+<li>interface: The interface type (HID, Function or Driver)</li>
+<li>module_type: The module type (ABIStable or Python)</li>
+</ul>
+<h3 id="python-templates"><a href="#python-templates">Python Templates</a></h3><h4 id="result-return-helpers"><a href="#result-return-helpers">Result Return Helpers</a></h4><div class="example-wrap"><pre class="language-python"><code>def ok(ok):
+    if ok is None:
+        return
+    return {&quot;ok&quot;:ok, &quot;err&quot;:None}
+
+def err(err):
+    if err is None:
+        return
+    return {&quot;ok&quot;:None, &quot;err&quot;:err}</code></pre></div><h4 id="driver-module"><a href="#driver-module">Driver Module</a></h4><div class="example-wrap"><pre class="language-python"><code>def load_data(data):
+    &quot;&quot;&quot;Initialize new driver from key server config data
+
+    Args:
+        data (str): Driver data
+
+    Returns:
+        Result:
+            Ok (int): Id of initialized driver
+            Err (str): String describing error
+    &quot;&quot;&quot;
+    pass
+
+def poll(driver_id):
+    &quot;&quot;&quot;Poll the current state of the driver with the specified id
+
+    Args:
+        driver_id (int): Driver id
+
+    Returns:
+        Result: 
+            Ok (list): List of the states (int)
+            Err (str):  String describing error
+    &quot;&quot;&quot;
+    pass
+
+def set(driver_id, idx, state):
+    &quot;&quot;&quot;Set the current state of the driver with the specified id
+
+    Args:
+        driver_id (int): Driver id
+        idx: (int) State index
+        state (int): The state
+
+    Returns:
+        Result: 
+            Ok (None)
+            Err (str): String describing error
+    &quot;&quot;&quot;
+    pass
+</code></pre></div><h4 id="function-module"><a href="#function-module">Function Module</a></h4><div class="example-wrap"><pre class="language-python"><code>def load_data(name, data):
+    &quot;&quot;&quot;Initialize new function from key server config data
+
+    Args:
+        name (str): Name of the function type
+        data (str): Function data
+
+    Returns:
+        Result:
+            Ok (int): Id of initialized function
+            Err (str): String describing error
+    &quot;&quot;&quot;
+    pass
+
+def event(func_id, state):
+    &quot;&quot;&quot;Keyboard pool event, runs every time the keyboard polls the state associated with the function
+
+    Args:
+        func_id (int): Function id
+        state (list): list of the states (int)
+
+    Returns:
+        Result: 
+            Ok (None)
+            Err (str): String describing error
+    &quot;&quot;&quot;
+    pass</code></pre></div><h4 id="hid-module"><a href="#hid-module">HID Module</a></h4><div class="example-wrap"><pre class="language-python"><code>def hold_key(key):
+    &quot;&quot;&quot;Hold key event
+
+    Args:
+        key (int): char as integer of held key
+
+    Returns:
+        None
+    &quot;&quot;&quot;
+    pass
+
+def hold_special(special):
+    &quot;&quot;&quot;Hold special key  event
+
+    Args:
+        special (int): special key id
+
+    Returns:
+        None
+    &quot;&quot;&quot;
+    pass
+
+def hold_modifier(modifier):
+    &quot;&quot;&quot;Hold modifier key  event
+
+    Args:
+        modifier (int): modifier key id
+
+    Returns:
+        None
+    &quot;&quot;&quot;
+    pass
+
+def release_key(key):
+    &quot;&quot;&quot;Release key event
+
+    Args:
+        key (int): char as integer of released key
+
+    Returns:
+        None
+    &quot;&quot;&quot;
+    pass
+
+def release_special(special):
+    &quot;&quot;&quot;Release special key  event
+
+    Args:
+        special (int): special key id
+
+    Returns:
+        None
+    &quot;&quot;&quot;
+    pass
+
+def release_modifier(modifier):
+    &quot;&quot;&quot;Release modifier key  event
+
+    Args:
+        modifier (int): modifier key id
+
+    Returns:
+        None
+    &quot;&quot;&quot;
+    pass
+
+def press_basic_str(str):
+    &quot;&quot;&quot;Type string event
+
+    Args:
+        str (str): string to type
+
+    Returns:
+        None
+    &quot;&quot;&quot;
+    pass
+
+def press_str(layout, str):
+    &quot;&quot;&quot;Type string based on layout event
+
+    Args:
+        layout (str): layout name
+        str (str): string to type
+
+    Returns:
+        None
+    &quot;&quot;&quot;
+    pass
+
+def scroll_wheel(amount):
+    &quot;&quot;&quot;Scroll wheel by amount
+
+    Args:
+        amount (int): amount to move
+
+    Returns:
+        None
+    &quot;&quot;&quot;
+    pass
+
+def move_mouse_x(amount):
+    &quot;&quot;&quot;Move mouse in x direction by amount
+
+    Args:
+        amount (int): amount to move
+
+    Returns:
+        None
+    &quot;&quot;&quot;
+    pass
+
+def move_mouse_y(amount):
+    &quot;&quot;&quot;Move mouse in y direction by amount
+
+    Args:
+        amount (int): amount to move
+
+    Returns:
+        None
+    &quot;&quot;&quot;
+    pass
+
+def hold_button(button):
+    &quot;&quot;&quot;Hold mouse button event
+
+    Args:
+        button (int): mouse button id
+
+    Returns:
+        None
+    &quot;&quot;&quot;
+    pass
+
+def release_button(button):
+    &quot;&quot;&quot;Release mouse button event
+
+    Args:
+        button (int): mouse button id
+
+    Returns:
+        None
+    &quot;&quot;&quot;
+    pass
+
+def send_command(data):
+    &quot;&quot;&quot;Command sent event (used to send custom commands to a hid)
+
+    Args:
+        data (str): command data
+
+    Returns:
+        None
+    &quot;&quot;&quot;
+    pass
+
+def send_keyboard():
+    &quot;&quot;&quot;Send buffered keyboard data
+
+    Args:
+
+    Returns:
+        None
+    &quot;&quot;&quot;
+    pass
+
+def send_mouse():
+    &quot;&quot;&quot;Send buffered mouse data
+
+    Args:
+
+    Returns:
+        None
+    &quot;&quot;&quot;
+    pass
+</code></pre></div></div></details><h2 id="modules" class="small-section-header"><a href="#modules">Modules</a></h2><div class="item-table"><div class="item-row"><div class="item-left module-item"><a class="mod" href="driver/index.html" title="key_module::driver mod">driver</a></div></div><div class="item-row"><div class="item-left module-item"><a class="mod" href="function/index.html" title="key_module::function mod">function</a></div></div><div class="item-row"><div class="item-left module-item"><a class="mod" href="hid/index.html" title="key_module::hid mod">hid</a></div></div></div><h2 id="structs" class="small-section-header"><a href="#structs">Structs</a></h2><div class="item-table"><div class="item-row"><div class="item-left module-item"><a class="struct" href="struct.Data.html" title="key_module::Data struct">Data</a></div><div class="item-right docblock-short">Config data passed from the key server to the module</div></div></div></section></div></main><div id="rustdoc-vars" data-root-path="../" data-static-root-path="../static.files/" data-current-crate="key_module" data-themes="" data-resource-suffix="" data-rustdoc-version="1.67.0-nightly (7eef946fc 2022-11-06)" data-search-js="search-39ee4160c7dc16c9.js" data-settings-js="settings-3a0b9947ba1bd99a.js" data-settings-css="settings-a66f7524084a489a.css" ></div></body></html>

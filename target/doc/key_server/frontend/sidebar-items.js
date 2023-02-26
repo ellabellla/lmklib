@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":[["FrontendConfigData","Function controller configuration data types, used for serialization"]],"struct":[["FrontendConfiguration","Function configuration, managers function controller configs"]],"trait":[["FrontendConfig","Function config interface, used to serialize function controller data"]]};

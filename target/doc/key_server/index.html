@@ -1,0 +1,111 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Key-Server WORK IN PROGRESS"><meta name="keywords" content="rust, rustlang, rust-lang, key_server"><title>key_server - Rust</title><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/SourceSerif4-Regular-1f7d512b176f0f72.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/FiraSans-Regular-018c141bf0843ffd.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/FiraSans-Medium-8f9a781e4970d388.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/SourceSerif4-Bold-124a1ca42af929b6.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2"><link rel="stylesheet" href="../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../static.files/rustdoc-b826345d929eb323.css" id="mainThemeStyle"><link rel="stylesheet" id="themeStyle" href="../static.files/light-87108236bf50c158.css"><link rel="stylesheet" disabled href="../static.files/dark-839c5fb8722cb456.css"><link rel="stylesheet" disabled href="../static.files/ayu-d48ac194417684c8.css"><script id="default-settings" ></script><script src="../static.files/storage-d43fa987303ecbbb.js"></script><script defer src="../crates.js"></script><script defer src="../static.files/main-0dede64717b247ca.js"></script><noscript><link rel="stylesheet" href="../static.files/noscript-201a7e04dc4c6fce.css"></noscript><link rel="alternate icon" type="image/png" href="../static.files/favicon-16x16-8b506e7a72182f1c.png"><link rel="alternate icon" type="image/png" href="../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc mod crate"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="mobile-topbar"><button class="sidebar-menu-toggle">&#9776;</button><a class="sidebar-logo" href="../key_server/index.html"><div class="logo-container"><img class="rust-logo" src="../static.files/rust-logo-151179464ae7ed46.svg" alt="logo"></div></a><h2></h2></nav><nav class="sidebar"><a class="sidebar-logo" href="../key_server/index.html"><div class="logo-container"><img class="rust-logo" src="../static.files/rust-logo-151179464ae7ed46.svg" alt="logo"></div></a><h2 class="location"><a href="#">Crate key_server</a></h2><div class="sidebar-elems"><ul class="block"><li class="version">Version 0.1.0</li><li><a id="all-types" href="all.html">All Items</a></li></ul><section><ul class="block"><li><a href="#modules">Modules</a></li><li><a href="#structs">Structs</a></li><li><a href="#traits">Traits</a></li><li><a href="#functions">Functions</a></li></ul></section></div></nav><main><div class="width-limiter"><nav class="sub"><form class="search-form"><span></span><input class="search-input" name="search" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"><div id="help-button" title="help" tabindex="-1"><a href="../help.html">?</a></div><div id="settings-menu" tabindex="-1"><a href="../settings.html" title="settings"><img width="22" height="22" alt="Change settings" src="../static.files/wheel-5ec35bf9ca753509.svg"></a></div></form></nav><section id="main-content" class="content"><div class="main-heading"><h1 class="fqn">Crate <a class="mod" href="#">key_server</a><button id="copy-path" onclick="copy_path(this)" title="Copy item path to clipboard"><img src="../static.files/clipboard-7571035ce49a181d.svg" width="19" height="18" alt="Copy item path"></button></h1><span class="out-of-band"><a class="srclink" href="../src/key_server/main.rs.html#1-285">source</a> · <button id="toggle-all-docs" title="collapse all docs">[<span>&#x2212;</span>]</button></span></div><details class="rustdoc-toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><h2 id="key-server-work-in-progress"><a href="#key-server-work-in-progress">Key-Server WORK IN PROGRESS</a></h2>
+<p>A server that interfaces with the Raspberry Pi’s GPIO and sends mouse and key events based on hardware input to either the Pi or host.</p>
+<h3 id="usage"><a href="#usage">Usage</a></h3>
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code>Cli Args
+
+Usage: key-server [OPTIONS]
+
+Options:
+  -c, --config &lt;CONFIG&gt;  Path to config directory
+  -h, --help             Print help information</code></pre></div>
+<h3 id="overview"><a href="#overview">Overview</a></h3>
+<p>The key-server can be broken up into 3 main parts:</p>
+<div class="example-wrap"><pre class="language-mermaid"><code>graph TD;
+    d[Drivers];
+    l[Layout];
+    f[Functions];
+    d--&gt;l;
+    l--&gt;f;</code></pre></div>
+<p>Drivers interface with GPIO, the layout abstracts the driver input into a grid of keys, or keyboard layout, and functions are bound to specific keys, handling the driver input at that position in the grid. The layout is separated into layers, each one a grid of bindings allowing the layout to be quickly modified and switched between. Functions perform actions like sending keystrokes, and moving the mouse.</p>
+<h4 id="modules"><a href="#modules">Modules</a></h4>
+<p>Modules allow external libraries to handle the driver, function, and HID logic. There are built in functions and HIDs but drivers must be supplied through modules. See <a href="../../lib/key-module/">key-module</a>.</p>
+<h4 id="variables"><a href="#variables">Variables</a></h4>
+<p>Variables can be used to share configuration between functions or to change the configuration of a function at runtime. Variables can be defined globally or locally in functions. Global variables can be saved after being changed at runtime.</p>
+<p>e.g. a sensitivity variable shared across two functions that handle mouse movements</p>
+<h4 id="rpc"><a href="#rpc">RPC</a></h4>
+<p>The key-server can be interfaced with using RPC. See <a href="../../lib/key-rpc/">key-rpc</a>.</p>
+<h3 id="configuration"><a href="#configuration">Configuration</a></h3>
+<p>The key-server will either use a folder, called key-server, in the systems default user configuration folder or the folder specified by the user as it’s configuration folder.</p>
+<p>It expects:</p>
+<ul>
+<li>“drivers”, a folder containing all driver configuration files</li>
+<li>“modules”, a folder containing all modules to load</li>
+<li>“variables.json”, a global variable specification file</li>
+<li>“layout.json”, a layout configuration file</li>
+<li>“frontend.json”, a front end configuration file</li>
+<li>“config.yaml”, a logging configuration file</li>
+</ul>
+<h4 id="drivers"><a href="#drivers">Drivers</a></h4>
+<p>Drivers are configured by creating configuration files in the “drivers” folder. The name of the file specifies the name of the driver and module the driver should be created with, separated by a hyphen. e.g. “{name}-{module name}”. The contents of the file is parsed by the drivers module and typically contains module specific configurations.</p>
+<p>The driver will then provide the layout with a list of inputs/outputs that can be bound.</p>
+<h4 id="modules-1"><a href="#modules-1">Modules</a></h4>
+<p>See <a href="../../lib/key-module/">key-module</a>.</p>
+<h4 id="variables-1"><a href="#variables-1">Variables</a></h4>
+<p>The variables configuration file configures global variables. It expects a json list of variable definitions. A variable definition is an object with the field “name”, the name of the variable, and “default”, the default value encoding as a json string. How the value is deserialized from json is determined by the type a function that uses that variable is expected. If it fails to deserialize due to it being the wrong type or being malformed it will default to the functions default value for that parameter.</p>
+<div class="example-wrap"><pre class="language-json"><code>[
+    {
+        &quot;name&quot;: &quot;sensitivity&quot;,
+        &quot;default&quot;: &quot;100&quot;,
+    }
+]</code></pre></div><h4 id="layout-1"><a href="#layout-1">Layout</a></h4>
+<p>The layout configuration file configures the key-server layout, and function and driver bindings. It expects a json object containing the fields “width”, the grid width, “height”, the grid height, “bound”, a list of driver grid bindings, and “layers”, a list of layers each one a 2d list function grid bindings.</p>
+<p>A driver binding expects an Address to bind to the grid. This can be:</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code>DriverMatrix {
+    name: String, driver name
+    input: Range&lt;usize&gt;, range of inputs to bind
+    width: usize, width of the matrix
+    root: (usize, usize), layer coord to start binding too 
+}
+DriverAddr {
+    name: String, driver name
+    input: usize, input
+    root: (usize, usize), layer coord to bind too
+}
+<span class="prelude-val">None</span></code></pre></div>
+<div class="example-wrap"><pre class="language-json"><code>[
+    {
+        &quot;DriverAddr&quot;: {
+            &quot;name&quot;: &quot;GPIO1&quot;,
+            &quot;input&quot;: 0,
+            &quot;root&quot;: [0,0],
+        }
+    }
+]</code></pre></div>
+<p>A driver matrix takes a list of inputs from a driver and binds them in a grid with a given width on the layout. A driver address binds an input to a point on the layout. None binds nothing.</p>
+<p>A layer is a list of rows. A row is a list of function bindings. </p>
+<div class="example-wrap"><pre class="language-json"><code>[
+    [{&quot;Key&quot;: &quot;a&quot;}, {&quot;Key&quot;: &quot;b&quot;}, {&quot;Key&quot;: &quot;c&quot;}],
+    [{&quot;Key&quot;: &quot;d&quot;}, {&quot;Key&quot;: &quot;e&quot;}, {&quot;Key&quot;: &quot;f&quot;}],
+    [{&quot;Key&quot;: &quot;g&quot;}, {&quot;Key&quot;: &quot;h&quot;}, {&quot;Key&quot;: &quot;j&quot;}]
+]</code></pre></div>
+<p>See function::FunctionType for function binding configurations.</p>
+<h4 id="frontend"><a href="#frontend">Frontend</a></h4>
+<p>The frontend consists of builtin services, such as nanomsg and midi, and misc key-server functionality. This can be configured in the “frontend.json” configuration file and consists of a list of configuration objects.</p>
+<p>Configuration objects:</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code>HID {
+    mouse: String, mouse hid device path
+    keyboard: String, keyboard hid device path
+    led: String, led hid device path (may be the same <span class="kw">as </span>the keyboard path)
+}
+NanoMsg {
+    pub_addr: String, publisher address (used by the key-server)
+    sub_addr: String, subscriber address (used by external listeners)
+    timeout: i64
+}</code></pre></div>
+<div class="example-wrap"><pre class="language-json"><code>[
+    {
+        &quot;NanoMsg&quot;: {
+            &quot;pub_addr&quot;: &quot;ipc:///lmk/pub.ipc&quot;,
+            &quot;sub_addr&quot;: &quot;ipc:///lmk/sub.ipc&quot;,
+            &quot;timeout&quot;: 100,
+        }
+    }
+]</code></pre></div><h4 id="logging"><a href="#logging">Logging</a></h4>
+<p>See <a href="https://docs.rs/log4rs/latest/log4rs/#configuration-via-a-yaml-file">log4rs crate</a></p>
+</div></details><h2 id="modules-2" class="small-section-header"><a href="#modules-2">Modules</a></h2><div class="item-table"><div class="item-row"><div class="item-left module-item"><a class="mod" href="config_rpc/index.html" title="key_server::config_rpc mod">config_rpc</a><span title="Restricted Visibility">&nbsp;🔒</span> </div><div class="item-right docblock-short">Config rpc modules</div></div><div class="item-row"><div class="item-left module-item"><a class="mod" href="driver/index.html" title="key_server::driver mod">driver</a><span title="Restricted Visibility">&nbsp;🔒</span> </div><div class="item-right docblock-short">Driver module</div></div><div class="item-row"><div class="item-left module-item"><a class="mod" href="frontend/index.html" title="key_server::frontend mod">frontend</a><span title="Restricted Visibility">&nbsp;🔒</span> </div><div class="item-right docblock-short">Frontend Config module</div></div><div class="item-row"><div class="item-left module-item"><a class="mod" href="function/index.html" title="key_server::function mod">function</a><span title="Restricted Visibility">&nbsp;🔒</span> </div><div class="item-right docblock-short">Function module</div></div><div class="item-row"><div class="item-left module-item"><a class="mod" href="layout/index.html" title="key_server::layout mod">layout</a><span title="Restricted Visibility">&nbsp;🔒</span> </div><div class="item-right docblock-short">Layout module</div></div><div class="item-row"><div class="item-left module-item"><a class="mod" href="modules/index.html" title="key_server::modules mod">modules</a><span title="Restricted Visibility">&nbsp;🔒</span> </div><div class="item-right docblock-short">Plugin modules</div></div><div class="item-row"><div class="item-left module-item"><a class="mod" href="variables/index.html" title="key_server::variables mod">variables</a><span title="Restricted Visibility">&nbsp;🔒</span> </div><div class="item-right docblock-short">Variable module</div></div></div><h2 id="structs" class="small-section-header"><a href="#structs">Structs</a></h2><div class="item-table"><div class="item-row"><div class="item-left module-item"><a class="struct" href="struct.Args.html" title="key_server::Args struct">Args</a><span title="Restricted Visibility">&nbsp;🔒</span> </div><div class="item-right docblock-short">Cli Args</div></div></div><h2 id="traits" class="small-section-header"><a href="#traits">Traits</a></h2><div class="item-table"><div class="item-row"><div class="item-left module-item"><a class="trait" href="trait.OrExit.html" title="key_server::OrExit trait">OrExit</a></div><div class="item-right docblock-short">Accepts a result or option. If a result it is turned into a option containing the ok value. 
+If the option is none or the result is err then it will log the message as an error, 
+followed by the error message (for result), and exit the program with and exit status of 1.</div></div><div class="item-row"><div class="item-left module-item"><a class="trait" href="trait.OrLog.html" title="key_server::OrLog trait">OrLog</a></div><div class="item-right docblock-short">Turns a result into a option containing the ok value. 
+If the result is an error it will log a message followed by the error message as an error.</div></div><div class="item-row"><div class="item-left module-item"><a class="trait" href="trait.OrLogIgnore.html" title="key_server::OrLogIgnore trait">OrLogIgnore</a></div><div class="item-right docblock-short">Accepts a result or option. If a result it is turned into a option containing the ok value. 
+If the option is none or the result is err then it will log the message as an error.</div></div></div><h2 id="functions" class="small-section-header"><a href="#functions">Functions</a></h2><div class="item-table"><div class="item-row"><div class="item-left module-item"><a class="fn" href="fn.main.html" title="key_server::main fn">main</a><span title="Restricted Visibility">&nbsp;🔒</span> </div></div></div></section></div></main><div id="rustdoc-vars" data-root-path="../" data-static-root-path="../static.files/" data-current-crate="key_server" data-themes="" data-resource-suffix="" data-rustdoc-version="1.67.0-nightly (7eef946fc 2022-11-06)" data-search-js="search-39ee4160c7dc16c9.js" data-settings-js="settings-3a0b9947ba1bd99a.js" data-settings-css="settings-a66f7524084a489a.css" ></div></body></html>
