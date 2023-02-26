@@ -110,6 +110,8 @@ A layer is a list of rows. A row is a list of function bindings.
 ]
 ```
 
+See function::FunctionType for function binding configurations.
+
 ### Frontend
 The frontend consists of builtin services, such as nanomsg and midi, and misc key-server functionality. This can be configured in the "frontend.json" configuration file and consists of a list of configuration objects.
 
