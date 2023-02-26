@@ -155,15 +155,16 @@ impl FunctionInterface for ConstScroll {
 pub struct Move {
     dir: MouseDir,
     invert: Variable<bool>,
-    threshold: Variable<u16>,
+    threshold: Variable<i32>,
     scale: Variable<f64>,
+    subtract: Variable<f64>,
     hid: Arc<RwLock<HID>>,
 }
 
 impl Move {
     /// New
-    pub fn new(dir: MouseDir, invert: Variable<bool>, threshold: Variable<u16>, scale: Variable<f64>, hid: Arc<RwLock<HID>>) -> Function {
-        Some(Box::new(Move{dir, invert, threshold, scale, hid}))
+    pub fn new(dir: MouseDir, invert: Variable<bool>, threshold: Variable<i32>, scale: Variable<f64>, subtract: Variable<f64>, hid: Arc<RwLock<HID>>) -> Function {
+        Some(Box::new(Move{dir, invert, threshold, scale, subtract, hid}))
     }
 }
 
@@ -172,12 +173,16 @@ impl FunctionInterface for Move {
     async fn event(&mut self, state: State) -> ReturnCommand {
         let hid = self.hid.read().await;
 
-        if state > *self.threshold.data() {
+        let threshold = *self.threshold.data();
+        
+        if if threshold >= 0 {state > threshold as u16} else {state < (-threshold) as u16} {
             let mut val = (state as f64) / (u16::MAX as f64);
 
             if *self.invert.data() {
                 val = -val;
             }
+
+            val -= *self.subtract.data();
 
             val *= *self.scale.data();
             val = if val > 1.0 {
@@ -189,7 +194,7 @@ impl FunctionInterface for Move {
             };
 
             if val < 0.0 {
-                val *= i8::MIN as f64;
+                val = -val * i8::MIN as f64;
             } else if val > 0.0 {
                 val *= i8::MAX as f64;
             };
@@ -197,13 +202,14 @@ impl FunctionInterface for Move {
             let val = val as i8;
 
             hid.move_mouse(val, self.dir.clone()).await;
+            hid.send_mouse();
         }
 
         ReturnCommand::None
     }
 
     fn ftype(&self) -> FunctionType {
-        FunctionType::Move{dir: self.dir.clone(), invert: self.invert.into_data(), threshold: self.threshold.into_data(), scale: self.scale.into_data()}
+        FunctionType::Move{dir: self.dir.clone(), invert: self.invert.into_data(), threshold: self.threshold.into_data(), scale: self.scale.into_data(), subtract: self.subtract.into_data()}
     }
 }
 
@@ -258,6 +264,7 @@ impl FunctionInterface for Scroll {
             let val = val as i8;
 
             hid.scroll_wheel(val).await;
+            hid.send_mouse();
         }
 
         ReturnCommand::None

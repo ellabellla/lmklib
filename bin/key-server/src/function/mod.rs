@@ -95,6 +95,10 @@ pub enum FunctionConfigData {
         sub_addr: String,
         timeout: i64,
     },
+    RPC {
+        front: String,
+        back: String,
+    }
 }
 
 impl Hash for FunctionConfigData {
@@ -237,8 +241,9 @@ pub enum FunctionType {
     Move {
         dir: MouseDir,
         invert: variables::Data<bool>,
-        threshold: variables::Data<u16>,
+        threshold: variables::Data<i32>,
         scale: variables::Data<f64>,
+        subtract: variables::Data<f64>,
     },
     Scroll {
         period: variables::Data<u64>,
@@ -418,18 +423,20 @@ impl FunctionBuilder {
                 invert,
                 threshold,
                 scale,
+                subtract,
             } => Move::new(
                 dir,
                 invert
                     .into_variable(bool::default(), self.variables.clone())
                     .await,
                 threshold
-                    .into_variable(u16::default(), self.variables.clone())
+                    .into_variable(i32::default(), self.variables.clone())
                     .await,
                 scale
                     .into_variable(f64::default(), self.variables.clone())
                     .await,
-                self.hid.clone(),
+                    subtract.into_variable(f64::default(), self.variables.clone()).await,
+                self.hid.clone()
             ),
             FunctionType::ImmediateMove { x, y } => ImmediateMove::new(
                 x.into_variable(i8::default(), self.variables.clone()).await,
