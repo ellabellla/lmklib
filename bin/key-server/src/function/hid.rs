@@ -6,9 +6,9 @@ use tokio::{sync::{RwLock, mpsc::{UnboundedSender, self}, oneshot}, runtime::Han
 use uinput::{event::{self, controller::Mouse, relative::{Position, Wheel}, keyboard::{Key, Misc, KeyPad, InputAssist}}, Device};
 use virt_hid::{key::{self, BasicKey, KeyOrigin, SpecialKey, Modifier}, mouse::{self, MouseDir, MouseButton}};
 
-use crate::{OrLogIgnore, OrLog, modules::ModuleManager, variables::Variable};
+use crate::{OrLogIgnore, OrLog, modules::ModuleManager, variables::Variable, frontend::{FrontendConfig, FrontendConfigData, FrontendConfiguration}};
 
-use super::{Function, FunctionInterface, ReturnCommand, FunctionType, FunctionConfig, FunctionConfigData, State, StateHelpers};
+use super::{Function, FunctionInterface, ReturnCommand, FunctionType, State, StateHelpers};
 
 #[derive(Debug)]
 /// HID Error
@@ -169,18 +169,18 @@ pub struct HID {
 }
 
 #[async_trait]
-impl FunctionConfig for HID {
+impl FrontendConfig for HID {
     type Output = Arc<RwLock<HID>>;
 
     type Error = HIDError;
 
-    fn to_config_data(&self) -> super::FunctionConfigData {
-        FunctionConfigData::HID{mouse: self.mouse.clone(), keyboard: self.keyboard.clone(), led: self.led.clone()}
+    fn to_config_data(&self) -> FrontendConfigData {
+        FrontendConfigData::HID{mouse: self.mouse.clone(), keyboard: self.keyboard.clone(), led: self.led.clone()}
     }
 
-    async fn from_config(function_config: &super::FunctionConfiguration) -> Result<Self::Output, Self::Error> {
-        let Some(FunctionConfigData::HID { mouse, keyboard, led }) = function_config
-            .get(|config| matches!(config, FunctionConfigData::HID { mouse: _, keyboard: _, led: _})) else {
+    async fn from_config(function_config: &FrontendConfiguration) -> Result<Self::Output, Self::Error> {
+        let Some(FrontendConfigData::HID { mouse, keyboard, led }) = function_config
+            .get(|config| matches!(config, FrontendConfigData::HID { mouse: _, keyboard: _, led: _})) else {
                 return Err(HIDError::NoConfig)
         };
         HID::new(mouse.clone(), keyboard.clone(), led.clone(), function_config.module_manager.clone()).await

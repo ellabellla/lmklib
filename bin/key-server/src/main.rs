@@ -9,7 +9,7 @@ use log::{error};
 use tokio::{sync::RwLock, fs::read_to_string};
 use variables::VarDef;
 
-use crate::{function::{midi::MidiController, cmd::CommandPool, hid::HID, FunctionConfiguration, FunctionConfig, nng::NanoMessenger}, modules::ModuleManager, config_rpc::ConfigRPC, variables::Variables};
+use crate::{function::{midi::MidiController, cmd::CommandPool, hid::HID, nng::NanoMessenger}, modules::ModuleManager, config_rpc::ConfigRPC, variables::Variables, frontend::{FrontendConfiguration, FrontendConfig}};
 
 /// Driver module
 mod driver;
@@ -23,6 +23,8 @@ mod modules;
 mod config_rpc;
 /// Variable module
 mod variables;
+/// Frontend Config module
+mod frontend;
 
 #[derive(Parser)]
 /// Cli Args
@@ -208,7 +210,7 @@ async fn main() {
         
         fs::File::create(config.join(FRONTEND_JSON))
             .or_exit("Unable to create default frontend config")
-            .write_all(FunctionConfiguration::create_config()
+            .write_all(FrontendConfiguration::create_config()
                 .or_exit("Unable to create default frontend config")
                 .as_bytes()
             )
@@ -225,7 +227,7 @@ async fn main() {
         .or_exit("Unable to load drivers");
     let driver_manager: Arc<RwLock<DriverManager>> = Arc::new(RwLock::new(driver_manager));
     
-    let function_config: FunctionConfiguration = FunctionConfiguration::new(&fs::read_to_string(config.join(FRONTEND_JSON))
+    let function_config: FrontendConfiguration = FrontendConfiguration::new(&fs::read_to_string(config.join(FRONTEND_JSON))
         .or_exit("Unable to read frontend config"), module_manager.clone())
         .or_exit("Unable to parse frontend config");
 

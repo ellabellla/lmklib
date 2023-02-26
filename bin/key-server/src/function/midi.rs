@@ -6,9 +6,9 @@ use midir::{MidiOutput};
 use serde::{Serialize, Deserialize};
 use tokio::{sync::{RwLock, mpsc::{UnboundedSender, self}, oneshot}};
 
-use crate::{OrLogIgnore, OrLog, variables::{Variable}};
+use crate::{OrLogIgnore, OrLog, variables::{Variable}, frontend::{FrontendConfig, FrontendConfigData, FrontendConfiguration}};
 
-use super::{Function, FunctionInterface, ReturnCommand, FunctionType, FunctionConfig, FunctionConfigData, FunctionConfiguration, State, StateHelpers};
+use super::{Function, FunctionInterface, ReturnCommand, FunctionType, State, StateHelpers};
 
 #[derive(Debug)]
 /// Midi error
@@ -47,15 +47,15 @@ pub struct MidiController {
 }
 
 #[async_trait]
-impl FunctionConfig for MidiController {
+impl FrontendConfig for MidiController {
     type Output = Arc<RwLock<MidiController>>;
     type Error = MidiError;
 
-    fn to_config_data(&self) -> FunctionConfigData {
-        FunctionConfigData::MidiController
+    fn to_config_data(&self) -> FrontendConfigData {
+        FrontendConfigData::MidiController
     }
     
-    async fn from_config(_function_config: &FunctionConfiguration) -> Result<Self::Output, Self::Error> {
+    async fn from_config(_function_config: &FrontendConfiguration) -> Result<Self::Output, Self::Error> {
         MidiController::new().await
     }
 }

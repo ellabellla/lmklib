@@ -1,4 +1,4 @@
-use std::{collections::HashSet, hash::Hash, sync::Arc};
+use std::{sync::Arc};
 
 use crate::{
     driver::DriverManager,
@@ -77,89 +77,6 @@ impl StateHelpers for State {
 
     fn falling(&self, prev_state: Self) -> bool {
         return self.low() && prev_state.high();
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Eq)]
-/// Function controller configuration data types, used for serialization
-pub enum FunctionConfigData {
-    CommandPool,
-    HID {
-        mouse: String,
-        keyboard: String,
-        led: String,
-    },
-    MidiController,
-    NanoMsg {
-        pub_addr: String,
-        sub_addr: String,
-        timeout: i64,
-    },
-    RPC {
-        front: String,
-        back: String,
-    }
-}
-
-impl Hash for FunctionConfigData {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        core::mem::discriminant(self).hash(state);
-    }
-}
-
-impl PartialEq for FunctionConfigData {
-    fn eq(&self, other: &Self) -> bool {
-        core::mem::discriminant(self) == core::mem::discriminant(other)
-    }
-}
-
-#[async_trait]
-/// Function config interface, used to serialize function controller data
-pub trait FunctionConfig {
-    type Output;
-    type Error;
-    fn to_config_data(&self) -> FunctionConfigData;
-    async fn from_config(
-        function_config: &FunctionConfiguration,
-    ) -> Result<Self::Output, Self::Error>;
-}
-
-/// Function configuration, managers function controller configs
-pub struct FunctionConfiguration {
-    module_manager: Arc<ModuleManager>,
-    configs: HashSet<FunctionConfigData>,
-}
-
-impl FunctionConfiguration {
-    /// New
-    pub fn new(
-        config: &str,
-        module_manager: Arc<ModuleManager>,
-    ) -> Result<FunctionConfiguration, serde_json::Error> {
-        let configs = serde_json::from_str(config)?;
-        Ok(FunctionConfiguration {
-            configs,
-            module_manager,
-        })
-    }
-
-    /// Create new config data
-    pub fn create_config() -> Result<String, serde_json::Error> {
-        serde_json::to_string_pretty(&HashSet::<FunctionConfigData>::new())
-    }
-
-    #[allow(dead_code)]
-    /// Insert configuration
-    pub fn insert(&mut self, config: FunctionConfigData) -> bool {
-        self.configs.insert(config)
-    }
-
-    /// Get first configuration where matches returns true
-    pub fn get<M>(&self, matches: M) -> Option<&FunctionConfigData>
-    where
-        M: FnMut(&&FunctionConfigData) -> bool,
-    {
-        self.configs.iter().find(matches)
     }
 }
 

@@ -6,9 +6,9 @@ use nanomsg::{Socket, Protocol, Endpoint};
 use serde::{Serialize, Deserialize};
 use tokio::sync::{RwLock, mpsc::{UnboundedSender, self}, oneshot};
 
-use crate::{driver::DriverManager, OrLogIgnore, OrLog};
+use crate::{driver::DriverManager, OrLogIgnore, OrLog, frontend::{FrontendConfig, FrontendConfigData, FrontendConfiguration}};
 
-use super::{Function, FunctionInterface, ReturnCommand, FunctionType, FunctionConfig, FunctionConfigData, State, StateHelpers};
+use super::{Function, FunctionInterface, ReturnCommand, FunctionType, State, StateHelpers};
 
 /// Dynamic hash formatter, format("# bees", 10) = "10 bees"
 struct HashFormat;
@@ -69,18 +69,18 @@ pub struct NanoMessenger{
 }
 
 #[async_trait]
-impl FunctionConfig for NanoMessenger {
+impl FrontendConfig for NanoMessenger {
     type Output = Arc<RwLock<NanoMessenger>>;
 
     type Error = NanoMsgError;
 
-    fn to_config_data(&self) -> super::FunctionConfigData {
-        FunctionConfigData::NanoMsg{pub_addr: self.pub_addr.clone(), sub_addr: self.sub_addr.clone(), timeout: self.timeout as i64}
+    fn to_config_data(&self) -> FrontendConfigData {
+        FrontendConfigData::NanoMsg{pub_addr: self.pub_addr.clone(), sub_addr: self.sub_addr.clone(), timeout: self.timeout as i64}
     }
 
-    async fn from_config(function_config: &super::FunctionConfiguration) -> Result<Self::Output, Self::Error> {
-        let Some(FunctionConfigData::NanoMsg{pub_addr, sub_addr, timeout}) = function_config
-            .get(|config| matches!(config, FunctionConfigData::NanoMsg{pub_addr:_, sub_addr:_, timeout:_})) else {
+    async fn from_config(function_config: &FrontendConfiguration) -> Result<Self::Output, Self::Error> {
+        let Some(FrontendConfigData::NanoMsg{pub_addr, sub_addr, timeout}) = function_config
+            .get(|config| matches!(config, FrontendConfigData::NanoMsg{pub_addr:_, sub_addr:_, timeout:_})) else {
                 return Err(NanoMsgError::NoConfig)
         };
         NanoMessenger::new(pub_addr.clone(), sub_addr.clone(), timeout.clone() as isize).await

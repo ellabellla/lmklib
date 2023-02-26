@@ -3,9 +3,9 @@ use std::{process::{Command, Child}, sync::Arc, io, thread, time::Duration};
 use async_trait::async_trait;
 use tokio::{sync::RwLock};
 
-use crate::{OrLog, variables::Variable};
+use crate::{OrLog, variables::Variable, frontend::{FrontendConfiguration, FrontendConfigData, FrontendConfig}};
 
-use super::{Function, FunctionInterface, ReturnCommand, FunctionType, FunctionConfig, FunctionConfigData, State, StateHelpers};
+use super::{Function, FunctionInterface, ReturnCommand, FunctionType, State, StateHelpers};
 
 /// Command Pool, reaps spawn children
 pub struct CommandPool {
@@ -13,15 +13,15 @@ pub struct CommandPool {
 }
 
 #[async_trait]
-impl FunctionConfig for CommandPool {
+impl FrontendConfig for CommandPool {
     type Output = Arc<RwLock<CommandPool>>;
     type Error = io::Error;
 
-    fn to_config_data(&self) -> FunctionConfigData {
-        FunctionConfigData::CommandPool
+    fn to_config_data(&self) -> FrontendConfigData {
+        FrontendConfigData::CommandPool
     }
 
-    async fn from_config(_function_config: &super::FunctionConfiguration) -> Result<Self::Output, Self::Error> {
+    async fn from_config(_function_config: &FrontendConfiguration) -> Result<Self::Output, Self::Error> {
         CommandPool::new()
     }
 }
