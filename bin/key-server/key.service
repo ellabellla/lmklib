@@ -1,0 +1,12 @@
+[Unit]
+Description=Key Server
+After=hid.service
+
+[Service]
+Type=exec
+ExecStart=key-server
+ExecStop=killall key-server
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
