@@ -150,21 +150,45 @@ impl FunctionInterface for ConstScroll {
     }
 }
 
+fn sigmoid(mut state: f64, invert: bool, slope_y: f64, slope_x: f64) -> i8 {
+    state = slope_x * state;
+    let mut val = state / f64::sqrt(1.0 + f64::powf(state, 2.0)) * slope_y;
+
+    if invert {
+        val = -val;
+    }
+
+    val = if val > 1.0 {
+        1.0
+    } else if val < -1.0 {
+        -1.0
+    } else {
+        val
+    };
+
+    if val < 0.0 {
+        val = -val * i8::MIN as f64;
+    } else if val > 0.0 {
+        val *= i8::MAX as f64;
+    };
+
+    return val as i8;
+}
 
 /// Move function, move the mouse in a direction based on the state
 pub struct Move {
     dir: MouseDir,
     invert: Variable<bool>,
-    threshold: Variable<i32>,
-    scale: Variable<f64>,
-    subtract: Variable<f64>,
+    slope_x: Variable<f64>,
+    slope_y: Variable<f64>,
+    threshold: Variable<f64>,
     hid: Arc<RwLock<HID>>,
 }
 
 impl Move {
     /// New
-    pub fn new(dir: MouseDir, invert: Variable<bool>, threshold: Variable<i32>, scale: Variable<f64>, subtract: Variable<f64>, hid: Arc<RwLock<HID>>) -> Function {
-        Some(Box::new(Move{dir, invert, threshold, scale, subtract, hid}))
+    pub fn new(dir: MouseDir, invert: Variable<bool>, slope_y: Variable<f64>, slope_x: Variable<f64>, threshold: Variable<f64>, hid: Arc<RwLock<HID>>) -> Function {
+        Some(Box::new(Move{dir, invert, slope_x, slope_y, threshold, hid}))
     }
 }
 
@@ -173,33 +197,21 @@ impl FunctionInterface for Move {
     async fn event(&mut self, state: State) -> ReturnCommand {
         let hid = self.hid.read().await;
 
+        const HALF: f64 = u16::MAX as f64 / 2.0;
+        let mut state = state as f64;
+        state -=  HALF;
+        state /= HALF;
+
         let threshold = *self.threshold.data();
         
-        if if threshold >= 0 {state > threshold as u16} else {state < (-threshold) as u16} {
-            let mut val = (state as f64) / (u16::MAX as f64);
-
-            if *self.invert.data() {
-                val = -val;
-            }
-
-            val -= *self.subtract.data();
-
-            val *= *self.scale.data();
-            val = if val > 1.0 {
-                1.0
-            } else if val < -1.0 {
-                -1.0
+        if
+            if threshold >= 0.0 {
+                state > threshold
             } else {
-                val
-            };
-
-            if val < 0.0 {
-                val = -val * i8::MIN as f64;
-            } else if val > 0.0 {
-                val *= i8::MAX as f64;
-            };
-
-            let val = val as i8;
+                state < -threshold
+            }
+        {
+            let val = sigmoid(state, *self.invert.data(), *self.slope_y.data(), *self.slope_x.data());
 
             hid.move_mouse(val, self.dir.clone()).await;
             hid.send_mouse();
@@ -209,7 +221,7 @@ impl FunctionInterface for Move {
     }
 
     fn ftype(&self) -> FunctionType {
-        FunctionType::Move{dir: self.dir.clone(), invert: self.invert.into_data(), threshold: self.threshold.into_data(), scale: self.scale.into_data(), subtract: self.subtract.into_data()}
+        FunctionType::Move{dir: self.dir.clone(), invert: self.invert.into_data(), slope_y: self.slope_y.into_data(), slope_x: self.slope_x.into_data(), threshold: self.threshold.into_data()}
     }
 }
 
@@ -218,17 +230,18 @@ impl FunctionInterface for Move {
 pub struct Scroll {
     period: Variable<Duration>,
     invert: Variable<bool>,
-    threshold: Variable<u16>,
-    scale: Variable<f64>,
+    slope_x: Variable<f64>,
+    slope_y: Variable<f64>,
+    threshold: Variable<f64>,
     prev_time: Instant,
     hid: Arc<RwLock<HID>>,
 }
 
 impl Scroll {
     /// New
-    pub fn new(period: Variable<u64>, invert: Variable<bool>, threshold: Variable<u16>, scale: Variable<f64>, hid: Arc<RwLock<HID>>) -> Function {
+    pub fn new(period: Variable<u64>, invert: Variable<bool>, slope_y: Variable<f64>, slope_x: Variable<f64>, threshold: Variable<f64>, hid: Arc<RwLock<HID>>) -> Function {
         let period: Variable<Duration> = period.map(|period| Duration::from_millis(period));
-        Some(Box::new(Scroll{period, invert, threshold, scale, prev_time: Instant::now(), hid}))
+        Some(Box::new(Scroll{period, invert, slope_y, slope_x, threshold, prev_time: Instant::now(), hid}))
     }
 }
 
@@ -237,31 +250,25 @@ impl FunctionInterface for Scroll {
     async fn event(&mut self, state: State) -> ReturnCommand {
         let hid = self.hid.read().await;
 
+        const HALF: f64 = u16::MAX as f64 / 2.0;
+        let mut state = state as f64;
+        state -=  HALF;
+        state /= HALF;
+
+        let threshold = *self.threshold.data();
+
         let now = Instant::now();
-        if state > *self.threshold.data() && now.duration_since(self.prev_time) > *self.period.data() {
-            self.prev_time = now;
-            let mut val = (state as f64) / (u16::MAX as f64);
-
-            if *self.invert.data() {
-                val = -val;
-            }
-
-            val *= *self.scale.data();
-            val = if val > 1.0 {
-                1.0
-            } else if val < -1.0 {
-                -1.0
+        if 
+            if threshold >= 0.0 {
+                state > threshold
             } else {
-                val
-            };
-
-            if val < 0.0 {
-                val *= i8::MIN as f64;
-            } else if val > 0.0 {
-                val *= i8::MAX as f64;
-            };
-
-            let val = val as i8;
+                state < -threshold
+            } 
+            && now.duration_since(self.prev_time) > *self.period.data() 
+        {
+            self.prev_time = now;
+            
+            let val = sigmoid(state, *self.invert.data(), *self.slope_y.data(), *self.slope_x.data());
 
             hid.scroll_wheel(val).await;
             hid.send_mouse();
@@ -272,7 +279,7 @@ impl FunctionInterface for Scroll {
 
     fn ftype(&self) -> FunctionType {
         let period: Data<Duration> = self.period.into_data();
-        FunctionType::Scroll{period: period.map(|period| period.as_millis() as u64), invert: self.invert.into_data(), threshold: self.threshold.into_data(), scale: self.scale.into_data()}
+        FunctionType::Scroll{period: period.map(|period| period.as_millis() as u64), invert: self.invert.into_data(), slope_y: self.slope_y.into_data(), slope_x: self.slope_x.into_data(), threshold: self.threshold.into_data()}
     }
 }
 

@@ -158,15 +158,16 @@ pub enum FunctionType {
     Move {
         dir: MouseDir,
         invert: variables::Data<bool>,
-        threshold: variables::Data<i32>,
-        scale: variables::Data<f64>,
-        subtract: variables::Data<f64>,
+        slope_y: variables::Data<f64>,
+        slope_x: variables::Data<f64>,
+        threshold: variables::Data<f64>,
     },
     Scroll {
         period: variables::Data<u64>,
         invert: variables::Data<bool>,
-        threshold: variables::Data<u16>,
-        scale: variables::Data<f64>,
+        slope_y: variables::Data<f64>,
+        slope_x: variables::Data<f64>,
+        threshold: variables::Data<f64>,
     },
     ImmediateMove {
         x: variables::Data<i8>,
@@ -318,8 +319,9 @@ impl FunctionBuilder {
             FunctionType::Scroll {
                 period,
                 invert,
+                slope_y,
+                slope_x,
                 threshold,
-                scale,
             } => Scroll::new(
                 period
                     .into_variable(u64::default(), self.variables.clone())
@@ -327,32 +329,35 @@ impl FunctionBuilder {
                 invert
                     .into_variable(bool::default(), self.variables.clone())
                     .await,
-                threshold
-                    .into_variable(u16::default(), self.variables.clone())
+                slope_y
+                    .into_variable(1.0, self.variables.clone())
                     .await,
-                scale
-                    .into_variable(f64::default(), self.variables.clone())
+                slope_x
+                    .into_variable(1.0, self.variables.clone())
+                    .await,
+                threshold
+                    .into_variable(0.0, self.variables.clone())
                     .await,
                 self.hid.clone(),
             ),
             FunctionType::Move {
                 dir,
                 invert,
+                slope_y,
+                slope_x,
                 threshold,
-                scale,
-                subtract,
             } => Move::new(
                 dir,
                 invert
                     .into_variable(bool::default(), self.variables.clone())
                     .await,
-                threshold
-                    .into_variable(i32::default(), self.variables.clone())
+                slope_y
+                    .into_variable(1.0, self.variables.clone())
                     .await,
-                scale
-                    .into_variable(f64::default(), self.variables.clone())
+                slope_x
+                    .into_variable(1.0, self.variables.clone())
                     .await,
-                    subtract.into_variable(f64::default(), self.variables.clone()).await,
+                threshold.into_variable(0.0, self.variables.clone()).await,
                 self.hid.clone()
             ),
             FunctionType::ImmediateMove { x, y } => ImmediateMove::new(
