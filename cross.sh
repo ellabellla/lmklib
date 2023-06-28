@@ -66,4 +66,4 @@ else
 fi
 docker stop lmk > /dev/null
 docker rm -f lmk > /dev/null
-scp /tmp/$CRATE $REMOTE$CRATE
+scp /tmp/$CRATE $REMOTE:$CRATE
