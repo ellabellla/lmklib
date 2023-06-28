@@ -20,7 +20,7 @@ use key_module::hid::{HIDBox, HidModule, HidModuleRef, HID};
 use key_rpc::{Client, ClientError};
 use rusttype::{Font, Scale};
 use serde_json::Value;
-use tokio::{runtime::Runtime, sync::Mutex, task::JoinHandle};
+use tokio::{runtime::{Handle}, sync::{Mutex, mpsc::{UnboundedReceiver, self, UnboundedSender}}, task::JoinHandle};
 use virt_hid::key::{Modifier, SpecialKey};
 use ws_1in5_i2c::{WS1in5, OLED_HEIGHT, OLED_WIDTH};
 
@@ -97,6 +97,7 @@ fn get_key(coord: (usize, usize), layer: String) -> Result<String, String> {
     serde_json::to_string(func).map_err(|e| e.to_string())
 }
 
+#[derive(Clone)]
 pub struct Resources {
     pub font: Font<'static>,
     pub scale10: Scale,
@@ -114,26 +115,41 @@ pub enum StateType {
 }
 
 pub struct ScreenHid {
-    resources: Resources,
+    resources: Arc<Resources>,
     screen: Arc<Mutex<WS1in5>>,
 
     shift: bool,
 
-    rt: Runtime,
+    rt: Handle,
     _handle: JoinHandle<()>,
 
-    states: HashMap<StateType, Box<dyn State>>,
+    states: Arc<Mutex<HashMap<StateType, Box<dyn State>>>>,
     last_interact: Arc<Mutex<Instant>>,
-    curr_state: StateType,
+    curr_state: Arc<Mutex<StateType>>,
 }
 
-async fn spawn(screen: Arc<Mutex<WS1in5>>, last_interact: Arc<Mutex<Instant>>) {
+pub struct  CallbackCommand {
+    state: StateType,
+    msg: u32
+}
+
+async fn spawn(
+    screen: Arc<Mutex<WS1in5>>, 
+    last_interact: Arc<Mutex<Instant>>, 
+    mut command_pipe: UnboundedReceiver<CallbackCommand>,
+    states: Arc<Mutex<HashMap<StateType, Box<dyn State>>>>,
+    curr_state: Arc<Mutex<StateType>>, 
+    resources: Arc<Resources>,
+) {
+    let rt = tokio::runtime::Handle::current();
+
     let mut last_reset = *last_interact.lock().await;
     *last_interact.lock().await = Instant::now();
-    let mut interval = tokio::time::interval(Duration::from_secs(1));
+    let mut interval = tokio::time::interval(Duration::from_millis(250));
 
     loop {
         interval.tick().await;
+
         let lock_last_interact = last_interact.lock().await;
         if last_reset != *lock_last_interact
             && Instant::now() - *lock_last_interact >= Duration::from_secs(30)
@@ -147,6 +163,15 @@ async fn spawn(screen: Arc<Mutex<WS1in5>>, last_interact: Arc<Mutex<Instant>>) {
             last_reset = *lock_last_interact;
         }
         drop(lock_last_interact);
+
+        while let Ok(CallbackCommand{state, msg}) = command_pipe.try_recv() {
+            if state == *curr_state.lock().await {
+                states.lock().await.get_mut(&state).and_then(|state| {
+                    Some(state.callback(msg, screen.clone(), &resources, &rt))
+                });
+            }
+        }
+
     }
 }
 
@@ -167,41 +192,54 @@ impl ScreenHid {
 
         let scale30 = Scale::uniform(30.0);
 
-        let resources = Resources {
+        let resources = Arc::new(Resources {
             font,
             scale10,
             scale12,
             scale20,
             scale30,
-        };
+        });
 
+        let (command_pipe_send, command_pipe_rev) = mpsc::unbounded_channel();
+        
         let mut states: HashMap<StateType, Box<dyn State>> = HashMap::new();
         states.insert(StateType::Home, Box::new(HomeState::new()));
         states.insert(
             StateType::Variables,
             Box::new(VariablesState::new(screen.clone(), &resources)),
         );
-        states.insert(StateType::Term, Box::new(TermState::new(screen.clone(), &resources)));
+        states.insert(StateType::Term, Box::new(TermState::new(screen.clone(), &resources, command_pipe_send.clone())));
         states.insert(StateType::Empty, Box::new(EmptyState{}));
+        let states = Arc::new(Mutex::new(states));
 
         let last_interact = Arc::new(Mutex::new(Instant::now()));
-
+        let curr_state = Arc::new(Mutex::new(StateType::Home));
+        
         let rt = tokio::runtime::Runtime::new().unwrap();
-        let handle = rt.spawn(spawn(screen.clone(), last_interact.clone()));
-
-        let mut shid = ScreenHid {
+        let handle = rt.spawn(spawn(
+            screen.clone(), 
+            last_interact.clone(), 
+            command_pipe_rev, 
+            states.clone(), 
+            curr_state.clone(), 
+            resources.clone()
+        ));
+        
+        let shid = ScreenHid {
             resources,
             screen,
             shift: false,
             states,
             last_interact,
-            curr_state: StateType::Home,
+            curr_state,
             _handle: handle,
-            rt,
+            rt: rt.handle().clone(),
         };
-        shid.states.get_mut(&shid.curr_state).and_then(|state| {
+
+        let curr_state = shid.curr_state.blocking_lock();
+        shid.states.blocking_lock().get_mut(&curr_state).and_then(|state| {
             state.enter(
-                shid.curr_state,
+                *curr_state,
                 shid.screen.clone(),
                 &shid.resources,
                 &shid.rt,
@@ -209,17 +247,21 @@ impl ScreenHid {
             state.draw(shid.screen.clone(), &shid.resources, &shid.rt);
             Some(())
         });
+        drop(curr_state);
         shid
     }
 
     fn change_state(&mut self, next_state: StateType) {
-        if self.states.contains_key(&next_state) {
-            self.states.get_mut(&self.curr_state).and_then(|state| {
+        let mut curr_state = self.curr_state.blocking_lock();
+
+        let mut states = self.states.blocking_lock();
+        if states.contains_key(&next_state) {
+            states.get_mut(&curr_state).and_then(|state| {
                 Some(state.exit(next_state, self.screen.clone(), &self.resources, &self.rt))
             });
-            self.states.get_mut(&next_state).and_then(|state| {
+            states.get_mut(&next_state).and_then(|state| {
                 state.enter(
-                    self.curr_state,
+                    *curr_state,
                     self.screen.clone(),
                     &self.resources,
                     &self.rt,
@@ -227,7 +269,7 @@ impl ScreenHid {
                 state.draw(self.screen.clone(), &self.resources, &self.rt);
                 Some(())
             });
-            self.curr_state = next_state;
+            *curr_state = next_state;
         }
     }
 }
@@ -270,14 +312,16 @@ impl HID for ScreenHid {
             };
         }
 
-        self.states.get_mut(&self.curr_state).and_then(|state| {
+        let curr_state = self.curr_state.blocking_lock();
+        self.states.blocking_lock().get_mut(&curr_state).and_then(|state| {
             Some(state.hold_key(key, self.screen.clone(), &self.resources, &self.rt))
         });
     }
     fn hold_special(&mut self, special: u32) {
         *self.last_interact.blocking_lock() = Instant::now();
 
-        self.states.get_mut(&self.curr_state).and_then(|state| {
+        let curr_state = self.curr_state.blocking_lock();
+        self.states.blocking_lock().get_mut(&curr_state).and_then(|state| {
             Some(state.hold_special(special, self.screen.clone(), &self.resources, &self.rt))
         });
     }
@@ -288,7 +332,8 @@ impl HID for ScreenHid {
             self.shift = true;
         }
 
-        self.states.get_mut(&self.curr_state).and_then(|state| {
+        let curr_state = self.curr_state.blocking_lock();
+        self.states.blocking_lock().get_mut(&curr_state).and_then(|state| {
             Some(state.hold_modifier(modifier, self.screen.clone(), &self.resources, &self.rt))
         });
     }
@@ -296,12 +341,14 @@ impl HID for ScreenHid {
     fn release_key(&mut self, key: u32) {
         *self.last_interact.blocking_lock() = Instant::now();
 
-        self.states.get_mut(&self.curr_state).and_then(|state| {
+        let curr_state = self.curr_state.blocking_lock();
+        self.states.blocking_lock().get_mut(&curr_state).and_then(|state| {
             Some(state.release_key(key, self.screen.clone(), &self.resources, &self.rt))
         });
     }
     fn release_special(&mut self, special: u32) {
-        self.states.get_mut(&self.curr_state).and_then(|state| {
+        let curr_state = self.curr_state.blocking_lock();
+        self.states.blocking_lock().get_mut(&curr_state).and_then(|state| {
             Some(state.release_special(special, self.screen.clone(), &self.resources, &self.rt))
         });
     }
@@ -312,7 +359,8 @@ impl HID for ScreenHid {
             self.shift = false;
         }
 
-        self.states.get_mut(&self.curr_state).and_then(|state| {
+        let curr_state = self.curr_state.blocking_lock();
+        self.states.blocking_lock().get_mut(&curr_state).and_then(|state| {
             Some(state.release_modifier(modifier, self.screen.clone(), &self.resources, &self.rt))
         });
     }
@@ -320,7 +368,8 @@ impl HID for ScreenHid {
     fn press_basic_str(&mut self, str: RString) {
         *self.last_interact.blocking_lock() = Instant::now();
 
-        self.states.get_mut(&self.curr_state).and_then(|state| {
+        let curr_state = self.curr_state.blocking_lock();
+        self.states.blocking_lock().get_mut(&curr_state).and_then(|state| {
             Some(state.press_basic_str(str, self.screen.clone(), &self.resources, &self.rt))
         });
     }
@@ -332,7 +381,8 @@ impl HID for ScreenHid {
     fn scroll_wheel(&mut self, amount: i8) {
         *self.last_interact.blocking_lock() = Instant::now();
 
-        self.states.get_mut(&self.curr_state).and_then(|state| {
+        let curr_state = self.curr_state.blocking_lock();
+        self.states.blocking_lock().get_mut(&curr_state).and_then(|state| {
             Some(state.scroll_wheel(amount, self.screen.clone(), &self.resources, &self.rt))
         });
     }
@@ -340,14 +390,16 @@ impl HID for ScreenHid {
     fn move_mouse_x(&mut self, amount: i8) {
         *self.last_interact.blocking_lock() = Instant::now();
 
-        self.states.get_mut(&self.curr_state).and_then(|state| {
+        let curr_state = self.curr_state.blocking_lock();
+        self.states.blocking_lock().get_mut(&curr_state).and_then(|state| {
             Some(state.move_mouse_x(amount, self.screen.clone(), &self.resources, &self.rt))
         });
     }
     fn move_mouse_y(&mut self, amount: i8) {
         *self.last_interact.blocking_lock() = Instant::now();
 
-        self.states.get_mut(&self.curr_state).and_then(|state| {
+        let curr_state = self.curr_state.blocking_lock();
+        self.states.blocking_lock().get_mut(&curr_state).and_then(|state| {
             Some(state.move_mouse_y(amount, self.screen.clone(), &self.resources, &self.rt))
         });
     }
@@ -355,14 +407,16 @@ impl HID for ScreenHid {
     fn hold_button(&mut self, button: u32) {
         *self.last_interact.blocking_lock() = Instant::now();
 
-        self.states.get_mut(&self.curr_state).and_then(|state| {
+        let curr_state = self.curr_state.blocking_lock();
+        self.states.blocking_lock().get_mut(&curr_state).and_then(|state| {
             Some(state.hold_button(button, self.screen.clone(), &self.resources, &self.rt))
         });
     }
     fn release_button(&mut self, button: u32) {
         *self.last_interact.blocking_lock() = Instant::now();
 
-        self.states.get_mut(&self.curr_state).and_then(|state| {
+        let curr_state = self.curr_state.blocking_lock();
+        self.states.blocking_lock().get_mut(&curr_state).and_then(|state| {
             Some(state.release_button(button, self.screen.clone(), &self.resources, &self.rt))
         });
     }
@@ -375,8 +429,8 @@ impl HID for ScreenHid {
         *self.last_interact.blocking_lock() = Instant::now();
         match data.as_str() {
             "wake" => {
-                if self.curr_state != StateType::Empty {
-                    self.states.get_mut(&self.curr_state).and_then(|state| {
+            if *self.curr_state.blocking_lock() != StateType::Empty {
+                    self.states.blocking_lock().get_mut(&self.curr_state.blocking_lock()).and_then(|state| {
                         Some(state.draw(self.screen.clone(), &self.resources, &self.rt))
                     });
                 } else {
@@ -400,8 +454,9 @@ impl HID for ScreenHid {
     }
 }
 
-pub trait State {
-    fn draw(&mut self, screen: Arc<Mutex<WS1in5>>, _resources: &Resources, _rt: &Runtime) {
+
+pub trait State: Send + Sync {
+    fn draw(&mut self, screen: Arc<Mutex<WS1in5>>, _resources: &Arc<Resources>, _rt: &Handle) {
         screen.blocking_lock().clear_all().ok();
     }
 
@@ -409,16 +464,16 @@ pub trait State {
         &mut self,
         _prev: StateType,
         _screen: Arc<Mutex<WS1in5>>,
-        _resources: &Resources,
-        _rt: &Runtime,
+        _resources: &Arc<Resources>,
+        _rt: &Handle,
     ) {
     }
     fn exit(
         &mut self,
         _next: StateType,
         _screen: Arc<Mutex<WS1in5>>,
-        _resources: &Resources,
-        _rt: &Runtime,
+        _resources: &Arc<Resources>,
+        _rt: &Handle,
     ) {
     }
 
@@ -426,97 +481,106 @@ pub trait State {
         &mut self,
         _key: u32,
         _screen: Arc<Mutex<WS1in5>>,
-        _resources: &Resources,
-        _rt: &Runtime,
+        _resources: &Arc<Resources>,
+        _rt: &Handle,
     ) {
     }
     fn hold_special(
         &mut self,
         _special: u32,
         _screen: Arc<Mutex<WS1in5>>,
-        _resources: &Resources,
-        _rt: &Runtime,
+        _resources: &Arc<Resources>,
+        _rt: &Handle,
     ) {
     }
     fn hold_modifier(
         &mut self,
         _modifier: u32,
         _screen: Arc<Mutex<WS1in5>>,
-        _resources: &Resources,
-        _rt: &Runtime,
+        _resources: &Arc<Resources>,
+        _rt: &Handle,
     ) {
     }
     fn release_key(
         &mut self,
         _key: u32,
         _screen: Arc<Mutex<WS1in5>>,
-        _resources: &Resources,
-        _rt: &Runtime,
+        _resources: &Arc<Resources>,
+        _rt: &Handle,
     ) {
     }
     fn release_special(
         &mut self,
         _special: u32,
         _screen: Arc<Mutex<WS1in5>>,
-        _resources: &Resources,
-        _rt: &Runtime,
+        _resources: &Arc<Resources>,
+        _rt: &Handle,
     ) {
     }
     fn release_modifier(
         &mut self,
         _modifier: u32,
         _screen: Arc<Mutex<WS1in5>>,
-        _resources: &Resources,
-        _rt: &Runtime,
+        _resources: &Arc<Resources>,
+        _rt: &Handle,
     ) {
     }
     fn press_basic_str(
         &mut self,
         _str: RString,
         _screen: Arc<Mutex<WS1in5>>,
-        _resources: &Resources,
-        _rt: &Runtime,
+        _resources: &Arc<Resources>,
+        _rt: &Handle,
     ) {
     }
     fn scroll_wheel(
         &mut self,
         _amount: i8,
         _screen: Arc<Mutex<WS1in5>>,
-        _resources: &Resources,
-        _rt: &Runtime,
+        _resources: &Arc<Resources>,
+        _rt: &Handle,
     ) {
     }
     fn move_mouse_x(
         &mut self,
         _amount: i8,
         _screen: Arc<Mutex<WS1in5>>,
-        _resources: &Resources,
-        _rt: &Runtime,
+        _resources: &Arc<Resources>,
+        _rt: &Handle,
     ) {
     }
     fn move_mouse_y(
         &mut self,
         _amount: i8,
         _screen: Arc<Mutex<WS1in5>>,
-        _resources: &Resources,
-        _rt: &Runtime,
+        _resources: &Arc<Resources>,
+        _rt: &Handle,
     ) {
     }
     fn hold_button(
         &mut self,
         _button: u32,
         _screen: Arc<Mutex<WS1in5>>,
-        _resources: &Resources,
-        _rt: &Runtime,
+        _resources: &Arc<Resources>,
+        _rt: &Handle,
     ) {
     }
     fn release_button(
         &mut self,
         _button: u32,
         _screen: Arc<Mutex<WS1in5>>,
-        _resources: &Resources,
-        _rt: &Runtime,
+        _resources: &Arc<Resources>,
+        _rt: &Handle,
     ) {
+    }
+
+    fn callback(&mut self, 
+        _msg: u32,
+        _screen: Arc<Mutex<WS1in5>>, 
+        _resources: &Arc<Resources>, 
+        _rt: &Handle
+    )  {
+
     }
 }
 
@@ -545,13 +609,13 @@ impl State for HomeState {
         &mut self,
         _prev: StateType,
         _screen: Arc<Mutex<WS1in5>>,
-        _resources: &Resources,
-        _rt: &Runtime,
+        _resources: &Arc<Resources>,
+        _rt: &Handle,
     ) {
         self.coord = (0,0);
         self.key = None;
     }
-    fn draw(&mut self, screen: Arc<Mutex<WS1in5>>, resources: &Resources, _rt: &Runtime) {
+    fn draw(&mut self, screen: Arc<Mutex<WS1in5>>, resources: &Arc<Resources>, _rt: &Handle) {
         let mut screen = screen.blocking_lock();
         screen.clear_all().ok();
 
@@ -590,8 +654,8 @@ impl State for HomeState {
         &mut self,
         key: u32,
         screen: Arc<Mutex<WS1in5>>,
-        resources: &Resources,
-        _rt: &Runtime,
+        resources: &Arc<Resources>,
+        _rt: &Handle,
     ) {
         let Some(key) = char::from_u32(key as u32).and_then(|key| parse_index(key)) else {
             return;
@@ -619,8 +683,8 @@ impl State for HomeState {
         &mut self,
         special: u32,
         screen: Arc<Mutex<WS1in5>>,
-        resources: &Resources,
-        rt: &Runtime,
+        resources: &Arc<Resources>,
+        rt: &Handle,
     ) {
         let mut lock_screen = screen.blocking_lock();
         let special = SpecialKey::from(special);
@@ -708,7 +772,7 @@ pub struct VariablesState {
 }
 
 impl VariablesState {
-    pub fn new(_screen: Arc<Mutex<WS1in5>>, resources: &Resources) -> VariablesState {
+    pub fn new(_screen: Arc<Mutex<WS1in5>>, resources: &Arc<Resources>) -> VariablesState {
         let (char_width, line_height) =
             WS1in5::size_to_pow_2(drawing::text_size(resources.scale10, &resources.font, "_"));
 
@@ -730,15 +794,15 @@ impl State for VariablesState {
         &mut self,
         _prev: StateType,
         _screen: Arc<Mutex<WS1in5>>,
-        _resources: &Resources,
-        _rt: &Runtime,
+        _resources: &Arc<Resources>,
+        _rt: &Handle,
     ) {
         self.selected = None;
         self.variables = rpc(|mut client| client.variables()).or_log("RPC failed").unwrap_or_else(|| vec![]);
         self.page = 0;
     }
 
-    fn draw(&mut self, screen: Arc<Mutex<WS1in5>>, resources: &Resources, _rt: &Runtime) {
+    fn draw(&mut self, screen: Arc<Mutex<WS1in5>>, resources: &Arc<Resources>, _rt: &Handle) {
         let mut screen = screen.blocking_lock();
         screen.clear_all().ok();
 
@@ -823,8 +887,8 @@ impl State for VariablesState {
         &mut self,
         key: u32,
         screen: Arc<Mutex<WS1in5>>,
-        resources: &Resources,
-        rt: &Runtime,
+        resources: &Arc<Resources>,
+        rt: &Handle,
     ) {
         let Some(key) = char::from_u32(key as u32) else {
             return;
@@ -877,8 +941,8 @@ impl State for VariablesState {
         &mut self,
         special: u32,
         screen: Arc<Mutex<WS1in5>>,
-        resources: &Resources,
-        rt: &Runtime,
+        resources: &Arc<Resources>,
+        rt: &Handle,
     ) {
         let special = SpecialKey::from(special);
 
@@ -965,10 +1029,12 @@ pub struct TermState {
     stdout: Arc<Mutex<String>>,
     output: Option<(String, String)>,
     page: usize,
+
+    command_pipe: UnboundedSender<CallbackCommand>
 }
 
 impl TermState {
-    pub fn new(screen: Arc<Mutex<WS1in5>>, resources: &Resources) -> TermState {
+    pub fn new(screen: Arc<Mutex<WS1in5>>, resources: &Arc<Resources>, command_pipe: UnboundedSender<CallbackCommand>) -> TermState {
         let (_, heading_height) = screen.blocking_lock()
             .get_text_size("_", &resources.scale20, &resources.font);
         let (char_width, char_height) = screen.blocking_lock()
@@ -988,6 +1054,8 @@ impl TermState {
             line_char_num: OLED_WIDTH / char_width,
             line_num: (OLED_HEIGHT - heading_height) / char_height,
             page: 0,
+
+            command_pipe
         }
     }
 }
@@ -997,8 +1065,8 @@ impl State for TermState {
         &mut self,
         _prev: StateType,
         _screen: Arc<Mutex<WS1in5>>,
-        _resources: &Resources,
-        _rt: &Runtime,
+        _resources: &Arc<Resources>,
+        _rt: &Handle,
     ) {
         self.command = String::new();
         self.process = None;
@@ -1014,8 +1082,8 @@ impl State for TermState {
         &mut self,
         _next: StateType,
         _screen: Arc<Mutex<WS1in5>>,
-        _resources: &Resources,
-        _rt: &Runtime,
+        _resources: &Arc<Resources>,
+        _rt: &Handle,
     ) {
         if let Some(mut child) = self.process.take() {
             child.kill().ok();
@@ -1023,7 +1091,7 @@ impl State for TermState {
         self.process_out.take().map(|handle| handle.abort());
     }
 
-    fn draw(&mut self, screen: Arc<Mutex<WS1in5>>, resources: &Resources, _rt: &Runtime) {
+    fn draw(&mut self, screen: Arc<Mutex<WS1in5>>, resources: &Arc<Resources>, _rt: &Handle) {
         let mut screen = screen.blocking_lock();
         screen.clear_all().ok();
 
@@ -1118,8 +1186,8 @@ impl State for TermState {
         &mut self,
         key: u32,
         screen: Arc<Mutex<WS1in5>>,
-        resources: &Resources,
-        rt: &Runtime,
+        resources: &Arc<Resources>,
+        rt: &Handle,
     ) {
         let Some(key) = char::from_u32(key as u32) else {
             return;
@@ -1160,8 +1228,8 @@ impl State for TermState {
         &mut self,
         special: u32,
         screen: Arc<Mutex<WS1in5>>,
-        resources: &Resources,
-        rt: &Runtime,
+        resources: &Arc<Resources>,
+        rt: &Handle,
     ) {
         let special = SpecialKey::from(special);
 
@@ -1275,6 +1343,8 @@ impl State for TermState {
                                 self.page = 0;
                             }
                         }
+                        self.command_pipe.send(CallbackCommand { state: StateType::Term, msg: SpecialKey::Enter as u32 })
+                            .or_log("Unable to start child process polling");
                         self.draw(screen, resources, rt);
                     },
                     SpecialKey::Spacebar => {
@@ -1326,8 +1396,8 @@ impl State for TermState {
         &mut self,
         modifier: u32,
         _screen: Arc<Mutex<WS1in5>>,
-        _resources: &Resources,
-        _rt: &Runtime,
+        _resources: &Arc<Resources>,
+        _rt: &Handle,
     ) {
         let modifier = Modifier::from(modifier);
 
@@ -1342,8 +1412,8 @@ impl State for TermState {
         &mut self,
         modifier: u32,
         _screen: Arc<Mutex<WS1in5>>,
-        _resources: &Resources,
-        _rt: &Runtime,
+        _resources: &Arc<Resources>,
+        _rt: &Handle,
     ) {
         let modifier = Modifier::from(modifier);
 
@@ -1351,6 +1421,35 @@ impl State for TermState {
             Modifier::LeftControl => self.ctl = false,
             Modifier::RightControl => self.ctl = false,
             _ => (),
+        }
+    }
+
+    fn callback(&mut self, msg: u32, screen: Arc<Mutex<WS1in5>>, resources: &Arc<Resources>, rt: &Handle) {
+        if msg == SpecialKey::Enter as u32 {
+            if let Some(child) = &mut self.process {
+                if let Ok(exit) = child.try_wait() {
+                    let Some(exit) = exit else {
+                        return;
+                    };
+
+                    let exit = format!("E{}", exit.code().unwrap_or(0));
+
+                    drop(child);
+                    self.process = None;
+                    self.process_out.take().map(|handle| handle.abort());
+                    self.output = Some((exit, self.stdout.blocking_lock().to_string()));
+                    self.page = 0;
+                    
+                    self.draw(screen, resources, rt);
+                } else {
+                    self.process = None;
+                    self.process_out.take().map(|handle| handle.abort());
+                    self.output = Some(("Failed".to_string(), "Failed to run command".to_string()));
+                    self.page = 0;
+
+                    self.draw(screen, resources, rt);
+                }
+            }
         }
     }
 }
