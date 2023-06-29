@@ -5,7 +5,7 @@ use std::{
     io::{BufReader, BufRead},
     process::{Child, Command, Stdio},
     sync::Arc,
-    time::{Duration, Instant}, thread, fmt::Display,
+    time::{Duration, Instant}, thread, fmt::Display, path::PathBuf, fs, env,
 };
 
 use abi_stable::{
@@ -19,6 +19,7 @@ use itertools::Itertools;
 use key_module::hid::{HIDBox, HidModule, HidModuleRef, HID};
 use key_rpc::{Client, ClientError};
 use rusttype::{Font, Scale};
+use serde::{Serialize, Deserialize};
 use serde_json::Value;
 use tokio::{runtime::{Handle}, sync::{Mutex, mpsc::{UnboundedReceiver, self, UnboundedSender}}, task::JoinHandle};
 use virt_hid::key::{Modifier, SpecialKey};
@@ -114,6 +115,67 @@ pub enum StateType {
     Empty,
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct SystemData {
+    ducky_dir: Option<PathBuf>,
+    bork_dir: Option<PathBuf>,
+    working_dir: Option<PathBuf>,
+}
+
+impl SystemData {
+    fn new() -> SystemData {
+        SystemData { ducky_dir: None, bork_dir: None, working_dir: None }
+    }
+
+    fn ducky_scripts(&self) -> Vec<(String, String)> {
+        fs::read_dir(self.ducky())
+        .and_then(|dir| 
+            Ok(
+                dir.into_iter()
+                .filter_map(|file| 
+                    file.map(|file| (
+                        file.file_name().to_string_lossy().to_string(), 
+                        file.path().to_string_lossy().to_string()
+                    )).ok()
+                ).filter(|(name, _)| name.ends_with(".duck"))
+                .collect::<Vec<(String, String)>>()
+            )
+        ).unwrap_or_else(|_| vec![])
+    }
+
+    fn ducky(&self) -> PathBuf {
+        self.ducky_dir.clone().unwrap_or_else(|| self.working_path())
+    }
+
+    fn bork_scripts(&self) -> Vec<(String, String)> {
+        fs::read_dir(self.bork())
+        .and_then(|dir| 
+            Ok(
+                dir.into_iter()
+                .filter_map(|file| 
+                    file.map(|file| (
+                        file.file_name().to_string_lossy().to_string(), 
+                        file.path().to_string_lossy().to_string()
+                    )).ok()
+                ).filter(|(name, _)| name.ends_with(".bork"))
+                .collect::<Vec<(String, String)>>()
+            )
+        ).unwrap_or_else(|_| vec![])
+    }
+    
+    fn bork(&self) -> PathBuf {
+        self.bork_dir.clone().unwrap_or_else(|| self.working_path())
+    }
+
+    fn working_path(&self) -> PathBuf {
+        self.working_dir.clone().unwrap_or_else(|| {
+            env::var("HOME")
+            .and_then(|path| Ok(PathBuf::from(path)))
+            .or_else(|_| env::current_dir()).unwrap_or_default()
+        })
+    }
+}
+
 pub struct ScreenHid {
     shift: bool,
 
@@ -123,6 +185,8 @@ pub struct ScreenHid {
     states: Arc<Mutex<HashMap<StateType, Box<dyn State>>>>,
     last_interact: Arc<Mutex<Instant>>,
     curr_state: Arc<Mutex<StateType>>,
+
+    system_data: SystemData,
 }
 
 pub struct  CallbackCommand {
@@ -227,6 +291,7 @@ impl ScreenHid {
             curr_state,
             _handle: handle,
             rt: rt.handle().clone(),
+            system_data: SystemData::new(),
         };
 
         let curr_state = shid.curr_state.blocking_lock();
@@ -264,6 +329,14 @@ impl ScreenHid {
 }
 
 impl HID for ScreenHid {
+    fn configure(&mut self, data: RString) {
+        let Some(system_data): Option<SystemData> = serde_json::from_str(&data).or_log("Unable to parse configuration data") else {
+            return;
+        };
+
+        self.system_data = system_data;
+    }
+
     fn hold_key(&mut self, mut key: u32) {
         *self.last_interact.blocking_lock() = Instant::now();
 
@@ -1398,6 +1471,278 @@ impl State for TermState {
                     self.draw(rt);
                 }
             }
+        }
+    }
+}
+
+#[derive(Clone)]
+enum ScriptState {
+    Home,
+    Ducky,
+    Bork,
+}
+
+pub struct Scripts {
+    state: ScriptState,
+
+    ducky_scripts: Vec<(String, String)>,
+    bork_scripts: Vec<(String, String)>,
+    page: usize,
+
+    line_size: (usize, usize),
+
+    last_script: Option<(ScriptState, String, String)>,
+
+    resources: Arc<Resources>, 
+    screen: Arc<Mutex<WS1in5>>,
+
+    system_data: Arc<SystemData>,
+}
+
+impl Scripts {
+    pub fn new(system_data: Arc<SystemData>, resources: Arc<Resources>, screen: Arc<Mutex<WS1in5>>) -> Scripts {
+        let (char_width, line_height) =
+            WS1in5::size_to_pow_2(drawing::text_size(resources.scale10, &resources.font, "_"));
+
+        let line_size = (OLED_WIDTH / char_width as usize, line_height as usize);
+
+        Scripts{
+            state: ScriptState::Home, 
+            ducky_scripts: vec![], 
+            bork_scripts: vec![], 
+            page: 0, 
+            line_size, 
+            last_script: None, 
+            resources, 
+            screen,
+            system_data, 
+        }
+    }
+}
+
+impl State for Scripts {
+    fn enter(
+        &mut self,
+        _prev: StateType,
+        _rt: &Handle,
+    ) {
+        self.state = ScriptState::Home;
+        self.page = 0;
+
+    }
+
+    fn draw(&mut self, _rt: &Handle) {
+        let mut screen = self.screen.blocking_lock();
+
+        match self.state {
+            ScriptState::Home => (|| -> Result<(), ws_1in5_i2c::Error> {
+                let (_, y) = screen.draw_centered_text(
+                    0, 
+                    0, 
+                    "SCRIPTS", 
+                    &self.resources.scale12, 
+                    &self.resources.font, 
+                    true
+                )?;
+    
+                let (_, y) = screen.draw_centered_text(
+                    0, 
+                    y, 
+                    "ENTR: run last, D: ducky, B: bork", 
+                    &self.resources.scale12, 
+                    &self.resources.font, 
+                    true
+                )?;
+
+                if let Some((_, name, _)) = &self.last_script {
+                    let (_, _) = screen.draw_centered_text(
+                        0, 
+                        y, 
+                        &format!("LAST: {}", name), 
+                        &self.resources.scale12, 
+                        &self.resources.font, 
+                        true
+                    )?;
+                }
+
+    
+                Ok(())
+            })().or_log("Failed to draw to screen"),
+            ScriptState::Ducky | ScriptState::Bork => (|| -> Result<(), ws_1in5_i2c::Error> {
+                let (_, y) = screen.draw_text(
+                    0, 
+                    0, 
+                    &format!(
+                        "{} {}", 
+                        if matches!(self.state, ScriptState::Ducky) {
+                            "DUCKY"
+                        } else {
+                            "BORK"
+                        }, 
+                        self.page
+                    ),
+                    &self.resources.scale12,
+                    &self.resources.font,
+                    true
+                )?;
+
+                for (i, (script, _)) in if matches!(self.state, ScriptState::Ducky) {
+                        &self.ducky_scripts
+                    } else {
+                        &self.bork_scripts
+                    }
+                    .iter()
+                    .skip(self.page * 9)
+                    .take(9)
+                    .enumerate()
+                {
+                    let (mut script_image, mut width, height) = screen.create_text(
+                        &format!("{}|{}", i, script),
+                        &self.resources.scale10,
+                        &self.resources.font,
+                    );
+
+                    if script_image.width() as usize > OLED_WIDTH {
+                        script_image = DynamicImage::ImageLuma8(script_image).crop(0, 0, OLED_WIDTH as u32, height as u32).to_luma8();
+                        width = OLED_WIDTH;
+                    }
+
+                    let buffer =
+                        screen.get_buffer(script_image.enumerate_pixels(), width, height)?;
+                    screen.show_image(
+                        buffer,
+                        OLED_WIDTH - width,
+                        OLED_HEIGHT - height - (y + i * self.line_size.1),
+                        width,
+                        height,
+                    )?;
+                }
+
+                screen.draw_text(
+                    0,
+                    OLED_HEIGHT - 12,
+                    "LEFT: <, RIGHT: >",
+                    &self.resources.scale12,
+                    &self.resources.font,
+                    true
+                )?;
+
+                Ok(())
+            })().or_log("Failed to draw to screen"),
+        };
+    }
+
+    fn hold_key(
+        &mut self,
+        key: u32,
+        rt: &Handle,
+    ) {
+        let Some(key) = char::from_u32(key as u32) else {
+            return;
+        };
+
+        match self.state {
+            ScriptState::Home => {
+                if key == 'd' {
+                    self.state = ScriptState::Ducky;
+                    self.page = 0;
+                    self.ducky_scripts = self.system_data.ducky_scripts();
+                } else if key == 'b' {
+                    self.state = ScriptState::Bork;
+                    self.page = 0;
+                    self.ducky_scripts = self.system_data.bork_scripts();
+                }
+            },
+            ScriptState::Ducky | ScriptState::Bork => {
+                let Some(index) = parse_index(key) else {
+                    return;
+                };
+
+                let Some((name, path)) = if matches!(self.state, ScriptState::Ducky) {
+                    &self.ducky_scripts
+                } else {
+                    &self.bork_scripts
+                }.iter().skip(self.page * 9).take(9).skip(index).next() else {
+                    return;
+                };
+
+                let process = Command::new("bash")
+                    .arg("-c")
+                    .arg(format!(
+                        "{} {} (SHFT+#: edit)", 
+                        if matches!(self.state, ScriptState::Ducky) {
+                            "quack"
+                        } else {
+                            "bork"
+                        },
+                        path
+                    ))
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped())
+                    .spawn()
+                    .or_log("Unable to spawn script process");
+
+                if let Some(mut child) = process {
+                    rt.spawn(async move {
+                        while let Ok(None) = child.try_wait() {
+                            thread::sleep(Duration::from_millis(30));
+                        }
+                    });
+                }
+
+                self.state = ScriptState::Home;
+                self.last_script = Some((self.state.clone(), name.to_string(), path.to_string()));
+                self.draw(rt);
+            },
+        }
+    }
+
+    fn hold_special(
+        &mut self,
+        special: u32,
+        rt: &Handle,
+    ) {
+        let special = SpecialKey::from(special);
+
+        match self.state {
+            ScriptState::Home => {
+                if special == SpecialKey::ReturnEnter {
+                    if let Some((_, _, path)) = &self.last_script {
+                        let process = Command::new("bash")
+                            .arg("-c")
+                            .arg(format!(
+                                "{} {}", 
+                                if matches!(self.state, ScriptState::Ducky) {
+                                    "quack"
+                                } else {
+                                    "bork"
+                                },
+                                path
+                            ))
+                            .stdout(Stdio::piped())
+                            .stderr(Stdio::piped())
+                            .spawn()
+                            .or_log("Unable to spawn script process");
+        
+                        if let Some(mut child) = process {
+                            rt.spawn(async move {
+                                while let Ok(None) = child.try_wait() {
+                                    thread::sleep(Duration::from_millis(30));
+                                }
+                            });
+                        }
+                    }
+                }
+            },
+            ScriptState::Ducky | ScriptState::Bork => {
+                if self.page != 0 && special == SpecialKey::LeftArrow {
+                    self.page -= 1;
+                    self.draw(rt)
+                } else if special == SpecialKey::RightArrow {
+                    self.page += 1;
+                    self.draw(rt)
+                } 
+            },
         }
     }
 }
