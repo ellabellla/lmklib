@@ -255,6 +255,8 @@ pub struct ModuleManager {
 
 /// Module meta file name
 const META_FILE: &'static str = "meta.json";
+/// Module config file name (Used for HID modules)
+const CONFIG_META: &'static str = "config.json";
 /// ABI Module file name
 const ABI_MODULE_FILE: &'static str = "module.so";
 /// Python module file name
@@ -269,6 +271,7 @@ const PY_POLL: &'static str = "poll";
 /// Python set function name
 const PY_SET: &'static str = "set";
 
+const PY_CONFIGURE: &'static str = "configure";
 const PY_HOLD_KEY: &'static str = "hold_key";
 const PY_HOLD_SPECIAL: &'static str = "hold_special";
 const PY_HOLD_MODIFIER: &'static str = "hold_modifier";
@@ -326,9 +329,11 @@ impl ModuleManager {
             return Err(ModError::LoadModule("Module name must be unique for it's interface type".to_string()))
         }
 
+        let config_data = fs::read_to_string(module_path.join(CONFIG_META)).unwrap_or_default();
+
         let tx = match module.module_type {
-            ModuleType::ABIStable => ModuleManager::init_abi_hid(module_path)?,
-            ModuleType::Python => ModuleManager::init_py_hid(module_path)?,
+            ModuleType::ABIStable => ModuleManager::init_abi_hid(module_path, config_data)?,
+            ModuleType::Python => ModuleManager::init_py_hid(module_path, config_data)?,
         };
 
         self.hid_modules.insert(module.name, tx);
@@ -337,13 +342,15 @@ impl ModuleManager {
     }
 
     /// Init abi hid
-    fn init_abi_hid(module_path: PathBuf) -> Result<UnboundedSender<HidCommand>, ModError> {
+    fn init_abi_hid(module_path: PathBuf, config_data: String) -> Result<UnboundedSender<HidCommand>, ModError> {
         let interface = hid::load_module(&module_path.join(ABI_MODULE_FILE))
             .map_err(|e| ModError::LoadModule(e.to_string()))?;
 
         let (tx, mut rx) = mpsc::unbounded_channel();
         tokio::task::spawn_blocking(move || {
             let mut hid = interface.new_hid()();
+            hid.configure(config_data.into());
+
             while let Some(command) = rx.blocking_recv() {
                 match command {
                     HidCommand::HoldKey(key) => hid.hold_key(key as u32),
@@ -371,7 +378,7 @@ impl ModuleManager {
     }
 
     /// Init python hid
-    fn init_py_hid(module_path: PathBuf) -> Result<UnboundedSender<HidCommand>, ModError> {
+    fn init_py_hid(module_path: PathBuf, config_data: String) -> Result<UnboundedSender<HidCommand>, ModError> {
         let path = module_path.join(PY_MODULE_FILE);
         let path_str = path.to_string_lossy().to_string();
         let code = fs::read_to_string(&path)
@@ -382,6 +389,10 @@ impl ModuleManager {
 
         let (tx, mut rx) = mpsc::unbounded_channel();
         tokio::task::spawn_blocking(move || {
+            Python::with_gil(|py| -> PyResult<Py<PyAny>> {
+                interface.getattr(py, PY_CONFIGURE)?.call1(py, (config_data,))
+            }).or_log("Unable to configure HID Module");
+            
             while let Some(command) = rx.blocking_recv() {
                 Python::with_gil(|py| -> PyResult<Py<PyAny>> {
                     match command {

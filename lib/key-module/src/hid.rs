@@ -25,6 +25,7 @@ impl RootModule for HidModuleRef {
 #[sabi(impl_InterfaceType(Sync, Send, Debug, Display))]
 /// HID interface
 pub trait HID {
+    fn configure(&mut self, data: RString);
     fn hold_key(&mut self, key: u32);
     fn hold_special(&mut self, special: u32);
     fn hold_modifier(&mut self, modifier: u32);

@@ -11,6 +11,7 @@ This crate contains the abi_stable interfaces for rust modules and some template
 Modules are folders containing:
 - module.py(Python)/module.so(Rust): The module to be loaded
 - meta.json: The meta data of the module
+- config.json: A configuration file (only used for HID modules, its contents is determined by the module)
 
 All modules are placed in the modules folder inside the key-server config folder.
 
@@ -119,6 +120,18 @@ def event(func_id, state):
 ```
 
 ### HID Module
+```python
+def configure(data):
+    """Passes configuration data to the module
+
+    Args:
+        data (str): config data
+
+    Returns:
+        None
+    """
+    pass
+
 ```python
 def hold_key(key):
     """Hold key event
