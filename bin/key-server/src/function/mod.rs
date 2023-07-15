@@ -160,6 +160,7 @@ pub enum FunctionType {
         invert: variables::Data<bool>,
         slope_y: variables::Data<f64>,
         slope_x: variables::Data<f64>,
+        maximum: variables::Data<u16>,
         threshold: variables::Data<f64>,
     },
     Scroll {
@@ -167,6 +168,7 @@ pub enum FunctionType {
         invert: variables::Data<bool>,
         slope_y: variables::Data<f64>,
         slope_x: variables::Data<f64>,
+        maximum: variables::Data<u16>,
         threshold: variables::Data<f64>,
     },
     ImmediateMove {
@@ -321,6 +323,7 @@ impl FunctionBuilder {
                 invert,
                 slope_y,
                 slope_x,
+                maximum,
                 threshold,
             } => Scroll::new(
                 period
@@ -335,6 +338,9 @@ impl FunctionBuilder {
                 slope_x
                     .into_variable(1.0, self.variables.clone())
                     .await,
+                maximum
+                    .into_variable(u16::MAX, self.variables.clone())
+                    .await,
                 threshold
                     .into_variable(0.0, self.variables.clone())
                     .await,
@@ -345,6 +351,7 @@ impl FunctionBuilder {
                 invert,
                 slope_y,
                 slope_x,
+                maximum,
                 threshold,
             } => Move::new(
                 dir,
@@ -356,6 +363,9 @@ impl FunctionBuilder {
                     .await,
                 slope_x
                     .into_variable(1.0, self.variables.clone())
+                    .await,
+                maximum
+                    .into_variable(u16::MAX, self.variables.clone())
                     .await,
                 threshold.into_variable(0.0, self.variables.clone()).await,
                 self.hid.clone()

@@ -181,14 +181,15 @@ pub struct Move {
     invert: Variable<bool>,
     slope_x: Variable<f64>,
     slope_y: Variable<f64>,
+    maximum: Variable<u16>,
     threshold: Variable<f64>,
     hid: Arc<RwLock<HID>>,
 }
 
 impl Move {
     /// New
-    pub fn new(dir: MouseDir, invert: Variable<bool>, slope_y: Variable<f64>, slope_x: Variable<f64>, threshold: Variable<f64>, hid: Arc<RwLock<HID>>) -> Function {
-        Some(Box::new(Move{dir, invert, slope_x, slope_y, threshold, hid}))
+    pub fn new(dir: MouseDir, invert: Variable<bool>, slope_y: Variable<f64>, slope_x: Variable<f64>, maximum: Variable<u16>, threshold: Variable<f64>, hid: Arc<RwLock<HID>>) -> Function {
+        Some(Box::new(Move{dir, invert, slope_x, slope_y, maximum, threshold, hid}))
     }
 }
 
@@ -197,18 +198,20 @@ impl FunctionInterface for Move {
     async fn event(&mut self, state: State) -> ReturnCommand {
         let hid = self.hid.read().await;
 
-        const HALF: f64 = u16::MAX as f64 / 2.0;
+        let half: f64 = *self.maximum.data() as f64 / 2.0;
         let mut state = state as f64;
-        state -=  HALF;
-        state /= HALF;
+        state -=  half;
+        state /= half;
 
         let threshold = *self.threshold.data();
         
         if
-            if threshold >= 0.0 {
+            if threshold > 0.0 {
                 state > threshold
-            } else {
+            } else if threshold < threshold {
                 state < -threshold
+            } else {
+                true
             }
         {
             let val = sigmoid(state, *self.invert.data(), *self.slope_y.data(), *self.slope_x.data());
@@ -221,7 +224,7 @@ impl FunctionInterface for Move {
     }
 
     fn ftype(&self) -> FunctionType {
-        FunctionType::Move{dir: self.dir.clone(), invert: self.invert.into_data(), slope_y: self.slope_y.into_data(), slope_x: self.slope_x.into_data(), threshold: self.threshold.into_data()}
+        FunctionType::Move{dir: self.dir.clone(), invert: self.invert.into_data(), slope_y: self.slope_y.into_data(), slope_x: self.slope_x.into_data(), maximum: self.maximum.into_data(), threshold: self.threshold.into_data()}
     }
 }
 
@@ -232,6 +235,7 @@ pub struct Scroll {
     invert: Variable<bool>,
     slope_x: Variable<f64>,
     slope_y: Variable<f64>,
+    maximum: Variable<u16>,
     threshold: Variable<f64>,
     prev_time: Instant,
     hid: Arc<RwLock<HID>>,
@@ -239,9 +243,9 @@ pub struct Scroll {
 
 impl Scroll {
     /// New
-    pub fn new(period: Variable<u64>, invert: Variable<bool>, slope_y: Variable<f64>, slope_x: Variable<f64>, threshold: Variable<f64>, hid: Arc<RwLock<HID>>) -> Function {
+    pub fn new(period: Variable<u64>, invert: Variable<bool>, slope_y: Variable<f64>, slope_x: Variable<f64>, maximum: Variable<u16>, threshold: Variable<f64>, hid: Arc<RwLock<HID>>) -> Function {
         let period: Variable<Duration> = period.map(|period| Duration::from_millis(period));
-        Some(Box::new(Scroll{period, invert, slope_y, slope_x, threshold, prev_time: Instant::now(), hid}))
+        Some(Box::new(Scroll{period, invert, slope_y, slope_x, maximum, threshold, prev_time: Instant::now(), hid}))
     }
 }
 
@@ -250,20 +254,22 @@ impl FunctionInterface for Scroll {
     async fn event(&mut self, state: State) -> ReturnCommand {
         let hid = self.hid.read().await;
 
-        const HALF: f64 = u16::MAX as f64 / 2.0;
+        let half: f64 = *self.maximum.data() as f64 / 2.0;
         let mut state = state as f64;
-        state -=  HALF;
-        state /= HALF;
+        state -=  half;
+        state /= half;
 
         let threshold = *self.threshold.data();
 
         let now = Instant::now();
         if 
-            if threshold >= 0.0 {
+            if threshold > 0.0 {
                 state > threshold
-            } else {
+            } else if threshold < threshold {
                 state < -threshold
-            } 
+            } else {
+                true
+            }
             && now.duration_since(self.prev_time) > *self.period.data() 
         {
             self.prev_time = now;
@@ -279,7 +285,7 @@ impl FunctionInterface for Scroll {
 
     fn ftype(&self) -> FunctionType {
         let period: Data<Duration> = self.period.into_data();
-        FunctionType::Scroll{period: period.map(|period| period.as_millis() as u64), invert: self.invert.into_data(), slope_y: self.slope_y.into_data(), slope_x: self.slope_x.into_data(), threshold: self.threshold.into_data()}
+        FunctionType::Scroll{period: period.map(|period| period.as_millis() as u64), invert: self.invert.into_data(), slope_y: self.slope_y.into_data(), slope_x: self.slope_x.into_data(), maximum: self.maximum.into_data(), threshold: self.threshold.into_data()}
     }
 }
 
