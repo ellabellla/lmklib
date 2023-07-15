@@ -16,6 +16,16 @@ enum Address {
         width: usize,
         root: (usize, usize),
     },
+    DriverRow {
+        name: String,
+        input: Vec<usize>,
+        root: usize,
+    },
+    DriverColumn {
+        name: String,
+        input: Vec<usize>,
+        root: usize,
+    },
     DriverAddr {
         name: String,
         input: usize,
@@ -199,11 +209,24 @@ impl<'de> Deserialize<'de> for LayoutBuilder {
                     if let Err(e) = builder.add_matrix(&name, input, width, root) {
                         return Err(de::Error::custom(format!("Error adding bound address at {}, {}", i, e)))
                     },
+                Address::DriverRow { name, input, root } => 
+                    for (x, input) in input.iter().enumerate() {
+                        if let Err(e) = builder.add_point(&name, *input, (x, root)) {
+                            return Err(de::Error::custom(format!("Error adding bound address at {}, {}", i, e)))
+                        }
+                    },
+                Address::DriverColumn { name, input, root } => 
+                    for (x, input) in input.iter().enumerate() {
+                        if let Err(e) = builder.add_point(&name, *input, (root, x)) {
+                            return Err(de::Error::custom(format!("Error adding bound address at {}, {}", i, e)))
+                        }
+                    },
                 Address::DriverAddr { name, input, root } => 
-                if let Err(e) = builder.add_point(&name, input, root) {
-                    return Err(de::Error::custom(format!("Error adding bound address at {}, {}", i, e)))
-                },
+                    if let Err(e) = builder.add_point(&name, input, root) {
+                        return Err(de::Error::custom(format!("Error adding bound address at {}, {}", i, e)))
+                    },
                 Address::None => continue,
+            
             }
         }
         for (i, layer) in layout.layers.into_iter().enumerate() {
@@ -443,6 +466,72 @@ impl Layout {
                             y += 1;
                         }
                     }
+                },
+                Address::DriverRow { name, input, root } => {
+                    let driver_manager = self.driver_manager.read().await;
+                    let Some(driver) = driver_manager.get(name) else {
+                        continue;
+                    };
+
+                    let mut states = Vec::with_capacity(input.len());
+
+                    for input in input {
+                        states.push(driver.poll(*input));
+                    }
+
+                    drop(driver);
+                    drop(driver_manager);
+
+                    for (x, state) in states.iter().enumerate() {
+                        for layer in self.layer_stack[..self.cur_layer+1].iter_mut().rev() {
+                            match &mut layer[x + (*root * self.width)] {
+                                Some(func) => {
+                                    let res = func.event(*state).await;
+                                    if !matches!(res, ReturnCommand::None) {
+                                        commands.push(res);
+                                    }
+                                    break;
+                                },
+                                None=> {
+                                    continue;
+                                },
+                            }
+                        }
+                    }
+                    
+                },
+                Address::DriverColumn { name, input, root } => {
+                    let driver_manager = self.driver_manager.read().await;
+                    let Some(driver) = driver_manager.get(name) else {
+                        continue;
+                    };
+
+                    let mut states = Vec::with_capacity(input.len());
+
+                    for input in input {
+                        states.push(driver.poll(*input));
+                    }
+
+                    drop(driver);
+                    drop(driver_manager);
+
+                    for (y, state) in states.iter().enumerate() {
+                        for layer in self.layer_stack[..self.cur_layer+1].iter_mut().rev() {
+                            match &mut layer[*root + (y * self.width)] {
+                                Some(func) => {
+                                    let res = func.event(*state).await;
+                                    if !matches!(res, ReturnCommand::None) {
+                                        commands.push(res);
+                                    }
+                                    break;
+                                },
+                                None=> {
+                                    continue;
+                                },
+                            }
+                        }
+                    }
+                    
                 },
                 Address::DriverAddr { name, input, root} => {
                     let driver_manager = self.driver_manager.read().await;
