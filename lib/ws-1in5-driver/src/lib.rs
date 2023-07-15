@@ -21,7 +21,7 @@ use key_rpc::{Client, ClientError};
 use rusttype::{Font, Scale};
 use serde::{Serialize, Deserialize};
 use serde_json::Value;
-use tokio::{runtime::{Handle}, sync::{Mutex, mpsc::{UnboundedReceiver, self, UnboundedSender}}, task::JoinHandle};
+use tokio::{runtime::{Handle, Runtime}, sync::{Mutex, mpsc::{UnboundedReceiver, self, UnboundedSender}}, task::JoinHandle};
 use virt_hid::key::{Modifier, SpecialKey};
 use ws_1in5_i2c::{WS1in5, OLED_HEIGHT, OLED_WIDTH};
 
@@ -179,7 +179,7 @@ impl SystemData {
 pub struct ScreenHid {
     shift: bool,
 
-    rt: Handle,
+    rt: Runtime,
     _handle: JoinHandle<()>,
 
     states: Arc<Mutex<HashMap<StateType, Box<dyn State>>>>,
@@ -224,14 +224,15 @@ async fn spawn(
         }
         drop(lock_last_interact);
 
-        while let Ok(CallbackCommand{state, msg}) = command_pipe.try_recv() {
+        while let Ok(CallbackCommand{state, msg}) = command_pipe.try_recv()  {
             if state == *curr_state.lock().await {
                 states.lock().await.get_mut(&state).and_then(|state| {
                     Some(state.callback(msg, &rt))
                 });
+                println!("ran")
             }
         }
-
+        println!("tick")
     }
 }
 
@@ -268,8 +269,8 @@ impl ScreenHid {
             StateType::Variables,
             Box::new(VariablesState::new(screen.clone(), resources.clone())),
         );
-        states.insert(StateType::Term, Box::new(TermState::new(screen.clone(), resources.clone(), command_pipe_send.clone())));
-        states.insert(StateType::Empty, Box::new(EmptyState{}));
+        states.insert(StateType::Term, Box::new(TermState::new(screen.clone(), resources.clone(), command_pipe_send)));
+        states.insert(StateType::Empty, Box::new(EmptyState::new(screen.clone())));
         let states = Arc::new(Mutex::new(states));
 
         let last_interact = Arc::new(Mutex::new(Instant::now()));
@@ -290,7 +291,7 @@ impl ScreenHid {
             last_interact,
             curr_state,
             _handle: handle,
-            rt: rt.handle().clone(),
+            rt: rt,
             system_data: SystemData::new(),
         };
 
@@ -298,9 +299,9 @@ impl ScreenHid {
         shid.states.blocking_lock().get_mut(&curr_state).and_then(|state| {
             state.enter(
                 *curr_state,
-                &shid.rt,
+                &shid.rt.handle(),
             );
-            state.draw(&shid.rt);
+            state.draw(&shid.rt.handle());
             Some(())
         });
         drop(curr_state);
@@ -313,14 +314,14 @@ impl ScreenHid {
         let mut states = self.states.blocking_lock();
         if states.contains_key(&next_state) {
             states.get_mut(&curr_state).and_then(|state| {
-                Some(state.exit(next_state, &self.rt))
+                Some(state.exit(next_state, &self.rt.handle()))
             });
             states.get_mut(&next_state).and_then(|state| {
                 state.enter(
                     *curr_state,
-                    &self.rt,
+                    &self.rt.handle(),
                 );
-                state.draw(&self.rt);
+                state.draw(&self.rt.handle());
                 Some(())
             });
             *curr_state = next_state;
@@ -376,7 +377,7 @@ impl HID for ScreenHid {
 
         let curr_state = self.curr_state.blocking_lock();
         self.states.blocking_lock().get_mut(&curr_state).and_then(|state| {
-            Some(state.hold_key(key, &self.rt))
+            Some(state.hold_key(key, &self.rt.handle()))
         });
     }
     fn hold_special(&mut self, special: u32) {
@@ -384,7 +385,7 @@ impl HID for ScreenHid {
 
         let curr_state = self.curr_state.blocking_lock();
         self.states.blocking_lock().get_mut(&curr_state).and_then(|state| {
-            Some(state.hold_special(special, &self.rt))
+            Some(state.hold_special(special, &self.rt.handle()))
         });
     }
     fn hold_modifier(&mut self, modifier: u32) {
@@ -396,7 +397,7 @@ impl HID for ScreenHid {
 
         let curr_state = self.curr_state.blocking_lock();
         self.states.blocking_lock().get_mut(&curr_state).and_then(|state| {
-            Some(state.hold_modifier(modifier, &self.rt))
+            Some(state.hold_modifier(modifier, &self.rt.handle()))
         });
     }
 
@@ -405,13 +406,13 @@ impl HID for ScreenHid {
 
         let curr_state = self.curr_state.blocking_lock();
         self.states.blocking_lock().get_mut(&curr_state).and_then(|state| {
-            Some(state.release_key(key, &self.rt))
+            Some(state.release_key(key, &self.rt.handle()))
         });
     }
     fn release_special(&mut self, special: u32) {
         let curr_state = self.curr_state.blocking_lock();
         self.states.blocking_lock().get_mut(&curr_state).and_then(|state| {
-            Some(state.release_special(special, &self.rt))
+            Some(state.release_special(special, &self.rt.handle()))
         });
     }
     fn release_modifier(&mut self, modifier: u32) {
@@ -423,7 +424,7 @@ impl HID for ScreenHid {
 
         let curr_state = self.curr_state.blocking_lock();
         self.states.blocking_lock().get_mut(&curr_state).and_then(|state| {
-            Some(state.release_modifier(modifier, &self.rt))
+            Some(state.release_modifier(modifier, &self.rt.handle()))
         });
     }
 
@@ -432,7 +433,7 @@ impl HID for ScreenHid {
 
         let curr_state = self.curr_state.blocking_lock();
         self.states.blocking_lock().get_mut(&curr_state).and_then(|state| {
-            Some(state.press_basic_str(str, &self.rt))
+            Some(state.press_basic_str(str, &self.rt.handle()))
         });
     }
 
@@ -445,7 +446,7 @@ impl HID for ScreenHid {
 
         let curr_state = self.curr_state.blocking_lock();
         self.states.blocking_lock().get_mut(&curr_state).and_then(|state| {
-            Some(state.scroll_wheel(amount, &self.rt))
+            Some(state.scroll_wheel(amount, &self.rt.handle()))
         });
     }
 
@@ -454,7 +455,7 @@ impl HID for ScreenHid {
 
         let curr_state = self.curr_state.blocking_lock();
         self.states.blocking_lock().get_mut(&curr_state).and_then(|state| {
-            Some(state.move_mouse_x(amount, &self.rt))
+            Some(state.move_mouse_x(amount, &self.rt.handle()))
         });
     }
     fn move_mouse_y(&mut self, amount: i8) {
@@ -462,7 +463,7 @@ impl HID for ScreenHid {
 
         let curr_state = self.curr_state.blocking_lock();
         self.states.blocking_lock().get_mut(&curr_state).and_then(|state| {
-            Some(state.move_mouse_y(amount, &self.rt))
+            Some(state.move_mouse_y(amount, &self.rt.handle()))
         });
     }
 
@@ -471,7 +472,7 @@ impl HID for ScreenHid {
 
         let curr_state = self.curr_state.blocking_lock();
         self.states.blocking_lock().get_mut(&curr_state).and_then(|state| {
-            Some(state.hold_button(button, &self.rt))
+            Some(state.hold_button(button, &self.rt.handle()))
         });
     }
     fn release_button(&mut self, button: u32) {
@@ -479,7 +480,7 @@ impl HID for ScreenHid {
 
         let curr_state = self.curr_state.blocking_lock();
         self.states.blocking_lock().get_mut(&curr_state).and_then(|state| {
-            Some(state.release_button(button, &self.rt))
+            Some(state.release_button(button, &self.rt.handle()))
         });
     }
 
@@ -493,7 +494,7 @@ impl HID for ScreenHid {
             "wake" => {
             if *self.curr_state.blocking_lock() != StateType::Empty {
                     self.states.blocking_lock().get_mut(&self.curr_state.blocking_lock()).and_then(|state| {
-                        Some(state.draw(&self.rt))
+                        Some(state.draw(&self.rt.handle()))
                     });
                 } else {
                     self.change_state(StateType::Home);
@@ -615,9 +616,21 @@ pub trait State: Send + Sync {
     }
 }
 
-pub struct EmptyState{}
+pub struct EmptyState {
+    screen: Arc<Mutex<WS1in5>>
+}
+
+impl EmptyState {
+    pub fn new(screen: Arc<Mutex<WS1in5>>) -> EmptyState {
+        EmptyState { screen }
+    }
+}
+
 impl State for EmptyState {
-    
+    fn draw(&mut self, _rt: &Handle) {
+        self.screen.blocking_lock().clear_all()
+            .or_log("Unable to clear screen");
+    }
 }
 
 pub struct HomeState {
@@ -653,8 +666,8 @@ impl State for HomeState {
 
         match &self.key {
             Some(key) => (|| -> Result<(), ws_1in5_i2c::Error> {
-                let (_, y) = screen.draw_text(0, 0, "KEY (ESC)", &self.resources.scale12, &self.resources.font, true)?;
-                screen.draw_paragraph_at(0, y, &key, &self.resources.scale10, &self.resources.font, true)?;
+                let (_, y) = screen.draw_text(0, 0, "KEY (ESC)", &self.resources.scale12, &self.resources.font, false)?;
+                screen.draw_paragraph_at(0, y, &key, &self.resources.scale10, &self.resources.font, false)?;
     
                 Ok(())
             })().or_log("Failed to draw to screen"),
@@ -666,7 +679,7 @@ impl State for HomeState {
                     &time.format("%H:%M").to_string(),
                     &self.resources.scale30,
                     &self.resources.font,
-                    true
+                    false
                 )?;
     
                 screen.draw_text(
@@ -675,7 +688,7 @@ impl State for HomeState {
                     &format!("Lookup: {},{}:{} ", self.coord.0, self.coord.1, self.layer), 
                     &self.resources.scale10, 
                     &self.resources.font, 
-                    true
+                    false
                 )?;
                 Ok(())
             })().or_log("Failed to draw to screen"),
@@ -845,7 +858,7 @@ impl State for VariablesState {
                     "EDIT (ETR: Save, ESC)", 
                     &self.resources.scale12, 
                     &self.resources.font,
-                    true,
+                    false,
                 )?;
                 let xy = screen.draw_paragraph_at(
                     0, 
@@ -853,7 +866,7 @@ impl State for VariablesState {
                     variable, 
                     &self.resources.scale10, 
                     &self.resources.font,
-                    true
+                    false
                 )?;
 
                 (self.writing_x, self.writing_y) = xy;
@@ -868,7 +881,7 @@ impl State for VariablesState {
                     &format!("VARS {} (ETR: Save)", self.page),
                     &self.resources.scale12,
                     &self.resources.font,
-                    true
+                    false
                 )?;
 
                 for (i, variable) in self
@@ -882,6 +895,7 @@ impl State for VariablesState {
                         &format!("{}|{}", i, variable),
                         &self.resources.scale10,
                         &self.resources.font,
+                        false
                     );
 
                     if variable_image.width() as usize > OLED_WIDTH {
@@ -893,8 +907,8 @@ impl State for VariablesState {
                         screen.get_buffer(variable_image.enumerate_pixels(), width, height)?;
                     screen.show_image(
                         buffer,
-                        OLED_WIDTH - width,
-                        OLED_HEIGHT - height - (y + i * self.line_size.1),
+                        0,
+                        y + i * self.line_size.1,
                         width,
                         height,
                     )?;
@@ -906,7 +920,7 @@ impl State for VariablesState {
                     "LEFT: <, RIGHT: >",
                     &self.resources.scale12,
                     &self.resources.font,
-                    true
+                    false
                 )?;
 
                 Ok(())
@@ -1132,7 +1146,7 @@ impl State for TermState {
                     "RUNNING",
                     &self.resources.scale12,
                     &self.resources.font,
-                    true
+                    false
                 )?;
 
                 screen.draw_centered_text(
@@ -1141,7 +1155,7 @@ impl State for TermState {
                     "ESC: kill, ENTR: poll",
                     &self.resources.scale12,
                     &self.resources.font,
-                    true
+                    false
                 )?;
 
                 Ok(())
@@ -1154,7 +1168,7 @@ impl State for TermState {
                             &format!("OUTPUT ({}) (ESC)", exit),
                             &self.resources.scale12,
                             &self.resources.font,
-                            true
+                            false
                         )?;
 
                         let (mut x, mut y) = (0, y);
@@ -1170,7 +1184,7 @@ impl State for TermState {
                                 &line.collect::<String>(),
                                 &self.resources.scale10,
                                 &self.resources.font,
-                                true
+                                false
                             )?;
                         }
 
@@ -1180,7 +1194,7 @@ impl State for TermState {
                             "LEFT: <, RIGHT: >",
                             &self.resources.scale10,
                             &self.resources.font,
-                            true
+                            false
                         )?;
                         
         
@@ -1193,7 +1207,7 @@ impl State for TermState {
                             "TERM (ETR: run)",
                             &self.resources.scale12,
                             &self.resources.font,
-                            true
+                            false
                         )?;
         
                         (self.writing_x, self.writing_y) = screen.draw_paragraph_at(
@@ -1202,7 +1216,7 @@ impl State for TermState {
                             &self.command,
                             &self.resources.scale12,
                             &self.resources.font,
-                            true
+                            false
                         )?;
         
                         Ok(())
@@ -1239,7 +1253,7 @@ impl State for TermState {
                     &key.to_string(), 
                     &self.resources.scale12, 
                     &self.resources.font,
-                    true
+                    false
                 )?;
                 if self.writing_x + width > OLED_WIDTH {
                     self.writing_x = 0;
@@ -1405,7 +1419,7 @@ impl State for TermState {
                                 self.writing_x -= width;
                             }
                             
-                            lock_screen.clear(OLED_WIDTH - width - self.writing_x, OLED_HEIGHT - height - self.writing_y, width, height)?;
+                            lock_screen.clear(self.writing_x, self.writing_y, width, height)?;
                             Ok(())
                         })().or_log("Failed to draw to screen");
     
@@ -1462,13 +1476,11 @@ impl State for TermState {
                     self.page = 0;
                     
                     self.draw(rt);
+                    println!("found")
                 } else {
-                    self.process = None;
-                    self.process_out.take().map(|handle| handle.abort());
-                    self.output = Some(("Failed".to_string(), "Failed to run command".to_string()));
-                    self.page = 0;
-
-                    self.draw(rt);
+                    self.command_pipe.send(CallbackCommand { state: StateType::Term, msg: SpecialKey::Enter as u32 })
+                        .or_log("Unable to start child process polling");
+                    println!("loop")
                 }
             }
         }
@@ -1542,7 +1554,7 @@ impl State for Scripts {
                     "SCRIPTS", 
                     &self.resources.scale12, 
                     &self.resources.font, 
-                    true
+                    false
                 )?;
     
                 let (_, y) = screen.draw_centered_text(
@@ -1551,7 +1563,7 @@ impl State for Scripts {
                     "ENTR: run last, D: ducky, B: bork", 
                     &self.resources.scale12, 
                     &self.resources.font, 
-                    true
+                    false
                 )?;
 
                 if let Some((_, name, _)) = &self.last_script {
@@ -1561,7 +1573,7 @@ impl State for Scripts {
                         &format!("LAST: {}", name), 
                         &self.resources.scale12, 
                         &self.resources.font, 
-                        true
+                        false
                     )?;
                 }
 
@@ -1583,7 +1595,7 @@ impl State for Scripts {
                     ),
                     &self.resources.scale12,
                     &self.resources.font,
-                    true
+                    false
                 )?;
 
                 for (i, (script, _)) in if matches!(self.state, ScriptState::Ducky) {
@@ -1600,6 +1612,7 @@ impl State for Scripts {
                         &format!("{}|{}", i, script),
                         &self.resources.scale10,
                         &self.resources.font,
+                        false,
                     );
 
                     if script_image.width() as usize > OLED_WIDTH {
@@ -1611,8 +1624,8 @@ impl State for Scripts {
                         screen.get_buffer(script_image.enumerate_pixels(), width, height)?;
                     screen.show_image(
                         buffer,
-                        OLED_WIDTH - width,
-                        OLED_HEIGHT - height - (y + i * self.line_size.1),
+                        0,
+                        y + i * self.line_size.1,
                         width,
                         height,
                     )?;
@@ -1624,7 +1637,7 @@ impl State for Scripts {
                     "LEFT: <, RIGHT: >",
                     &self.resources.scale12,
                     &self.resources.font,
-                    true
+                    false
                 )?;
 
                 Ok(())
