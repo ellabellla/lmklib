@@ -229,10 +229,8 @@ async fn spawn(
                 states.lock().await.get_mut(&state).and_then(|state| {
                     Some(state.callback(msg, &rt))
                 });
-                println!("ran")
             }
         }
-        println!("tick")
     }
 }
 
@@ -1476,11 +1474,9 @@ impl State for TermState {
                     self.page = 0;
                     
                     self.draw(rt);
-                    println!("found")
                 } else {
                     self.command_pipe.send(CallbackCommand { state: StateType::Term, msg: SpecialKey::Enter as u32 })
                         .or_log("Unable to start child process polling");
-                    println!("loop")
                 }
             }
         }
