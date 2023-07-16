@@ -21,7 +21,7 @@ use key_rpc::{Client, ClientError};
 use rusttype::{Font, Scale};
 use serde::{Serialize, Deserialize};
 use serde_json::Value;
-use tokio::{runtime::{Handle, Runtime}, sync::{Mutex, mpsc::{UnboundedReceiver, self, UnboundedSender}}, task::JoinHandle};
+use tokio::{runtime::{Handle, Runtime}, sync::Mutex, task::JoinHandle};
 use virt_hid::key::{Modifier, SpecialKey};
 use ws_1in5_i2c::{WS1in5, OLED_HEIGHT, OLED_WIDTH};
 
@@ -112,6 +112,7 @@ pub enum StateType {
     Home,
     Variables,
     Term,
+    Script,
     Empty,
 }
 
@@ -180,58 +181,12 @@ pub struct ScreenHid {
     shift: bool,
 
     rt: Runtime,
-    _handle: JoinHandle<()>,
 
     states: Arc<Mutex<HashMap<StateType, Box<dyn State>>>>,
     last_interact: Arc<Mutex<Instant>>,
     curr_state: Arc<Mutex<StateType>>,
 
-    system_data: SystemData,
-}
-
-pub struct  CallbackCommand {
-    state: StateType,
-    msg: u32
-}
-
-async fn spawn(
-    screen: Arc<Mutex<WS1in5>>, 
-    last_interact: Arc<Mutex<Instant>>, 
-    mut command_pipe: UnboundedReceiver<CallbackCommand>,
-    states: Arc<Mutex<HashMap<StateType, Box<dyn State>>>>,
-    curr_state: Arc<Mutex<StateType>>, 
-) {
-    let rt = tokio::runtime::Handle::current();
-
-    let mut last_reset = *last_interact.lock().await;
-    *last_interact.lock().await = Instant::now();
-    let mut interval = tokio::time::interval(Duration::from_millis(250));
-
-    loop {
-        interval.tick().await;
-
-        let lock_last_interact = last_interact.lock().await;
-        if last_reset != *lock_last_interact
-            && Instant::now() - *lock_last_interact >= Duration::from_secs(30)
-        {
-            let screen = screen.clone();
-            tokio::task::spawn_blocking(move || {
-                screen.blocking_lock().clear_all().ok();
-            })
-            .await
-            .ok();
-            last_reset = *lock_last_interact;
-        }
-        drop(lock_last_interact);
-
-        while let Ok(CallbackCommand{state, msg}) = command_pipe.try_recv()  {
-            if state == *curr_state.lock().await {
-                states.lock().await.get_mut(&state).and_then(|state| {
-                    Some(state.callback(msg, &rt))
-                });
-            }
-        }
-    }
+    system_data: Arc<Mutex<SystemData>>,
 }
 
 impl ScreenHid {
@@ -259,7 +214,7 @@ impl ScreenHid {
             scale30,
         });
 
-        let (command_pipe_send, command_pipe_rev) = mpsc::unbounded_channel();
+        let system_data = Arc::new(Mutex::new(SystemData::new()));
         
         let mut states: HashMap<StateType, Box<dyn State>> = HashMap::new();
         states.insert(StateType::Home, Box::new(HomeState::new(resources.clone(), screen.clone())));
@@ -267,7 +222,8 @@ impl ScreenHid {
             StateType::Variables,
             Box::new(VariablesState::new(screen.clone(), resources.clone())),
         );
-        states.insert(StateType::Term, Box::new(TermState::new(screen.clone(), resources.clone(), command_pipe_send)));
+        states.insert(StateType::Term, Box::new(TermState::new(screen.clone(), resources.clone())));
+        states.insert(StateType::Script, Box::new(Scripts::new(system_data.clone(), resources.clone(), screen.clone())));
         states.insert(StateType::Empty, Box::new(EmptyState::new(screen.clone())));
         let states = Arc::new(Mutex::new(states));
 
@@ -275,22 +231,14 @@ impl ScreenHid {
         let curr_state = Arc::new(Mutex::new(StateType::Home));
         
         let rt = tokio::runtime::Runtime::new().unwrap();
-        let handle = rt.spawn(spawn(
-            screen.clone(), 
-            last_interact.clone(), 
-            command_pipe_rev, 
-            states.clone(), 
-            curr_state.clone(), 
-        ));
         
         let shid = ScreenHid {
             shift: false,
             states,
             last_interact,
             curr_state,
-            _handle: handle,
             rt: rt,
-            system_data: SystemData::new(),
+            system_data,
         };
 
         let curr_state = shid.curr_state.blocking_lock();
@@ -333,7 +281,7 @@ impl HID for ScreenHid {
             return;
         };
 
-        self.system_data = system_data;
+        *self.system_data.blocking_lock() = system_data;
     }
 
     fn hold_key(&mut self, mut key: u32) {
@@ -506,7 +454,10 @@ impl HID for ScreenHid {
             }
             "term" => {
                 self.change_state(StateType::Term);
-            }
+            },
+            "script" => {
+                self.change_state(StateType::Script);
+            },
             "exit" => {
                 self.change_state(StateType::Empty);
             }
@@ -714,7 +665,7 @@ impl State for HomeState {
                 &format!("Lookup: {},{}:{} ", self.coord.0, self.coord.1, self.layer), 
                 &self.resources.scale10, 
                 &self.resources.font,
-                true
+                false
             )
             .or_log("Failed to draw to screen");
         }
@@ -766,7 +717,7 @@ impl State for HomeState {
                         &format!("Lookup: {},{}:{} ", self.coord.0, self.coord.1, self.layer), 
                         &self.resources.scale10, 
                         &self.resources.font,
-                        true
+                        false
                     ).or_log("Failed to draw to screen");
                 }
                 SpecialKey::UpArrow => {
@@ -947,7 +898,7 @@ impl State for VariablesState {
                         &key.to_string(), 
                         &self.resources.scale10, 
                         &self.resources.font,
-                        true
+                        false
                     )?;
 
                     if self.writing_x + width > OLED_WIDTH {
@@ -1031,7 +982,7 @@ impl State for VariablesState {
                             self.writing_x -= width;
                         }
                         
-                        lock_screen.clear(OLED_WIDTH - width - self.writing_x, OLED_HEIGHT - height - self.writing_y, width, height)?;
+                        lock_screen.clear(self.writing_x, self.writing_y, width, height)?;
                         Ok(())
                     })().or_log("Failed to draw to screen");
 
@@ -1069,14 +1020,12 @@ pub struct TermState {
     output: Option<(String, String)>,
     page: usize,
 
-    command_pipe: UnboundedSender<CallbackCommand>,
-
     resources: Arc<Resources>, 
     screen: Arc<Mutex<WS1in5>>
 }
 
 impl TermState {
-    pub fn new(screen: Arc<Mutex<WS1in5>>, resources: Arc<Resources>, command_pipe: UnboundedSender<CallbackCommand>) -> TermState {
+    pub fn new(screen: Arc<Mutex<WS1in5>>, resources: Arc<Resources>) -> TermState {
         let (_, heading_height) = screen.blocking_lock()
             .get_text_size("_", &resources.scale20, &resources.font);
         let (char_width, char_height) = screen.blocking_lock()
@@ -1096,8 +1045,6 @@ impl TermState {
             line_char_num: OLED_WIDTH / char_width,
             line_num: (OLED_HEIGHT - heading_height) / char_height,
             page: 0,
-
-            command_pipe,
 
             resources,
             screen
@@ -1364,6 +1311,8 @@ impl State for TermState {
                                         stdout.push('\n');
                                         drop(stdout)
                                     }
+
+                                    thread::sleep(Duration::from_millis(3));
                                 }
                             }));
                         }
@@ -1380,8 +1329,6 @@ impl State for TermState {
                                 self.page = 0;
                             }
                         }
-                        self.command_pipe.send(CallbackCommand { state: StateType::Term, msg: SpecialKey::Enter as u32 })
-                            .or_log("Unable to start child process polling");
                         self.draw(rt);
                     },
                     SpecialKey::Spacebar => {
@@ -1456,31 +1403,6 @@ impl State for TermState {
             _ => (),
         }
     }
-
-    fn callback(&mut self, msg: u32, rt: &Handle) {
-        if msg == SpecialKey::Enter as u32 {
-            if let Some(child) = &mut self.process {
-                if let Ok(exit) = child.try_wait() {
-                    let Some(exit) = exit else {
-                        return;
-                    };
-
-                    let exit = format!("E{}", exit.code().unwrap_or(0));
-
-                    drop(child);
-                    self.process = None;
-                    self.process_out.take().map(|handle| handle.abort());
-                    self.output = Some((exit, self.stdout.blocking_lock().to_string()));
-                    self.page = 0;
-                    
-                    self.draw(rt);
-                } else {
-                    self.command_pipe.send(CallbackCommand { state: StateType::Term, msg: SpecialKey::Enter as u32 })
-                        .or_log("Unable to start child process polling");
-                }
-            }
-        }
-    }
 }
 
 #[derive(Clone)]
@@ -1504,11 +1426,11 @@ pub struct Scripts {
     resources: Arc<Resources>, 
     screen: Arc<Mutex<WS1in5>>,
 
-    system_data: Arc<SystemData>,
+    system_data: Arc<Mutex<SystemData>>,
 }
 
 impl Scripts {
-    pub fn new(system_data: Arc<SystemData>, resources: Arc<Resources>, screen: Arc<Mutex<WS1in5>>) -> Scripts {
+    pub fn new(system_data: Arc<Mutex<SystemData>>, resources: Arc<Resources>, screen: Arc<Mutex<WS1in5>>) -> Scripts {
         let (char_width, line_height) =
             WS1in5::size_to_pow_2(drawing::text_size(resources.scale10, &resources.font, "_"));
 
@@ -1655,11 +1577,11 @@ impl State for Scripts {
                 if key == 'd' {
                     self.state = ScriptState::Ducky;
                     self.page = 0;
-                    self.ducky_scripts = self.system_data.ducky_scripts();
+                    self.ducky_scripts = self.system_data.blocking_lock().ducky_scripts();
                 } else if key == 'b' {
                     self.state = ScriptState::Bork;
                     self.page = 0;
-                    self.ducky_scripts = self.system_data.bork_scripts();
+                    self.ducky_scripts = self.system_data.blocking_lock().bork_scripts();
                 }
             },
             ScriptState::Ducky | ScriptState::Bork => {
