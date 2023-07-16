@@ -138,7 +138,7 @@ impl SystemData {
                         file.file_name().to_string_lossy().to_string(), 
                         file.path().to_string_lossy().to_string()
                     )).ok()
-                ).filter(|(name, _)| name.ends_with(".duck"))
+                ).filter(|(name, _)| name.ends_with(".quack"))
                 .collect::<Vec<(String, String)>>()
             )
         ).unwrap_or_else(|_| vec![])
@@ -1421,7 +1421,7 @@ pub struct Scripts {
 
     line_size: (usize, usize),
 
-    last_script: Option<(ScriptState, String, String)>,
+    last_script: Option<(String, String)>,
 
     resources: Arc<Resources>, 
     screen: Arc<Mutex<WS1in5>>,
@@ -1463,10 +1463,11 @@ impl State for Scripts {
 
     fn draw(&mut self, _rt: &Handle) {
         let mut screen = self.screen.blocking_lock();
-
+        screen.clear_all().ok();
+        
         match self.state {
             ScriptState::Home => (|| -> Result<(), ws_1in5_i2c::Error> {
-                let (_, y) = screen.draw_centered_text(
+                let (_, y) = screen.draw_text(
                     0, 
                     0, 
                     "SCRIPTS", 
@@ -1475,27 +1476,26 @@ impl State for Scripts {
                     false
                 )?;
     
-                let (_, y) = screen.draw_centered_text(
+                let (_, y) = screen.draw_text(
                     0, 
                     y, 
-                    "ENTR: run last, D: ducky, B: bork", 
-                    &self.resources.scale12, 
+                    "ENTR: last, D/B", 
+                    &self.resources.scale10, 
                     &self.resources.font, 
                     false
                 )?;
 
-                if let Some((_, name, _)) = &self.last_script {
-                    let (_, _) = screen.draw_centered_text(
+                if let Some((_, name)) = &self.last_script {
+                    let (_, _) = screen.draw_text(
                         0, 
                         y, 
                         &format!("LAST: {}", name), 
-                        &self.resources.scale12, 
+                        &self.resources.scale10, 
                         &self.resources.font, 
                         false
                     )?;
                 }
 
-    
                 Ok(())
             })().or_log("Failed to draw to screen"),
             ScriptState::Ducky | ScriptState::Bork => (|| -> Result<(), ws_1in5_i2c::Error> {
@@ -1503,7 +1503,7 @@ impl State for Scripts {
                     0, 
                     0, 
                     &format!(
-                        "{} {}", 
+                        "{} {} (ESC)", 
                         if matches!(self.state, ScriptState::Ducky) {
                             "DUCKY"
                         } else {
@@ -1578,10 +1578,12 @@ impl State for Scripts {
                     self.state = ScriptState::Ducky;
                     self.page = 0;
                     self.ducky_scripts = self.system_data.blocking_lock().ducky_scripts();
+                    self.draw(rt);
                 } else if key == 'b' {
                     self.state = ScriptState::Bork;
                     self.page = 0;
                     self.ducky_scripts = self.system_data.blocking_lock().bork_scripts();
+                    self.draw(rt);
                 }
             },
             ScriptState::Ducky | ScriptState::Bork => {
@@ -1597,17 +1599,19 @@ impl State for Scripts {
                     return;
                 };
 
+                let cmd = format!(
+                    "{} {}", 
+                    if matches!(self.state, ScriptState::Ducky) {
+                        "quack"
+                    } else {
+                        "bork"
+                    },
+                    path
+                );
+
                 let process = Command::new("bash")
                     .arg("-c")
-                    .arg(format!(
-                        "{} {} (SHFT+#: edit)", 
-                        if matches!(self.state, ScriptState::Ducky) {
-                            "quack"
-                        } else {
-                            "bork"
-                        },
-                        path
-                    ))
+                    .arg(&cmd)
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped())
                     .spawn()
@@ -1622,7 +1626,7 @@ impl State for Scripts {
                 }
 
                 self.state = ScriptState::Home;
-                self.last_script = Some((self.state.clone(), name.to_string(), path.to_string()));
+                self.last_script = Some((cmd, name.to_string()));
                 self.draw(rt);
             },
         }
@@ -1638,23 +1642,15 @@ impl State for Scripts {
         match self.state {
             ScriptState::Home => {
                 if special == SpecialKey::ReturnEnter {
-                    if let Some((_, _, path)) = &self.last_script {
+                    if let Some((cmd, _)) = &self.last_script {
                         let process = Command::new("bash")
                             .arg("-c")
-                            .arg(format!(
-                                "{} {}", 
-                                if matches!(self.state, ScriptState::Ducky) {
-                                    "quack"
-                                } else {
-                                    "bork"
-                                },
-                                path
-                            ))
+                            .arg(cmd)
                             .stdout(Stdio::piped())
                             .stderr(Stdio::piped())
                             .spawn()
                             .or_log("Unable to spawn script process");
-        
+                        
                         if let Some(mut child) = process {
                             rt.spawn(async move {
                                 while let Ok(None) = child.try_wait() {
@@ -1673,6 +1669,11 @@ impl State for Scripts {
                     self.page += 1;
                     self.draw(rt)
                 } 
+
+                if special == SpecialKey::Escape {
+                    self.state = ScriptState::Home;
+                    self.draw(rt);
+                }
             },
         }
     }
