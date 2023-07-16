@@ -1,6 +1,6 @@
 #![doc = include_str!("../README.md")]
 
-use std::{process::exit, thread, time::Duration, path::PathBuf, str::FromStr, fmt::Display, fs, io::Write, sync::Arc};
+use std::{process::exit, time::Duration, path::PathBuf, str::FromStr, fmt::Display, fs, io::Write, sync::Arc};
 
 use clap::Parser;
 use driver::{DriverManager};
@@ -271,11 +271,12 @@ async fn main() {
     // event loop
     let layout_thread = {
         let layout = layout.clone();
+        let mut interval = tokio::time::interval(Duration::from_millis(5));
         tokio::spawn(async move {
             loop {
                 layout.write().await.tick().await;
                 layout.write().await.poll().await;
-                thread::sleep(Duration::from_millis(10));
+                interval.tick().await;
             }
         })
     };
