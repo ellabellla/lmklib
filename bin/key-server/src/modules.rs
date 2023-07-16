@@ -132,6 +132,16 @@ impl DriverInterface for ExternalDriver {
         self.state.get(range.clone())
     }
 
+    fn poll_list(&self, idx: &Vec<usize>) -> Option<Vec<u16>> {
+        let mut out = Vec::with_capacity(idx.len());
+
+        for idx in idx {
+            out.push(*self.state.get(*idx).unwrap_or(&0))
+        }
+
+        return Some(out);
+    }
+
     async fn set(&mut self, idx: usize, state:u16) {
         self.module_manager
             .driver_set(&self.module_name, self.id, idx, state).await

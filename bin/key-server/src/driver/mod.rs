@@ -42,6 +42,8 @@ pub trait DriverInterface {
     fn poll(&self, idx: usize) -> u16;
     /// Poll a range of states
     fn poll_range(&self, range: &Range<usize>) -> Option<&[u16]>;
+    /// Poll list of states
+    fn poll_list(&self, idx: &Vec<usize>) -> Option<Vec<u16>>;
     /// Output a state
     async fn set(&mut self, idx: usize, state: u16);
     /// Tick the driver. Used to update the driver state.

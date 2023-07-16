@@ -295,7 +295,7 @@ impl Layout {
 
 
     pub fn shift(&mut self, index: usize) -> Option<()> {
-        if index >= self.layer_stack.len() || self.cur_layer == index {
+        if index >= self.layer_stack.len() {
             None
         } else {
             self.shift_from.push((self.cur_layer, index));
@@ -473,11 +473,9 @@ impl Layout {
                         continue;
                     };
 
-                    let mut states = Vec::with_capacity(input.len());
-
-                    for input in input {
-                        states.push(driver.poll(*input));
-                    }
+                    let Some(states) = driver.poll_list(&input) else {
+                        continue;
+                    };
 
                     drop(driver);
                     drop(driver_manager);
@@ -506,11 +504,9 @@ impl Layout {
                         continue;
                     };
 
-                    let mut states = Vec::with_capacity(input.len());
-
-                    for input in input {
-                        states.push(driver.poll(*input));
-                    }
+                    let Some(states) = driver.poll_list(&input) else {
+                        continue;
+                    };
 
                     drop(driver);
                     drop(driver_manager);
