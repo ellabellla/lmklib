@@ -59,8 +59,8 @@ impl Client {
         let mut socket = Socket::new(Protocol::Req).map_err(|e| ClientError::NNG(e))?;
         let _endpoint = socket.connect(socket_str).map_err(|e| ClientError::NNG(e))?;
 
-        socket.set_receive_timeout(10).map_err(|e| ClientError::NNG(e))?;
-        socket.set_send_timeout(10).map_err(|e| ClientError::NNG(e))?;
+        socket.set_receive_timeout(100).map_err(|e| ClientError::NNG(e))?;
+        socket.set_send_timeout(100).map_err(|e| ClientError::NNG(e))?;
 
         Ok(Client { socket, _endpoint })
     }
