@@ -259,7 +259,7 @@ async fn main() {
 
     let layout = builder.build(driver_manager, func_builder.clone()).await;
 
-    let config_thread = ConfigRPC::start(
+    let _config_thread = ConfigRPC::start(
         CONFIG_FRONT.to_string(), 
         CONFIG_BACK.to_string(), 
         layout.clone(), 
@@ -268,19 +268,9 @@ async fn main() {
         config.join(VARIABLES_JSON)
     ).await.or_exit("Unable to start Config RPC");
 
-    // event loop
-    let layout_thread = {
-        let layout = layout.clone();
-        let mut interval = tokio::time::interval(Duration::from_millis(5));
-        tokio::spawn(async move {
-            loop {
-                layout.write().await.tick().await;
-                layout.write().await.poll().await;
-                interval.tick().await;
-            }
-        })
-    };
-
-    layout_thread.await.or_log("Layout thread error");
-    config_thread.await.or_log("Config FS thread error");
+    // event loop]
+    loop {
+        layout.write().await.tick().await;
+        layout.write().await.poll().await;
+    }
 }
